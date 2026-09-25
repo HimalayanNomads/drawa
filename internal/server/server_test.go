@@ -101,7 +101,8 @@ func TestMcpRoundTrip(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	var callID string
 	for time.Now().Before(deadline) && callID == "" {
-		for _, line := range lv.Snapshot().Lines {
+		lines, _ := lv.LinesFrom(0)
+		for _, line := range lines {
 			var d map[string]any
 			if json.Unmarshal([]byte(line), &d) == nil && d["type"] == "canvas_call" {
 				callID, _ = d["id"].(string)
@@ -187,14 +188,18 @@ func TestTwoCardsOneStream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/events?page=abcd1234&c=aaaaaaaa-0000-0000-0000-000000000000:0,bbbbbbbb-0000-0000-0000-000000000000:1", nil)
-	req.Host = "127.0.0.1:8765"
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
+	open := func(c string) *bufio.Reader {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/events?page=abcd1234&c="+c, nil)
+		req.Host = "127.0.0.1:8765"
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { resp.Body.Close() })
+		return bufio.NewReader(resp.Body)
 	}
-	defer resp.Body.Close()
-	reader := bufio.NewReader(resp.Body)
+	reader := open("aaaaaaaa-0000-0000-0000-000000000000:0,bbbbbbbb-0000-0000-0000-000000000000:1")
 
 	readLine := func() map[string]any {
 		t.Helper()
@@ -234,10 +239,19 @@ func TestTwoCardsOneStream(t *testing.T) {
 	check(2, "aaaaaaaa-0000-0000-0000-000000000000", "x", 1)
 	check(3, "bbbbbbbb-0000-0000-0000-000000000000", "attach", 1)
 	check(4, "bbbbbbbb-0000-0000-0000-000000000000", "y", 1)
+	if r := a.Readers(); len(r) != 1 || r[0] != "abcd1234" {
+		t.Fatalf("readers %v, want [abcd1234]", r)
+	}
 
 	b.Push(`{"type": "y", "i": 2}` + "\n") // later output wakes the stream
 	d := readLine()
 	if d["i"] != float64(2) {
 		t.Fatalf("expected b's new line, got %#v", d)
+	}
+
+	// an offset from an older process of the card: this one is read from its first line
+	reader = open("aaaaaaaa-0000-0000-0000-000000000000:2:oldgen")
+	if d := readLine(); d["type"] != "attach" || d["from"] != float64(0) {
+		t.Fatalf("older generation should replay from 0, got %#v", d)
 	}
 }

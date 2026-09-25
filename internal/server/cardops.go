@@ -15,6 +15,7 @@ import (
 func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[string]any) {
 	live.Mu.Lock()
 	lv := live.Registry[cid]
+	var err error // stdin broke (the process died): answer 500, and the next send starts a new one
 
 	switch r.URL.Path {
 	case "/api/send":
@@ -49,11 +50,11 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 			http.Error(w, "", 400)
 			return
 		}
-		lv.Write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
+		err = lv.Write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 
 	case "/api/respond":
 		if lv != nil && lv.Alive() {
-			respond(lv, body)
+			err = respond(lv, body)
 		}
 
 	case "/api/mode":
@@ -65,7 +66,7 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 		// a card's permission mode changed: switch its running process now (not running: next send starts it so)
 		if lv != nil && lv.Alive() && m != lv.GetMode() {
-			lv.Control("set_permission_mode", map[string]any{"mode": m}) // lv.Mode follows once Claude confirms (pump)
+			err = lv.Control("set_permission_mode", map[string]any{"mode": m}) // lv.Mode follows once Claude confirms (pump)
 		}
 
 	case "/api/canvas":
@@ -78,21 +79,28 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 
 	case "/api/interrupt":
 		if lv != nil && lv.Alive() {
-			lv.Control("interrupt", nil)
+			err = lv.Control("interrupt", nil)
 		}
 
 	case "/api/close":
 		if lv != nil {
 			delete(live.Registry, cid)
-			lv.Close()
+			live.Mu.Unlock()
+			lv.Close() // outside Mu: it can take 5s, and every page's stream takes Mu
+			sendJSON(w, map[string]any{"ok": true, "live": lv.Alive()}, 200)
+			return
 		}
 	}
 	live.Mu.Unlock()
+	if err != nil {
+		http.Error(w, "", 500)
+		return
+	}
 	sendJSON(w, map[string]any{"ok": true, "live": lv != nil && lv.Alive()}, 200)
 }
 
 // respond answers a tool approval: allow (optionally "always", from Claude's own suggestion) or deny with feedback.
-func respond(lv *live.Live, body map[string]any) {
+func respond(lv *live.Live, body map[string]any) error {
 	rid := str(body["request_id"])
 	line, _ := lv.PopAsk(rid)
 	if line == "" {
@@ -131,14 +139,17 @@ func respond(lv *live.Live, body map[string]any) {
 		}
 		resp = map[string]any{"behavior": "deny", "message": msg}
 	}
-	lv.Write(map[string]any{
+	if err := lv.Write(map[string]any{
 		"type":     "control_response",
 		"response": map[string]any{"subtype": "success", "request_id": rid, "response": resp},
-	})
-	if m := str(body["mode"]); config.Modes[m] {
-		lv.Control("set_permission_mode", map[string]any{"mode": m})
-		lv.SetMode(m)
+	}); err != nil {
+		return err
 	}
+	if m := str(body["mode"]); config.Modes[m] {
+		lv.SetMode(m)
+		return lv.Control("set_permission_mode", map[string]any{"mode": m})
+	}
+	return nil
 }
 
 func parseAskRequest(line string) map[string]any {

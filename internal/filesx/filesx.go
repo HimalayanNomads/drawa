@@ -2,6 +2,7 @@
 package filesx
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"claude-ui/internal/config"
 	"claude-ui/internal/gitx"
@@ -33,7 +35,7 @@ func Tree(rel string) ([]TreeItem, error) {
 		if e.Name() == ".git" {
 			continue
 		}
-		items = append(items, TreeItem{Name: e.Name(), Dir: e.IsDir()})
+		items = append(items, TreeItem{Name: e.Name(), Dir: isDir(filepath.Join(p, e.Name()), e)})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Dir != items[j].Dir {
@@ -42,6 +44,15 @@ func Tree(rel string) ([]TreeItem, error) {
 		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
 	})
 	return items, nil
+}
+
+// isDir follows a symlink, like Python's is_dir(): a linked folder is a folder.
+func isDir(path string, e os.DirEntry) bool {
+	if e.Type()&os.ModeSymlink == 0 {
+		return e.IsDir()
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 var skipDirs = map[string]bool{
@@ -60,15 +71,16 @@ var filesCache = struct {
 // projectFiles lists every file in the project (git's view when it's a repo, so .gitignore applies), cached for
 // 30s or until the git index changes. ponytail: a brand-new untracked file can take up to 30s to show up in @ search.
 func projectFiles() ([]string, []string) {
-	filesCache.Lock()
-	defer filesCache.Unlock()
 	var index time.Time
 	if info, err := os.Stat(filepath.Join(config.Root, ".git", "index")); err == nil {
 		index = info.ModTime()
 	}
+	filesCache.Lock()
 	if time.Since(filesCache.at) < 30*time.Second && index.Equal(filesCache.index) {
+		defer filesCache.Unlock()
 		return filesCache.list, filesCache.low
 	}
+	filesCache.Unlock() // not held while listing: a big walk mustn't stall every search behind it
 	ok, out := gitx.Git("ls-files", "-co", "--exclude-standard")
 	var files []string
 	if ok {
@@ -79,7 +91,13 @@ func projectFiles() ([]string, []string) {
 		}
 	} else { // not a git repo: walk it, skipping the usual heavy folders
 		filepath.WalkDir(config.Root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || len(files) > 50_000 { // ponytail: huge trees get cut off; a real index if that bites
+			if len(files) > 50_000 { // ponytail: huge trees get cut off; a real index if that bites
+				return filepath.SkipAll
+			}
+			if err != nil {
+				return nil
+			}
+			if d.Type()&os.ModeSymlink != 0 && isDir(path, d) { // like os.walk: a linked folder, not entered
 				return nil
 			}
 			if d.IsDir() {
@@ -99,7 +117,9 @@ func projectFiles() ([]string, []string) {
 	for i, f := range files {
 		low[i] = strings.ToLower(f)
 	}
+	filesCache.Lock()
 	filesCache.at, filesCache.index, filesCache.list, filesCache.low = time.Now(), index, files, low
+	filesCache.Unlock()
 	return files, low
 }
 
@@ -107,26 +127,27 @@ func projectFiles() ([]string, []string) {
 func spread(q, text string) int {
 	best := -1
 	starts := 0
-	for i, ch := range text {
+	first, size := utf8.DecodeRuneInString(q)
+	for i, ch := range text { // in characters throughout, like Python, so non-ASCII names match and measure right
 		if starts >= 20 { // ponytail: first 20 starts is plenty for paths
 			break
 		}
-		if byte(ch) != q[0] {
+		if ch != first {
 			continue
 		}
 		starts++
-		pos := i
+		end := i + size // just past the last matched character
 		ok := true
-		for k := 1; k < len(q); k++ {
-			idx := strings.IndexByte(text[pos+1:], q[k])
+		for _, c := range q[size:] {
+			idx := strings.IndexRune(text[end:], c)
 			if idx < 0 {
 				ok = false
 				break
 			}
-			pos = pos + 1 + idx
+			end += idx + utf8.RuneLen(c)
 		}
 		if ok {
-			span := pos - i + 1 - len(q)
+			span := utf8.RuneCountInString(text[i:end]) - utf8.RuneCountInString(q)
 			if best < 0 || span < best {
 				best = span
 			}
@@ -174,7 +195,10 @@ func Find(q string, limit int) []string {
 		if scores[i].score != scores[j].score {
 			return scores[i].score < scores[j].score
 		}
-		return scores[i].plen < scores[j].plen
+		if scores[i].plen != scores[j].plen {
+			return scores[i].plen < scores[j].plen
+		}
+		return scores[i].path < scores[j].path
 	})
 	if len(scores) > limit {
 		scores = scores[:limit]
@@ -186,7 +210,7 @@ func Find(q string, limit int) []string {
 	return out
 }
 
-// Get reads a file for the viewer. ponytail: 1MB cap, viewer not an editor.
+// Get reads a file for the viewer.
 func Get(rel string) (map[string]any, error) {
 	p, err := config.Inside(rel)
 	if err != nil {
@@ -201,19 +225,10 @@ func Get(rel string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if hasNul(data) {
+	if bytes.IndexByte(data, 0) >= 0 {
 		return map[string]any{"text": nil}, nil
 	}
 	return map[string]any{"text": toUTF8(data)}, nil
-}
-
-func hasNul(b []byte) bool {
-	for _, c := range b {
-		if c == 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func toUTF8(b []byte) string {

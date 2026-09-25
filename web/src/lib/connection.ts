@@ -1,4 +1,4 @@
-// Is server.py reachable? A light ping every few seconds; when it stops answering, a notice says so and pings
+// Is the Go server reachable? A light ping every few seconds; when it stops answering, a notice says so and pings
 // faster until it's back, then whatever registered with onReconnect runs (re-attach streams, refresh lists).
 import { $ } from './dom'
 

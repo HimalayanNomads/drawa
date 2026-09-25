@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +61,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(200)
-	flusher, _ := w.(http.Flusher)
+	rc := http.NewResponseController(w)
 
 	absent := map[string]bool{}
 	heldMap := map[string]*heldStream{}
@@ -96,7 +95,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 					if snap.OpenMsg != nil {
 						n = *snap.OpenMsg
 					} else {
-						n = snap.Base + len(snap.Lines)
+						n = snap.End
 					}
 				} else {
 					n = start
@@ -114,13 +113,8 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 				b, _ := json.Marshal(map[string]any{"type": "attach", "from": n, "gen": lv.Gen, "reader": page, "busy": snap.Busy})
 				out = append(out, tag(cid, string(b)+"\n"))
 				if missed && n != 0 {
-					keys := make([]string, 0, len(snap.Asks))
-					for k := range snap.Asks {
-						keys = append(keys, k)
-					}
-					sort.Strings(keys)
-					for _, k := range keys {
-						out = append(out, tag(cid, snap.Asks[k]))
+					for _, a := range snap.Asks {
+						out = append(out, tag(cid, a))
 					}
 				}
 			}
@@ -144,11 +138,13 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 				continue
 			}
 		}
+		// a stalled page must detach (its canvas calls go elsewhere), not hold this stream forever
+		rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if _, err := io.WriteString(w, strings.Join(out, "")); err != nil {
 			return // the connection dropped
 		}
-		if flusher != nil {
-			flusher.Flush()
+		if rc.Flush() != nil {
+			return
 		}
 		select {
 		case <-ctx.Done():

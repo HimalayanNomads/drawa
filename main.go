@@ -25,7 +25,7 @@ import (
 
 var binPath = filepath.Join(config.Repo, ".bin", "claude-ui-server")
 
-// watchedFiles is every .go source file in the repo (skipping web/ and dot-directories: no reason to walk
+// watchedFiles is every non-test .go source file plus go.mod in the repo (skipping web/ and dot-directories: no reason to walk
 // node_modules or .git for a change that can never affect the server).
 func watchedFiles() []string {
 	var files []string
@@ -39,7 +39,8 @@ func watchedFiles() []string {
 			}
 			return nil
 		}
-		if strings.HasSuffix(path, ".go") {
+		// tests can't change the running server, and a restart kills every live session
+		if (strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go")) || d.Name() == "go.mod" {
 			files = append(files, path)
 		}
 		return nil
@@ -130,7 +131,7 @@ func main() {
 	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil {
 		// first run from a fresh clone: build the UI so there is one command to learn
 		fmt.Println("Building the UI (first run only)...")
-		cmd := exec.Command("bash", "-c", "npm install && npm run build")
+		cmd := exec.Command("sh", "-c", "npm install && npm run build")
 		cmd.Dir = filepath.Join(config.Repo, "web")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {

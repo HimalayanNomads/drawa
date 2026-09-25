@@ -3,6 +3,8 @@
 package gitx
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,7 +27,9 @@ func GitOpts(o Opts, args ...string) (bool, string) {
 	if o.Timeout == 0 {
 		o.Timeout = 30 * time.Second
 	}
-	r, err := procx.Run(o.Timeout, o.Stdin, append([]string{"git"}, args...)...)
+	// literal pathspecs: a page-supplied ":/x" would otherwise name a file from the repo's top, outside Root
+	env := append(os.Environ(), "GIT_LITERAL_PATHSPECS=1")
+	r, err := procx.RunEnv(o.Timeout, o.Stdin, env, append([]string{"git"}, args...)...)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -173,7 +177,8 @@ func nonNil(log []map[string]string) []map[string]string {
 }
 
 func GitDiff(rel string, staged bool) (map[string]any, error) {
-	if _, err := config.Inside(rel); err != nil {
+	rel, err := rootRel(rel)
+	if err != nil {
 		return nil, err
 	}
 	args := []string{"diff"}
@@ -223,10 +228,12 @@ func GitOp(body map[string]any) (map[string]any, error) {
 			}
 		}
 	}
-	for _, p := range paths {
-		if _, err := config.Inside(p); err != nil {
+	for i, p := range paths {
+		rel, err := rootRel(p)
+		if err != nil {
 			return nil, err
 		}
+		paths[i] = rel
 	}
 	var ok bool
 	var out string
@@ -267,6 +274,16 @@ func GitOp(body map[string]any) (map[string]any, error) {
 		out = out[len(out)-4000:]
 	}
 	return map[string]any{"ok": ok, "out": out}, nil
+}
+
+// rootRel checks rel is inside the project and returns the resolved path relative to Root: what git gets, never
+// the raw input (git runs in Root, which may be a subfolder of the repo).
+func rootRel(rel string) (string, error) {
+	resolved, err := config.Inside(rel)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Rel(config.Root, resolved)
 }
 
 func anyToStr(v any) string {

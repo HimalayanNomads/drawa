@@ -1,4 +1,4 @@
-// JSON endpoints served by server.py.
+// JSON endpoints served by the Go server.
 
 export interface TreeItem { name: string; dir: boolean }
 export interface SessionInfo { id: string; title: string; mtime: number }

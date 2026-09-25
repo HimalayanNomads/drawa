@@ -51,18 +51,22 @@ type Live struct {
 
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
+	done  chan struct{} // closed once the process has exited (code is set by then)
+	code  int
 
 	lines   []string
 	base    int
 	size    int
 	last    time.Time
-	asks    map[string]string // request_id -> its raw control_request line (re-sent to pages that attach later)
-	readers []string          // pages reading this stream (newest last): the newest carries out canvas tool calls
+	asks    []ask    // open approval requests in arrival order (re-sent to pages that attach later)
+	readers []string // pages reading this stream (newest last): the newest carries out canvas tool calls
 	calls   map[string]*Call
 	busy    bool // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
 	openMsg *int // line where the message being streamed began: a page attaching now reads from there
-	exited  bool
+	exited  bool // the process exited, or its stdin broke: the next send starts a new one (Python: p.poll())
 }
+
+type ask struct{ rid, line string }
 
 var (
 	Mu       sync.Mutex
@@ -104,8 +108,7 @@ func buildArgv(cid, sid, mode, model, token string) []string {
 // spawning a real `claude` process (e.g. server-package tests exercising the MCP or event-stream HTTP layer).
 func NewForTest(token, gen string) *Live {
 	return &Live{
-		Token: token, Gen: gen, last: time.Now(),
-		asks: map[string]string{}, calls: map[string]*Call{},
+		Token: token, Gen: gen, last: time.Now(), calls: map[string]*Call{},
 	}
 }
 
@@ -134,33 +137,40 @@ func New(cid, sid, mode, model string) (*Live, error) {
 
 	l := &Live{
 		Token: token, Gen: randHex(3), Mode: mode, Model: model,
-		cmd: cmd, stdin: stdin, last: time.Now(),
-		asks: map[string]string{}, calls: map[string]*Call{},
+		cmd: cmd, stdin: stdin, last: time.Now(), done: make(chan struct{}), calls: map[string]*Call{},
 	}
+	// The only Wait: it returns when the process exits, even if a background descendant still holds stdout open.
+	go func() {
+		l.cmd.Wait()
+		l.mu.Lock()
+		l.code, l.exited = l.cmd.ProcessState.ExitCode(), true
+		l.mu.Unlock()
+		close(l.done)
+	}()
 	go l.pump(pr)
 	return l, nil
 }
 
 func (l *Live) pump(r io.Reader) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
-	for scanner.Scan() {
-		raw := scanner.Text()
-		if strings.TrimSpace(raw) == "" {
-			continue
+	br := bufio.NewReader(r) // no line cap: a huge tool result must not stop the reading (the child would block)
+	for {
+		raw, err := br.ReadBytes('\n')
+		if line := strings.TrimRight(string(raw), "\r\n"); strings.TrimSpace(line) != "" {
+			l.Push(l.classify(line) + "\n")
 		}
-		l.Push(l.classify(raw) + "\n")
+		if err != nil {
+			if err != io.EOF {
+				io.Copy(io.Discard, br) // keep the pipe drained so the child can finish writing and exit
+			}
+			break
+		}
 	}
 	l.mu.Lock()
 	l.busy = false
 	l.mu.Unlock()
-	l.cmd.Wait()
-	code := -1
-	if l.cmd.ProcessState != nil {
-		code = l.cmd.ProcessState.ExitCode()
-	}
+	<-l.done
 	l.mu.Lock()
-	l.exited = true
+	code := l.code
 	l.mu.Unlock()
 	b, _ := json.Marshal(map[string]any{"type": "exit", "code": code})
 	l.Push(string(b) + "\n")
@@ -186,13 +196,10 @@ func (l *Live) classify(line string) string {
 		l.mu.Lock()
 		l.openMsg = nil // complete: the transcript has it now
 		l.mu.Unlock()
-	case strings.Contains(line, `"type":"result"`): // its keys come in any order
-		var d map[string]any
-		if json.Unmarshal([]byte(line), &d) == nil && d["type"] == "result" {
-			l.mu.Lock()
-			l.busy = false
-			l.mu.Unlock()
-		}
+	case strings.Contains(line, `"type":"result"`) && isResult(line): // its keys come in any order
+		l.mu.Lock()
+		l.busy = false
+		l.mu.Unlock()
 	case len(line) > 4000 && (strings.Contains(line, `"type":"user"`) || strings.Contains(line, `"type":"assistant"`)):
 		line = sessions.Trimmed(line)
 	case strings.Contains(line, `"can_use_tool"`) || strings.Contains(line, `"permissionMode"`):
@@ -202,7 +209,7 @@ func (l *Live) classify(line string) string {
 				if req, ok := d["request"].(map[string]any); ok && req["subtype"] == "can_use_tool" {
 					if rid, ok := d["request_id"].(string); ok {
 						l.mu.Lock()
-						l.asks[rid] = line
+						l.asks = append(l.asks, ask{rid, line})
 						l.mu.Unlock()
 					}
 				}
@@ -218,6 +225,12 @@ func (l *Live) classify(line string) string {
 	return line
 }
 
+// isResult: a nested object's "type":"result" mustn't claim the line (it may still need trimming or be an ask).
+func isResult(line string) bool {
+	var d struct{ Type string }
+	return json.Unmarshal([]byte(line), &d) == nil && d.Type == "result"
+}
+
 func (l *Live) Push(line string) {
 	l.mu.Lock()
 	l.lines = append(l.lines, line)
@@ -227,6 +240,7 @@ func (l *Live) Push(line string) {
 		for _, s := range l.lines[:drop] {
 			l.size -= len(s)
 		}
+		clear(l.lines[:drop]) // so the dropped strings can be freed (the array itself stays shared)
 		l.lines = l.lines[drop:]
 		l.base += drop
 	}
@@ -262,30 +276,32 @@ func (l *Live) Write(obj map[string]any) error {
 	_, err = l.stdin.Write(b)
 	l.mu.Lock()
 	l.last = time.Now()
+	if err != nil {
+		l.exited = true // it can't take input any more: the next send starts a new process
+	}
 	l.mu.Unlock()
+	if err != nil {
+		l.Kill()
+	}
 	return err
 }
 
-func (l *Live) Control(subtype string, kw map[string]any) {
+func (l *Live) Control(subtype string, kw map[string]any) error {
 	req := map[string]any{"subtype": subtype}
 	for k, v := range kw {
 		req[k] = v
 	}
-	l.Write(map[string]any{
+	return l.Write(map[string]any{
 		"type": "control_request", "request_id": fmt.Sprintf("ui-%d", time.Now().UnixNano()), "request": req,
 	})
 }
 
 func (l *Live) Close() {
 	l.stdin.Close()
-	done := make(chan struct{})
-	go func() { l.cmd.Wait(); close(done) }()
 	select {
-	case <-done:
+	case <-l.done:
 	case <-time.After(5 * time.Second):
-		if l.cmd.Process != nil {
-			l.cmd.Process.Kill()
-		}
+		l.Kill()
 	}
 }
 
@@ -369,28 +385,28 @@ func removeOne(s []string, v string) []string {
 	return s
 }
 
-// Snapshot is the buffer state an HTTP handler needs, taken under the lock.
+// Snapshot is the buffer state a page attaching needs, taken under the lock (not the lines: see LinesFrom).
 type Snapshot struct {
 	Base    int
-	Lines   []string
+	End     int // the index the next line gets
 	Busy    bool
 	OpenMsg *int
-	Asks    map[string]string
+	Asks    []string // open approval request lines, in arrival order
 }
 
 func (l *Live) Snapshot() Snapshot {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	asks := make(map[string]string, len(l.asks))
-	for k, v := range l.asks {
-		asks[k] = v
+	asks := make([]string, len(l.asks))
+	for i, a := range l.asks {
+		asks[i] = a.line
 	}
 	var openMsg *int
 	if l.openMsg != nil {
 		v := *l.openMsg
 		openMsg = &v
 	}
-	return Snapshot{Base: l.base, Lines: append([]string(nil), l.lines...), Busy: l.busy, OpenMsg: openMsg, Asks: asks}
+	return Snapshot{Base: l.base, End: l.base + len(l.lines), Busy: l.busy, OpenMsg: openMsg, Asks: asks}
 }
 
 // LinesFrom returns lines from n (a global index) onward, plus the buffer's new end index.
@@ -407,18 +423,23 @@ func (l *Live) LinesFrom(n int) ([]string, int) {
 	return append([]string(nil), l.lines[start:]...), l.base + len(l.lines)
 }
 
-func (l *Live) Base() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.base
-}
-
 func (l *Live) PopAsk(rid string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	line, ok := l.asks[rid]
-	delete(l.asks, rid)
-	return line, ok
+	for i, a := range l.asks {
+		if a.rid == rid {
+			l.asks = append(l.asks[:i:i], l.asks[i+1:]...)
+			return a.line, true
+		}
+	}
+	return "", false
+}
+
+// Readers lists the pages reading this stream (newest last).
+func (l *Live) Readers() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.readers...)
 }
 
 func (l *Live) SetMode(mode string)   { l.mu.Lock(); l.Mode = mode; l.mu.Unlock() }

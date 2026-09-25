@@ -121,3 +121,23 @@ func TestSubagentPartialLineAndFinishedAgents(t *testing.T) {
 		t.Fatalf("expected the agent's own message, got %#v", one[1])
 	}
 }
+
+func TestLongLineAndBigInts(t *testing.T) {
+	// A line longer than the read buffer mustn't end the transcript, and ids past 2^53 in tool inputs keep every digit.
+	root := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(root, "s.jsonl"))
+	writeLine(f, "user", []any{map[string]any{"type": "tool_result", "tool_use_id": "x", "content": strings.Repeat("é", 2<<20)}})
+	f.WriteString(`{"type":"assistant","message":{"content":[{"type":"tool_use","input":{"id":12345678901234567891}}]}}` + "\n")
+	f.Close()
+	msgs := Load("s", "")
+	if len(msgs) != 2 {
+		t.Fatalf("expected both messages, got %d", len(msgs))
+	}
+	if c := msgs[0]["content"].([]any)[0].(map[string]any)["content"].(string); c != strings.Repeat("é", ClipLen)+"\n… (truncated)" {
+		t.Fatalf("tool output not clipped to %d characters: %d bytes", ClipLen, len(c))
+	}
+	b, _ := json.Marshal(msgs[1]["content"])
+	if !strings.Contains(string(b), "12345678901234567891") {
+		t.Fatalf("big int rounded: %s", b)
+	}
+}

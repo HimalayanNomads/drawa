@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"claude-ui/internal/config"
 )
@@ -54,22 +56,28 @@ var HashRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // Store keeps image bytes in the store -> their key (the hash). ponytail: never garbage-collected; files are
 // small and shared by content, so removing a window can't tell whether another layout still shows the same picture.
-func Store(data []byte) string {
+func Store(data []byte) (string, error) {
 	sum := sha256.Sum256(data)
 	key := hex.EncodeToString(sum[:])
 	f := filepath.Join(Store_, key)
-	if _, err := os.Stat(f); err != nil {
-		os.MkdirAll(Store_, 0o755)
-		tmp := f + ".part"
-		if os.WriteFile(tmp, data, 0o644) == nil {
-			os.Rename(tmp, f) // never a half-written picture
-		}
+	if _, err := os.Stat(f); err == nil {
+		return key, nil
 	}
-	return key
+	if err := os.MkdirAll(Store_, 0o755); err != nil {
+		return "", err
+	}
+	tmp := f + ".part"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return "", err
+	}
+	return key, os.Rename(tmp, f) // never a half-written picture
 }
 
 // Save stores an image the page sends (base64) -> its key.
 func Save(b64 string) map[string]any {
+	if len(b64) > base64.StdEncoding.EncodedLen(Max) { // refuse before decoding, not after
+		return map[string]any{"error": "not a PNG, JPEG, GIF or WebP image under 15MB"}
+	}
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return map[string]any{"error": "not base64"}
@@ -77,12 +85,16 @@ func Save(b64 string) map[string]any {
 	if len(data) > Max || Type(data) == "" {
 		return map[string]any{"error": "not a PNG, JPEG, GIF or WebP image under 15MB"}
 	}
-	return map[string]any{"key": Store(data)}
+	key, err := Store(data)
+	if err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+	return map[string]any{"key": key}
 }
 
 // Stash stores an image Claude named (absolute, or relative to the project) -> its key.
 func Stash(path string) (string, error) {
-	if len(path) > 0 && path[0] == '~' {
+	if path == "~" || strings.HasPrefix(path, "~/") { // not ~bob/x: that's another user's home
 		if home, err := os.UserHomeDir(); err == nil {
 			path = filepath.Join(home, path[1:])
 		}
@@ -91,19 +103,25 @@ func Stash(path string) (string, error) {
 	if !filepath.IsAbs(f) {
 		f = filepath.Join(config.Root, f)
 	}
+	// regular files only: /dev/zero reports size 0 and never ends, a FIFO blocks the open
 	info, err := os.Stat(f)
-	if err != nil || info.IsDir() {
+	if err != nil || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("No file at %s.", f)
 	}
-	if info.Size() > Max {
-		return "", fmt.Errorf("%s is over %dMB.", f, Max/1_000_000)
-	}
-	data, err := os.ReadFile(f)
+	fh, err := os.Open(f)
 	if err != nil {
 		return "", err
+	}
+	defer fh.Close()
+	data, err := io.ReadAll(io.LimitReader(fh, Max+1)) // the file may have grown since Stat
+	if err != nil {
+		return "", err
+	}
+	if len(data) > Max {
+		return "", fmt.Errorf("%s is over %dMB.", f, Max/1_000_000)
 	}
 	if Type(data) == "" {
 		return "", fmt.Errorf("%s isn't a PNG, JPEG, GIF or WebP image.", f)
 	}
-	return Store(data), nil
+	return Store(data)
 }

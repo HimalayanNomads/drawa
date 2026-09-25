@@ -1,4 +1,4 @@
-// Claude's canvas tools. server.py serves them over MCP to each card's Claude process and relays every call to
+// Claude's canvas tools. the Go server serves them over MCP to each card's Claude process and relays every call to
 // this page, which carries it out here and posts the answer back. Item kinds register what Claude may create
 // (`creatable`); reading reuses what `referable` already knows about each kind.
 import { post } from '../lib/api'

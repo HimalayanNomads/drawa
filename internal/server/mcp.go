@@ -11,13 +11,6 @@ import (
 	"claude-ui/internal/live"
 )
 
-func constantTimeEq(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
-}
-
 func errText(err error, fallback string) string {
 	if s := err.Error(); s != "" {
 		return s
@@ -35,11 +28,11 @@ func handleMCP(w http.ResponseWriter, r *http.Request, cid, token string) {
 	live.Mu.Lock()
 	lv := live.Registry[cid]
 	live.Mu.Unlock()
-	if r.Header.Get("Origin") != "" || lv == nil || !constantTimeEq(token, lv.Token) {
+	if r.Header.Get("Origin") != "" || lv == nil || subtle.ConstantTimeCompare([]byte(token), []byte(lv.Token)) != 1 {
 		http.Error(w, "", 403)
 		return
 	}
-	body, _ := io.ReadAll(r.Body)
+	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if len(body) == 0 {
 		body = []byte("null")
 	}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"claude-ui/internal/config"
@@ -33,6 +34,10 @@ func RunEnv(timeout time.Duration, stdin string, env []string, argv ...string) (
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = config.Root
 	cmd.Env = env
+	// on timeout kill the whole group (git push's ssh too), and stop waiting on pipes an escaped child still holds
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 5 * time.Second
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}

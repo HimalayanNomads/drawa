@@ -92,19 +92,40 @@ const SystemNote = `Replies are shown in a web UI that renders Markdown and Merm
 
 var ErrOutside = errors.New("outside project folder")
 
-// Inside resolves rel against Root and refuses anything that escapes it.
+// Inside resolves rel against Root and refuses anything that escapes it. Like Python's (ROOT / rel).resolve(),
+// an absolute rel stands alone (so it's only accepted when it already lies inside Root).
 func Inside(rel string) (string, error) {
-	joined := filepath.Clean(filepath.Join(Root, rel))
-	abs, err := filepath.Abs(joined)
+	p := rel
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(Root, rel)
+	}
+	resolved, err := resolve(filepath.Clean(p))
 	if err != nil {
 		return "", err
 	}
-	resolved := abs
-	if r, err := filepath.EvalSymlinks(abs); err == nil {
-		resolved = r
-	} // doesn't exist yet: fall back to the cleaned path for the containment check
-	if resolved != Root && !strings.HasPrefix(resolved, Root+string(filepath.Separator)) {
+	// Rel, not a string prefix: /root2 isn't inside /root, and everything is inside Root == "/"
+	if r, err := filepath.Rel(Root, resolved); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
 		return "", ErrOutside
 	}
 	return resolved, nil
+}
+
+// resolve follows symlinks in p even when its leaf doesn't exist yet: the deepest existing ancestor is resolved
+// and the rest re-appended, so lnk/new with lnk -> /etc resolves to /etc/new.
+func resolve(p string) (string, error) {
+	tail := ""
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, tail), nil
+		}
+		if _, err := os.Lstat(p); err == nil { // exists but won't resolve: a dangling or looping link
+			return "", ErrOutside
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, tail), nil
+		}
+		tail = filepath.Join(filepath.Base(p), tail)
+		p = parent
+	}
 }

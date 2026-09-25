@@ -1,4 +1,4 @@
-// GitHub through the `gh` CLI (server.py runs it with your own login): the data shapes, and sending a pull request,
+// GitHub through the `gh` CLI (the Go server runs it with your own login): the data shapes, and sending a pull request,
 // its failing checks, its review comments or an issue to Claude. Those are references like canvas items, but they
 // aren't on the canvas: each is a detached element whose dataset says what to fetch at send time.
 import { make } from '../lib/dom'

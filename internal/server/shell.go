@@ -33,13 +33,15 @@ func runShell(w http.ResponseWriter, r *http.Request, cmd string) {
 		http.Error(w, "", 500)
 		return
 	}
+	defer c.Wait() // reaped on every path (a second Wait after the one below is a no-op error)
 	// the page sends nothing after its request: the connection closing means Stop -> kill the whole group
-	// (pipelines and whatever the command started)
-	stopWatch := context.AfterFunc(r.Context(), func() {
-		if c.Process != nil {
-			syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
-		}
-	})
+	// (pipelines and whatever the command started), and close our end so a process that left the group and
+	// still holds the pipe can't keep the read below blocked
+	stop := func() {
+		syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
+		stdout.Close()
+	}
+	stopWatch := context.AfterFunc(r.Context(), stop)
 	defer stopWatch()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -50,6 +52,7 @@ func runShell(w http.ResponseWriter, r *http.Request, cmd string) {
 		n, rerr := stdout.Read(buf)
 		if n > 0 {
 			if _, werr := w.Write(buf[:n]); werr != nil {
+				stop()
 				return
 			}
 			if flusher != nil {

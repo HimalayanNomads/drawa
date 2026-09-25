@@ -238,6 +238,9 @@ func static(w http.ResponseWriter, reqPath string) {
 	sendBytes(w, data, kind, "")
 }
 
+// maxBody caps a POST body (a pasted image, base64, is the biggest thing the page sends).
+const maxBody = 25 << 20
+
 // Any website you visit can POST to localhost; only accept our own page (Origin) on our own host (DNS rebinding).
 func doPOST(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
@@ -253,7 +256,7 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", 403)
 		return
 	}
-	raw, _ := io.ReadAll(r.Body)
+	raw, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	var body map[string]any
 	if json.Unmarshal(raw, &body) != nil {
 		body = map[string]any{}

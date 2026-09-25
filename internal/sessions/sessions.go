@@ -5,16 +5,20 @@ package sessions
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"claude-ui/internal/config"
 	"claude-ui/internal/images"
@@ -23,11 +27,83 @@ import (
 const ClipLen = 20_000 // the page shows at most this much of one tool output
 
 func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
+	i := 0 // byte offset of the n-th character: no []rune copy of every big output
+	for ; n > 0 && i < len(s); n-- {
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	if i >= len(s) {
 		return s
 	}
-	return string(r[:n]) + "\n… (truncated)"
+	return s[:i] + "\n… (truncated)"
+}
+
+// clipped cuts v to ClipLen characters if it's a longer string.
+func clipped(v any) any {
+	if s, ok := v.(string); ok {
+		return truncate(s, ClipLen)
+	}
+	return v
+}
+
+// clipText cuts a text block's text, the one part of it the page shows at length.
+func clipText(b map[string]any, t string) {
+	if txt, ok := b["text"]; ok && t == "text" {
+		b["text"] = clipped(txt)
+	}
+}
+
+// decode is json.Unmarshal keeping numbers as written, so ids above 2^53 in tool inputs aren't rounded.
+func decode(b []byte, v any) error {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	return d.Decode(v)
+}
+
+// eachLine calls fn with every line of r until it returns false. Unlike bufio.Scanner it has no line length cap,
+// so one huge tool output doesn't silently end the transcript there.
+func eachLine(r io.Reader, fn func([]byte) bool) {
+	br := bufio.NewReaderSize(r, 1<<20)
+	for {
+		b, err := br.ReadBytes('\n')
+		if len(b) > 0 && !fn(b) || err != nil {
+			return
+		}
+	}
+}
+
+// decodeAll decodes every line of a transcript, spread over the CPUs: decoding is most of a big transcript's load
+// time. A line that doesn't parse (one still being written) comes back zero, so callers skip it as a non-message.
+func decodeAll(r io.Reader) []line {
+	var raw [][]byte
+	eachLine(r, func(b []byte) bool { raw = append(raw, b); return true })
+	out := make([]line, len(raw))
+	n := runtime.GOMAXPROCS(0)
+	var wg sync.WaitGroup
+	for w := 0; w < n; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := w; i < len(raw); i += n { // interleaved, so a run of huge lines is shared out
+				if decode(raw[i], &out[i]) != nil {
+					out[i] = line{}
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	return out
+}
+
+// line is what the page reads from a transcript line; the rest (toolUseResult, file snapshots) is skipped unbuilt.
+type line struct {
+	Type        string `json:"type"`
+	IsSidechain bool   `json:"isSidechain"`
+	IsMeta      bool   `json:"isMeta"`
+	Message     struct {
+		Content any `json:"content"`
+		Usage   any `json:"usage"`
+	} `json:"message"`
 }
 
 // Clip trims what the page never shows before sending a transcript or a live line: long tool outputs and tool
@@ -50,8 +126,10 @@ func Clip(content any) {
 				if st, _ := src["type"].(string); st == "base64" {
 					if data, ok := src["data"].(string); ok {
 						if raw, err := base64.StdEncoding.DecodeString(data); err == nil {
-							mt, _ := src["media_type"].(string)
-							b["source"] = map[string]any{"type": "url", "url": "/api/images/" + images.Store(raw), "media_type": mt}
+							if key, err := images.Store(raw); err == nil { // can't store: keep the base64, like Python on OSError
+								mt, _ := src["media_type"].(string)
+								b["source"] = map[string]any{"type": "url", "url": "/api/images/" + key, "media_type": mt}
+							}
 						}
 					}
 				}
@@ -59,9 +137,7 @@ func Clip(content any) {
 		} else if t == "tool_use" {
 			if in, ok := b["input"].(map[string]any); ok {
 				for k, v := range in {
-					if s, ok := v.(string); ok && len([]rune(s)) > ClipLen {
-						in[k] = truncate(s, ClipLen)
-					}
+					in[k] = clipped(v)
 				}
 			}
 		}
@@ -70,9 +146,7 @@ func Clip(content any) {
 		}
 		switch c := b["content"].(type) {
 		case string:
-			if len([]rune(c)) > ClipLen {
-				b["content"] = truncate(c, ClipLen)
-			}
+			b["content"] = truncate(c, ClipLen)
 		case []any:
 			out := make([]any, 0, len(c))
 			for _, p := range c {
@@ -81,15 +155,12 @@ func Clip(content any) {
 					out = append(out, p)
 					continue
 				}
-				if pt, _ := pm["type"].(string); pt == "image" {
+				pt, _ := pm["type"].(string)
+				if pt == "image" {
 					out = append(out, map[string]any{"type": "text", "text": "[image]"})
 					continue
 				}
-				if pt, _ := pm["type"].(string); pt == "text" {
-					if txt, ok := pm["text"].(string); ok && len([]rune(txt)) > ClipLen {
-						pm["text"] = truncate(txt, ClipLen)
-					}
-				}
+				clipText(pm, pt)
 				out = append(out, pm)
 			}
 			b["content"] = out
@@ -101,7 +172,7 @@ func Clip(content any) {
 // duplicate `tool_use_result` (the full tool output again, which the page doesn't read).
 func Trimmed(line string) string {
 	var d map[string]any
-	if json.Unmarshal([]byte(line), &d) != nil {
+	if decode([]byte(line), &d) != nil {
 		return line
 	}
 	t, _ := d["type"].(string)
@@ -127,9 +198,8 @@ func firstPrompt(path string) string {
 		return "(no prompt)"
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	for scanner.Scan() {
+	prompt := "(no prompt)"
+	eachLine(f, func(b []byte) bool {
 		var d struct {
 			Type    string `json:"type"`
 			IsMeta  bool   `json:"isMeta"`
@@ -137,19 +207,17 @@ func firstPrompt(path string) string {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(scanner.Bytes(), &d) != nil {
-			continue
-		}
-		if d.Type != "user" || d.IsMeta {
-			continue
+		if json.Unmarshal(b, &d) != nil || d.Type != "user" || d.IsMeta {
+			return true
 		}
 		var c string
 		if json.Unmarshal(d.Message.Content, &c) != nil || strings.HasPrefix(c, "<") {
-			continue
+			return true
 		}
-		return truncatePlain(c, 120)
-	}
-	return "(no prompt)"
+		prompt = truncatePlain(c, 120)
+		return false
+	})
+	return prompt
 }
 
 func truncatePlain(s string, n int) string {
@@ -326,33 +394,19 @@ func Subagents(sid, only string, skip map[string]bool) []map[string]any {
 		if err != nil {
 			continue
 		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
-		for scanner.Scan() {
-			var d map[string]any
-			if json.Unmarshal(scanner.Bytes(), &d) != nil { // the agent is still writing it
-				continue
-			}
-			t, _ := d["type"].(string)
-			msg, _ := d["message"].(map[string]any)
-			if (t != "user" && t != "assistant") || msg == nil {
-				continue
-			}
-			content, ok := msg["content"].([]any) // skips its prompt (a plain string)
-			if !ok {
+		for _, d := range decodeAll(f) {
+			content, ok := d.Message.Content.([]any) // skips its prompt (a plain string)
+			if (d.Type != "user" && d.Type != "assistant") || !ok {
 				continue
 			}
 			Clip(content)
 			for _, item := range content {
 				if b, ok := item.(map[string]any); ok {
-					if bt, _ := b["type"].(string); bt == "text" {
-						if txt, ok := b["text"].(string); ok && len([]rune(txt)) > ClipLen {
-							b["text"] = truncate(txt, ClipLen)
-						}
-					}
+					bt, _ := b["type"].(string)
+					clipText(b, bt)
 				}
 			}
-			out = append(out, map[string]any{"role": t, "content": content, "parent": parent})
+			out = append(out, map[string]any{"role": d.Type, "content": content, "parent": parent})
 		}
 		f.Close()
 	}
@@ -372,33 +426,18 @@ func Load(sid, agent string) []map[string]any {
 		return msgs
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
-	for scanner.Scan() {
-		var d map[string]any
-		if json.Unmarshal(scanner.Bytes(), &d) != nil { // a line still being written
+	for _, d := range decodeAll(f) {
+		t, content := d.Type, d.Message.Content
+		if (t != "user" && t != "assistant") || d.IsSidechain || d.IsMeta {
 			continue
 		}
-		t, _ := d["type"].(string)
-		isSidechain, _ := d["isSidechain"].(bool)
-		isMeta, _ := d["isMeta"].(bool)
-		if (t != "user" && t != "assistant") || isSidechain || isMeta {
-			continue
-		}
-		msg, _ := d["message"].(map[string]any)
-		if msg == nil {
-			msg = map[string]any{}
-		}
-		for id := range finishedAgents(msg["content"]) {
+		for id := range finishedAgents(content) {
 			done[id] = true
 		}
-		content := msg["content"]
 		Clip(content)
 		m := map[string]any{"role": t, "content": content}
-		if t == "assistant" {
-			if usage, ok := msg["usage"]; ok && usage != nil {
-				m["usage"] = usage // for the context meter
-			}
+		if t == "assistant" && d.Message.Usage != nil {
+			m["usage"] = d.Message.Usage // for the context meter
 		}
 		msgs = append(msgs, m)
 	}

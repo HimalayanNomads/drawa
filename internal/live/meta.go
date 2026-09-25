@@ -31,9 +31,11 @@ func Meta() map[string]any {
 	defer l.Close()
 	l.Control("initialize", nil)
 	deadline := time.Now().Add(20 * time.Second)
+	pos := 0
 	for time.Now().Before(deadline) {
-		snap := l.Snapshot()
-		for _, line := range snap.Lines {
+		var lines []string
+		lines, pos = l.LinesFrom(pos) // only what's new since the last look
+		for _, line := range lines {
 			var d map[string]any
 			if json.Unmarshal([]byte(line), &d) != nil || d["type"] != "control_response" {
 				continue
@@ -67,20 +69,19 @@ func Reap() {
 	for {
 		time.Sleep(60 * time.Second)
 		Mu.Lock()
-		var idle []string
+		var idle []*Live
 		for cid, l := range Registry {
 			l.mu.Lock()
 			stale := l.exited || time.Since(l.last) > config.IdleSecs*time.Second
 			l.mu.Unlock()
 			if stale {
-				idle = append(idle, cid)
+				idle = append(idle, l)
+				delete(Registry, cid)
 			}
 		}
-		for _, cid := range idle {
-			l := Registry[cid]
-			delete(Registry, cid)
-			l.Close()
-		}
 		Mu.Unlock()
+		for _, l := range idle { // outside Mu: a Close can take 5s, and every page's stream takes Mu
+			go l.Close()
+		}
 	}
 }
