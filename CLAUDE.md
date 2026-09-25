@@ -1,10 +1,10 @@
 # Guidelines for agents working on claude-ui
 
-claude-ui is a browser canvas around the Claude Code CLI. `server.py` runs `claude` processes and serves a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
+claude-ui is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
 
 ## Before you finish any change
 
-1. `cd web && npm run build`. This runs `tsc` and the Vite build. Both must pass with no new errors. After touching `server.py`, also run `python3 test_server.py` (stdlib unittest; it imports the server without starting it).
+1. `cd web && npm run build`. This runs `tsc` and the Vite build. Both must pass with no new errors. After touching `main.go` or `internal/`, also run `go build ./...` and `go test ./...` from the repo root.
 2. Look at what you changed. For anything visible, take a screenshot in headless Chromium in **both** light and dark themes (`Emulation.setEmulatedMedia` with `prefers-color-scheme`). You can import modules straight from the dev server to set up state, e.g. `await import('/src/items/diagram.ts')`.
 3. Reload the page and check that your change survives restore from the saved layout.
 4. Say plainly what you verified and what you didn't.
@@ -50,7 +50,7 @@ The app scales through these registration points. A new feature should plug into
 - Text marked in place (like pinned snippets' sources in `items/pinmarks.ts`) uses the CSS Custom Highlight API, never wrapper elements: the chat re-renders while streaming and skips off-screen rows.
 - Give it a `data-id` that is the same after a reload: arrows, pins and canvas tools find items by it.
 - Call `referable()` if Claude should be able to receive it (that also makes it readable with `canvas_read`).
-- Call `creatable()` if Claude should be able to create it with `canvas_create` (add the kind to that tool's `enum` in `CANVAS_TOOLS` in `server.py`), with an `update` if Claude should be able to edit it with `canvas_update`.
+- Call `creatable()` if Claude should be able to create it with `canvas_create` (add the kind to that tool's `enum` in `Tools` in `internal/canvastools/canvastools.go`), with an `update` if Claude should be able to edit it with `canvas_update`.
 - Windows get renaming, pinning (sidebar or screen) and full view from `makeWindow()`; don't rebuild these per kind. Anything that asks "where is this item on screen" should use `liveRect()` (handles pinned, floating and collapsed windows); `rect()` is the canvas geometry that gets saved.
 - Add a `--k-<kind>` color in `tokens.css`, one `[data-kind=<kind>]` entry in the kind map at the top of `canvas.css` (it colors windows, Ctrl+K rows and chips alike), and a minimap rule. The tab's glyph is the kind's `referable` icon; don't add a per-kind `::before` rule.
 
@@ -104,21 +104,24 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 - **Animations must not force layout.** Use the Web Animations API (`el.animate`), as `ping()` does, not the remove-class/`offsetWidth`/add-class trick.
 - **No decorative glows or big blurred shadows** on canvas windows. They cost paint on every pan and zoom frame, and the user rejected them visually too. Show state with `--edge` and the tab's top line.
 - **Long lists skip what's off-screen:** log entries use `content-visibility: auto`. Keep new per-entry elements as direct children of `.log`.
-- **The server sends only what the page shows.** `clip()` in `server.py` drops images returned by tools and thinking signatures, trims tool outputs and tool inputs to 20k characters, and turns images you sent into `/api/images` addresses. It runs on transcripts and on big live lines (`trimmed()`, which also drops the CLI's duplicate `tool_use_result`). The live buffer per card is capped by lines and bytes. New fields should be trimmed the same way.
+- **The server sends only what the page shows.** `Clip()` in `internal/sessions/sessions.go` drops images returned by tools and thinking signatures, trims tool outputs and tool inputs to 20k characters, and turns images you sent into `/api/images` addresses. It runs on transcripts and on big live lines (`Trimmed()`, which also drops the CLI's duplicate `tool_use_result`). The live buffer per card is capped by lines and bytes (`live.Keep`/`live.KeepBytes`). New fields should be trimmed the same way.
 - **One stream per page.** Browsers allow ~6 connections per host over HTTP/1.1, so never add a long-lived request per card or per window: the page reads every card over one `/api/events` stream (`session/live.ts`).
 - **Big libraries load on first use** (Mermaid, Excalidraw, html-to-image) with a dynamic `import()`.
 
-## Server (`server.py`)
+## Server (`main.go`, `internal/`)
 
-- Stdlib only (`ThreadingHTTPServer`). Keep it dependency-free.
+`main.go` is the thin entry point (arg parsing, the self-restart loop, `main()`). Everything it does lives in `internal/`, one file (or small file group) per responsibility — see `README.md`'s Layout section for the full list. Add a new domain the same way: one new file in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
+
+- Stdlib only (`net/http`). No third-party Go modules — `go.mod` should stay dependency-free the same way the old `server.py` was.
 - **Security checks are not optional:**
-  - Every request checks `Host`.
-  - POSTs require a matching `Origin`.
-  - Every file path goes through `inside()` so it can't escape the project root.
+  - Every request checks `Host` (`config.Hosts`).
+  - POSTs require a matching `Origin` (`config.Origins`).
+  - Every file path goes through `config.Inside()` so it can't escape the project root.
   - Any new endpoint needs the same checks.
-- **Canvas tools:** each card's Claude gets an MCP server at `/mcp/<card>/<token>` (in `Live`). The token is per process, and requests carrying an `Origin` are refused, so only that process can call it. Calls are relayed to the newest page reading the card's stream and answered via `/api/canvas`. Tool definitions live in `CANVAS_TOOLS`; reading is auto-allowed with `--allowedTools`, while changing things goes through the normal approval flow.
-- One long-lived `claude -p` process per card, speaking the stream-json protocol. The page reads all its cards' output over one `/api/events?page=…&c=cid:line:gen,…` stream (lines tagged `_c` with the card) and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off, including the message being streamed (`Live.open_msg`). GET routes live in the `GET` table; add new ones there.
-- The server restarts itself when server.py changes. Test changes against a separate port rather than killing the user's running instance.
+- **Canvas tools:** each card's Claude gets an MCP server at `/mcp/<card>/<token>` (in `live.Live`). The token is per process, and requests carrying an `Origin` are refused, so only that process can call it. Calls are relayed to the newest page reading the card's stream and answered via `/api/canvas`. Tool definitions live in `canvastools.Tools`; reading is auto-allowed with `--allowedTools`, while changing things goes through the normal approval flow.
+- One long-lived `claude -p` process per card (`live.Live`), speaking the stream-json protocol over merged stdout/stderr pipes, read with a buffered line scanner. The page reads all its cards' output over one `/api/events?page=…&c=cid:line:gen,…` stream (lines tagged `_c` with the card, in `server/events.go`) and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off, including the message being streamed (`Live.openMsg`, via `Live.Snapshot()`). GET routes live in the `getRoutes` table in `server/handler.go`; add new ones there.
+- **Concurrency:** a `Live`'s buffer is guarded by its own mutex; `live.Changed` (a `Broadcaster`, in `internal/live/broadcast.go`) is the one global wakeup signal, bumped by every `Live.Push()`. It stands in for Python's `threading.Condition` and is what the `/api/events` stream and `live.Meta()` block on — reuse it rather than adding another signaling mechanism.
+- The server rebuilds (`go build`) and re-execs itself (`syscall.Exec`) when a `.go` file changes; a build that fails to compile keeps the old server running, same spirit as the old syntax-check-before-restart. Test changes against a separate port rather than killing the user's running instance.
 
 ## When a request is vague
 

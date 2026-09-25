@@ -6,10 +6,12 @@ A browser front end for Claude Code, laid out as a canvas: each session is a car
 
 ```sh
 cd web && npm install && npm run build   # once, and after UI changes
-CLAUDE_CONFIG_DIR=$HOME/.claude-work python3 ~/personalproj/claude-ui/server.py [project-folder]
+CLAUDE_CONFIG_DIR=$HOME/.claude-work go run ~/personalproj/claude-ui [project-folder]
 ```
 
-Open http://127.0.0.1:8765. Claude works in `project-folder` (default: the current folder). The server restarts itself when `server.py` changes.
+Or build a persistent binary: `go build -o claude-ui .` once, then run `./claude-ui [project-folder]`.
+
+Open http://127.0.0.1:8765. Claude works in `project-folder` (default: the current folder). The server rebuilds and restarts itself when a `.go` file changes (needs the Go toolchain on `PATH`; a build that fails to compile keeps the old server running).
 
 ## Develop the UI
 
@@ -17,15 +19,15 @@ Open http://127.0.0.1:8765. Claude works in `project-folder` (default: the curre
 cd web && CLAUDE_UI_ROOT=/path/to/project npm run dev
 ```
 
-Open http://localhost:5173 for hot reload. This also starts `server.py` (skipped if it is already running on port 8765). `npm run check` type-checks.
+Open http://localhost:5173 for hot reload. This also starts the Go server via `go run` (skipped if one is already running on port 8765). `npm run check` type-checks.
 
 ## Layout
 
-- `server.py`: stdlib HTTP server (`test_server.py`: its checks for GitHub check merging and the canvas MCP endpoint). Serves `web/dist`, the file/session API, and `/ask`, which streams `claude -p` output.
+- `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close). Serves `web/dist` and the file/session/git/GitHub API.
 - `web/src/`, by feature:
   - `main.ts`: boot, toolbar, shortcuts.
   - `lib/`: `api.ts` (server calls), `store.ts` (saved layout: each feature `persist()`s its own slice), `dom.ts`, `markdown.ts`, `select.ts` (custom dropdowns), `fonts.ts`, `blobs.ts` (IndexedDB for binary data such as canvas images).
-  - `canvas/`: `canvas.ts` (pan/zoom, items, dragging, minimap), `window.ts` (the shared folder-tab window: drag, collapse, resize), `graph.ts` (edges, each session's Files and commands windows, files pinned from the tree), `ink.ts` (draw mode), `shapes.ts` (rectangle, ellipse, diamond and line; moving and resizing drawn shapes and text), `refs.ts` (what can be @-referenced: each kind registers with `referable()`), `tools.ts` (Claude's canvas tools: list, read, create, update and link items, served over MCP by `server.py`), `links.ts` (arrows you or Claude draw between items), `snapshot.ts` (a picture of a window with its ink, for Claude), `find.ts` (Ctrl+K window search), `dock.ts` (pin to the sidebar, or stick to the screen), `fullview.ts` (a window filling the screen), `select.ts` (selecting several items: drag on empty canvas in Select mode, or double-tap and drag / Shift+drag in either mode, Shift/Ctrl+click a tab; drag them together, arrow keys nudge, Delete removes them), `mode.ts` (Select and Hand modes; Space held is a temporary hand).
+  - `canvas/`: `canvas.ts` (pan/zoom, items, dragging, minimap), `window.ts` (the shared folder-tab window: drag, collapse, resize), `graph.ts` (edges, each session's Files and commands windows, files pinned from the tree), `ink.ts` (draw mode), `shapes.ts` (rectangle, ellipse, diamond and line; moving and resizing drawn shapes and text), `refs.ts` (what can be @-referenced: each kind registers with `referable()`), `tools.ts` (Claude's canvas tools: list, read, create, update and link items, served over MCP by the Go server), `links.ts` (arrows you or Claude draw between items), `snapshot.ts` (a picture of a window with its ink, for Claude), `find.ts` (Ctrl+K window search), `dock.ts` (pin to the sidebar, or stick to the screen), `fullview.ts` (a window filling the screen), `select.ts` (selecting several items: drag on empty canvas in Select mode, or double-tap and drag / Shift+drag in either mode, Shift/Ctrl+click a tab; drag them together, arrow keys nudge, Delete removes them), `mode.ts` (Select and Hand modes; Space held is a temporary hand).
   - `session/`: `session.ts` (cards), `composer.ts` (message box, / and @ menu, reference chips), `stream.ts` (rendering Claude's output), `asks.ts` (permission prompts, questions), `live.ts` (send, stream connection), `history.ts`.
   - `items/`: `notes.ts`, `doc.ts` (the Scratchpad: a Markdown window rendered with code blocks, Mermaid and callouts, double-click or the pencil to edit; S or the toolbar, or Claude's canvas_create kind "doc"), `sketch.ts` (Whiteboard: an Excalidraw window; no longer created, existing ones still load), `diagram.ts` (Mermaid + zoom), `plan.ts` (plan review), `snippet.ts` (plus `pinmarks.ts`: pinned text stays highlighted where it came from; click it to jump to the snippet), `git.ts`, `image.ts` (pictures: paste or drop them on the canvas, or Claude puts a screenshot there), `agent.ts` (a window per sub-agent: its work as it happens, a box to message it through its session; it leaves the canvas when the agent finishes, and the card's Agent row reopens it), `github.ts` (pull requests and issues through the `gh` CLI; Shift+G) with `gh.ts` (their data, and sending a PR, its failing checks, its reviews or an issue to Claude).
   - `panels/`: `files.ts` (tree, inspector), `diff.ts`.
