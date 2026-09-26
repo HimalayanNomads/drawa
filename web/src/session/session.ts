@@ -18,6 +18,7 @@ import { composer } from './composer'
 import { reportOf } from './notices'
 import { attach } from './live'
 import { setMode, lastMode } from './mode'
+import { setModel, setEffort, renderInfo, seedInfo } from './gen'
 import { loadSessions, resume } from './history'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
@@ -29,7 +30,24 @@ export interface Session {
   cid: string // this card's live process on the server
   sid: string | null // Claude's session id (transcript), known after the first reply
   title: string
-  model: string
+  reportedModel: string // the model Claude's process actually reports running (for the tab; set from its own output)
+  model: string // the model picked in this card's message bar for its next message ('' = Claude's own default)
+  modelSel?: HTMLSelectElement
+  effort: string // the effort level picked in this card's message bar ('' = default; see gen.ts)
+  effortSel?: HTMLSelectElement
+  infoEl?: HTMLElement // tools/context/usage-window status line below the message bar (see gen.ts)
+  infoText?: HTMLElement // its "N tools · X% context" part
+  ring5h?: HTMLElement // its 5-hour usage-window ring badge
+  ring5hPct?: HTMLElement // the "49%" label beside it
+  ring7d?: HTMLElement // its 7-day usage-window ring badge
+  ring7dPct?: HTMLElement // the "4%" label beside it
+  toolCount: number // tools this card's Claude can call, from its own init line (0 until its process has started)
+  mcpTotal: number
+  mcpConnected: number
+  usageResetAt?: number // unix seconds: when the current 5-hour usage window ends (from rate_limit_event)
+  usageUtil?: number // 0..1 of that window used so far
+  weeklyResetAt?: number
+  weeklyUtil?: number
   cost: number
   done: boolean
   card: HTMLElement
@@ -62,14 +80,22 @@ export interface Session {
 export const cards: Session[] = []
 export let cur: Session | undefined // the focused card
 /** Models and slash commands / skills, from Claude itself (GET /api/meta). */
-export const meta: { models: { value: string; displayName: string; description: string }[]; commands: { name: string; description: string; argumentHint?: string }[] } = { models: [], commands: [] }
+/** Also carries tools/MCP counts and usage-window stats from a $0 `/usage` ask (see internal/live/meta.go): the
+ *  same for every card (it's account-wide, not per-conversation), so a card's status line can show it before its
+ *  own process has ever run (see gen.ts's seedInfo). */
+export const meta: {
+  models: { value: string; displayName: string; description: string }[]
+  commands: { name: string; description: string; argumentHint?: string }[]
+  tools?: number; mcpTotal?: number; mcpConnected?: number
+  usageUtil?: number; usageResetAt?: number; weeklyUtil?: number; weeklyResetAt?: number
+} = { models: [], commands: [] }
 
 /* ---------- saved with the canvas: open cards (by transcript id) and which one had focus ---------- */
 // A card still waiting for its first reply has no transcript id yet: it's saved by its process (cid) alone and, after a
 // reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0).
-type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string }
+type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string; model?: string; effort?: string }
 persist('cards',
-  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, ...savedRect(S.card) })),
+  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
     // every transcript is fetched at once; they're replayed in order as they arrive
     if (!Array.isArray(list)) throw new Error('not a list')
@@ -86,6 +112,9 @@ persist('cards',
         S.title = c.title
         S.n = 0
         setMode(S, c.mode ?? 'default', false)
+        // layouts saved before model/effort were per card carry one global model choice (all.model); effort is new, no legacy key
+        setModel(S, c.model ?? all.model ?? '')
+        setEffort(S, c.effort ?? '')
         renderCard(S)
         continue
       }
@@ -94,7 +123,11 @@ persist('cards',
       await resume({ ...c, id: c.id }, c, { got: p, quiet: true })
       // layouts saved before modes were per card carry one global mode (all.mode)
       const S = cards.find(s => s.sid === c.id)
-      if (S) setMode(S, c.mode ?? all.mode ?? 'default', false)
+      if (S) {
+        setMode(S, c.mode ?? all.mode ?? 'default', false)
+        setModel(S, c.model ?? all.model ?? '')
+        setEffort(S, c.effort ?? '')
+      }
     } catch (e) { bad ??= e }
     attach() // pick up sessions still running on the server (in-flight replies, background agents)
     loadSessions()
@@ -189,10 +222,11 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   body.append(log, down)
 
   const S: Session = {
-    cid: opts.cid ?? uuid(), sid: null, title: 'New session', model: '', cost: 0, done: false,
+    cid: opts.cid ?? uuid(), sid: null, title: 'New session', reportedModel: '', model: '', effort: '', toolCount: 0, mcpTotal: 0, mcpConnected: 0, cost: 0, done: false,
     card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   composer(S, body) // message box, reference chips, / and @ menu
+  seedInfo(S) // tools/MCP/usage from the account-wide meta info, if it's already in by now
   card.dataset.id = S.cid // what canvas tools call this card
   log.dataset.ink = 'c:' + S.cid // drawing over the chat scrolls with it
   log.dataset.inkRows = '' // and stays on the message it was drawn over (see canvas/ink.ts)
@@ -283,7 +317,7 @@ export function renderCard(S: Session) {
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
   S.card.querySelector('.t')!.textContent = S.title
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
-  m.textContent = S.model.replace(/^claude-/, '')
+  m.textContent = S.reportedModel.replace(/^claude-/, '')
   const run = runningAgents(S).length, badge = S.card.querySelector<HTMLElement>('.win-h .agents')!
   badge.hidden = !run
   badge.textContent = String(run)
@@ -297,6 +331,7 @@ export function renderCard(S: Session) {
   ctx.dataset.level = pct >= 80 ? 'high' : pct >= 60 ? 'mid' : ''
   ctx.textContent = `${pct}%`
   ctx.title = `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used. Click to write /compact (summarizes the conversation to free space).`
+  renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.stopBtn.hidden = S.pending === 0
   S.ta.placeholder = busy ? 'Claude is working. Type to queue a message.' : 'Message Claude: / commands, @ files, ! shell'

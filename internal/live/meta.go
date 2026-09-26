@@ -2,6 +2,8 @@ package live
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"sync"
 	"time"
 )
@@ -12,8 +14,10 @@ var (
 	metaFailed time.Time      // the last failed ask: not retried for a minute
 )
 
-// Meta returns models and slash commands/skills, from Claude's own `initialize` answer (asked once, cached).
-// A failed or timed-out attempt is retried after a minute.
+// Meta returns models and slash commands/skills (from Claude's own `initialize` answer), plus tools/MCP counts and
+// usage-window stats (from a `/usage` local command, $0: it never reaches the model) so a card's status line has
+// something to show before its own process has ever run. Asked once, cached; a failed or timed-out attempt retries
+// after a minute.
 func Meta() map[string]any {
 	metaMu.Lock()
 	defer metaMu.Unlock()
@@ -32,7 +36,7 @@ func Meta() map[string]any {
 }
 
 func askMeta() map[string]any {
-	l, err := New("", "", "", "")
+	l, err := New("", "", "", "", "")
 	if err != nil {
 		return nil
 	}
@@ -46,32 +50,113 @@ func askMeta() map[string]any {
 		Mu.Unlock()
 	}()
 	l.Control("initialize", nil)
+	l.Write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": "/usage"}})
 	deadline := time.Now().Add(20 * time.Second)
 	pos := 0
-	for time.Now().Before(deadline) {
+	out := map[string]any{}
+	haveModels, haveUsage := false, false
+	for time.Now().Before(deadline) && !(haveModels && haveUsage) {
 		var lines []string
 		lines, pos = l.LinesFrom(pos) // only what's new since the last look
 		for _, line := range lines {
 			var d map[string]any
-			if json.Unmarshal([]byte(line), &d) != nil || d["type"] != "control_response" {
+			if json.Unmarshal([]byte(line), &d) != nil {
 				continue
 			}
-			resp, _ := d["response"].(map[string]any)
-			r, _ := resp["response"].(map[string]any)
-			models, _ := r["models"].([]any)
-			commands, _ := r["commands"].([]any)
-			if models == nil {
-				models = []any{}
+			switch d["type"] {
+			case "control_response":
+				resp, _ := d["response"].(map[string]any)
+				r, _ := resp["response"].(map[string]any)
+				models, _ := r["models"].([]any)
+				commands, _ := r["commands"].([]any)
+				if models == nil {
+					models = []any{}
+				}
+				if commands == nil {
+					commands = []any{}
+				}
+				out["models"], out["commands"] = models, commands
+				haveModels = true
+			case "system":
+				if d["subtype"] != "init" {
+					continue
+				}
+				tools, _ := d["tools"].([]any)
+				out["tools"] = len(tools)
+				mcps, _ := d["mcp_servers"].([]any)
+				out["mcpTotal"] = len(mcps)
+				connected := 0
+				for _, m := range mcps {
+					if mm, ok := m.(map[string]any); ok && mm["status"] == "connected" {
+						connected++
+					}
+				}
+				out["mcpConnected"] = connected
+			case "result":
+				if d["local_command"] != "usage" {
+					continue
+				}
+				if text, ok := d["result"].(string); ok {
+					addUsage(out, text, time.Now())
+				}
+				haveUsage = true
 			}
-			if commands == nil {
-				commands = []any{}
-			}
-			return map[string]any{"models": models, "commands": commands}
 		}
 		select {
 		case <-Changed.Wait():
 		case <-time.After(time.Second):
 		}
 	}
-	return nil
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// usageRe: `/usage`'s two summary lines. ponytail: scrapes the CLI's human-readable text (no structured form
+// exists outside a real, billed turn's rate_limit_event) — if Claude Code ever rewords this, matches just stop and
+// Meta() quietly omits the usage-window fields rather than breaking the rest of it.
+// the time has no minutes when the reset falls exactly on the hour ("at 10pm", not "at 10:00pm").
+var usageRe = regexp.MustCompile(`(?m)^(Current session|Current week[^:]*): (\d+)% used . resets (\w+ \d+) at (\d{1,2})(?::(\d{2}))?(am|pm) \(([^)]+)\)`)
+
+// addUsage parses `/usage`'s reply into usageUtil/usageResetAt (the 5-hour window) and weeklyUtil/weeklyResetAt,
+// as unix seconds. The CLI gives no year, so `now`'s year is assumed, correcting for the one case that's wrong: a
+// reset that already looks more than a day in the past actually falls next year (asked right before Dec 31).
+func addUsage(out map[string]any, text string, now time.Time) {
+	for _, m := range usageRe.FindAllStringSubmatch(text, -1) {
+		// m: [all, "Current session"/"Current week...", percent, date, hour, minute (may be ""), am/pm, tz]
+		util, resetAt := parsePercent(m[2]), parseResetAt(m[3], m[4], m[5], m[6], m[7], now)
+		if resetAt == 0 {
+			continue
+		}
+		if m[1] == "Current session" {
+			out["usageUtil"], out["usageResetAt"] = util, resetAt
+		} else {
+			out["weeklyUtil"], out["weeklyResetAt"] = util, resetAt
+		}
+	}
+}
+
+func parsePercent(s string) float64 {
+	var n int
+	fmt.Sscanf(s, "%d", &n)
+	return float64(n) / 100
+}
+
+func parseResetAt(dateStr, hour, minute, ampm, tz string, now time.Time) int64 {
+	if minute == "" {
+		minute = "00"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	ts, err := time.ParseInLocation("Jan 2 3:04pm 2006", fmt.Sprintf("%s %s:%s%s %d", dateStr, hour, minute, ampm, now.Year()), loc)
+	if err != nil {
+		return 0
+	}
+	if ts.Before(now.Add(-24 * time.Hour)) { // "resets" a year from now, asked in late December
+		ts = ts.AddDate(1, 0, 0)
+	}
+	return ts.Unix()
 }

@@ -4,9 +4,8 @@ import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import { api } from './lib/api'
-import { $, make, ui, project, shortcutOk } from './lib/dom'
-import { persist, restore, save, saveSoon } from './lib/store'
-import { enhance } from './lib/select'
+import { $, project, shortcutOk } from './lib/dom'
+import { persist, restore, saveSoon } from './lib/store'
 import { onReconnect } from './lib/connection'
 import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, view as camera } from './canvas/canvas'
 import { redraw } from './canvas/graph'
@@ -31,6 +30,7 @@ import { openGitHub } from './items/github'
 import { tree, closeInspector, showTab } from './panels/files'
 import { cards, cur, newSession, meta, cycleCards } from './session/session'
 import { attach } from './session/live'
+import { refreshModels, seedInfo } from './session/gen'
 import { loadSessions } from './session/history'
 
 const drawer = $('#drawer'), inspector = $('#inspector'), drawerBtn = $('#btn-drawer')
@@ -52,11 +52,6 @@ for (const b of document.querySelectorAll<HTMLElement>('[data-l]')) {
 }
 for (const b of document.querySelectorAll<HTMLElement>('[data-r]')) b.onclick = () => showTab(b.dataset.r as 'changes' | 'viewer')
 
-/* ---------- permission mode + model: toolbar settings, saved with the canvas ---------- */
-ui.model.onchange = save
-enhance(ui.model)
-let savedModel = ''
-persist('model', () => ui.model.value || savedModel, v => { savedModel = v }, 0)
 persist('view', () => ({ ...camera }), v => { Object.assign(camera, v) }, 0)
 
 // Inspector: drag its left edge to widen it.
@@ -134,13 +129,8 @@ $('#ppath').textContent = project.root
 // Models and skills / slash commands come from Claude itself (slow the first time: the server asks a fresh process).
 api<typeof meta>('meta').then(m => {
   Object.assign(meta, m)
-  ui.model.replaceChildren(...m.models.map(o => {
-    const opt = make('option', '', o.displayName)
-    opt.value = o.value === 'default' ? '' : o.value
-    opt.title = o.description
-    return opt
-  }))
-  ui.model.value = savedModel
+  refreshModels() // fills in every card's model picker, restored ones included
+  for (const S of cards) seedInfo(S) // and every card's status line, if its own process hasn't reported yet
 }).catch(() => {})
 
 await restore()

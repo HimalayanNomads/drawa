@@ -40,7 +40,7 @@ func startFake(t *testing.T, script string) *Live {
 	savedRoot := config.Root
 	claudeArgv, config.Root = []string{"sh", "-c", script}, t.TempDir()
 	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
-	l, err := New("", "", "", "")
+	l, err := New("", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestMCPConfigFile(t *testing.T) {
 	saved, savedRoot := claudeArgv, config.Root
 	claudeArgv, config.Root = []string{"sh", "-c", `stat -c %a "$1"; cat "$1"; echo`}, t.TempDir()
 	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
-	l, err := New("card", "", "", "")
+	l, err := New("card", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

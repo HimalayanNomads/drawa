@@ -131,6 +131,12 @@ var Modes = map[string]bool{
 	"default": true, "acceptEdits": true, "auto": true, "plan": true, "bypassPermissions": true,
 }
 
+// Efforts: the levels `claude --effort` accepts at spawn (its own --help lists these five; "auto" is a
+// mid-session-only value for the /effort command, not a valid spawn flag).
+var Efforts = map[string]bool{
+	"low": true, "medium": true, "high": true, "xhigh": true, "max": true,
+}
+
 // With --net the server listens on every interface (see main.go), so its own LAN address(es) must pass the
 // same Host-header allowlist that 127.0.0.1/localhost do; LocalIPs() is what finds them.
 var Hosts = hosts()

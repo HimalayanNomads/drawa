@@ -13,7 +13,7 @@ const ReapCap = 24 * time.Hour
 // Start returns the card's running process, starting one if there is none. Mu is not held while spawning (a
 // fork/exec can be slow): the card is reserved in `starting`, so concurrent sends for it still start only one.
 // Going over config.MaxLive (when set) closes the least recently used idle card.
-func Start(cid, sid, mode, model string) (*Live, error) {
+func Start(cid, sid, mode, model, effort string) (*Live, error) {
 	Mu.Lock()
 	for {
 		if l := Registry[cid]; l != nil && l.Alive() {
@@ -32,7 +32,7 @@ func Start(cid, sid, mode, model string) (*Live, error) {
 	starting[cid] = ch
 	Mu.Unlock()
 
-	l, err := New(cid, sid, mode, model)
+	l, err := New(cid, sid, mode, model, effort)
 
 	Mu.Lock()
 	delete(starting, cid)

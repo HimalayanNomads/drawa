@@ -248,7 +248,7 @@ function usage(S: Session, u: Msg | undefined) {
   if (!u) return
   S.ctx.used = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
   // until a result reports the real window: 1M if the model says so, or if we're already past 200k (can't exceed the window)
-  if (!S.ctx.real) S.ctx.max = /\[1m\]/.test(S.model) || S.ctx.used > 200_000 ? 1_000_000 : 200_000
+  if (!S.ctx.real) S.ctx.max = /\[1m\]/.test(S.reportedModel) || S.ctx.used > 200_000 ? 1_000_000 : 200_000
   renderCard(S)
 }
 
@@ -268,7 +268,18 @@ export function on(S: Session, m: Msg) {
     if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S)
   }
   if (m.type === 'system' && m.subtype === 'init') {
-    S.model = m.model
+    S.reportedModel = m.model
+    S.toolCount = (m.tools ?? []).length
+    const mcps = m.mcp_servers ?? []
+    S.mcpTotal = mcps.length
+    S.mcpConnected = mcps.filter((s: Msg) => s.status === 'connected').length
+    renderCard(S)
+  } else if (m.type === 'rate_limit_event') {
+    const w = m.rate_limit_info?.unifiedWindows ?? {}
+    S.usageResetAt = w.five_hour?.resetsAt
+    S.usageUtil = w.five_hour?.utilization
+    S.weeklyResetAt = w.seven_day?.resetsAt
+    S.weeklyUtil = w.seven_day?.utilization
     renderCard(S)
   } else if (m.type === 'stream_event') {
     const e = m.event

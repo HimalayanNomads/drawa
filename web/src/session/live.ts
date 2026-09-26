@@ -1,6 +1,6 @@
 // The live connection to a card's Claude process: send messages, and read its output stream (re-attaching
 // after network drops or a reload) until the process exits.
-import { make, ui, uuid, button } from '../lib/dom'
+import { make, uuid, button } from '../lib/dom'
 import { post } from '../lib/api'
 import { quiet } from '../canvas/graph'
 import { toContent, type Ref } from '../canvas/refs'
@@ -39,7 +39,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     if (shell) p = typeof p === 'string' ? shell + p : [{ type: 'text', text: shell }, ...p]
     if (images.length) p = [...(typeof p === 'string' ? [{ type: 'text', text: p }] : p), ...images.map(imageBlock)]
     if (!bubble.isConnected) return false // the card was cleared (/clear) while this was being prepared
-    await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: ui.model.value })
+    await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: S.model, effort: S.effort })
     attach(S)
     return true
   } catch (e) {

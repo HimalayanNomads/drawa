@@ -91,10 +91,6 @@ export function button(label: string, cls: string, onClick: () => void) {
   return b
 }
 
-export const ui = {
-  model: $<HTMLSelectElement>('#model'),
-}
-
 /** The folder Claude works in, set once at boot from the server. */
 export const project = { root: '', name: '' }
 export const rel = (p: string) => (p && p.startsWith(project.root + '/') ? p.slice(project.root.length + 1) : p)

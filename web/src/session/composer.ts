@@ -11,6 +11,7 @@ import { readImages, thumb } from './images'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
+import { modelPicker, effortPicker, infoBadge } from './gen'
 import { recall } from './recall'
 import { enhance } from '../lib/select'
 
@@ -28,13 +29,15 @@ export function composer(S: Session, body: HTMLElement) {
   sendBtn.innerHTML = ICON.up
   sendBtn.title = 'Send (Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
-  const pick = modePicker(S)
+  const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
+  const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
+  gen.append(modelSel, effortSel, infoBadge(S))
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
-  dock.append(chips, form)
+  dock.append(chips, gen, form)
   body.append(dock)
-  enhance(pick) // the custom dropdown, once the picker is in the page
+  for (const sel of [modelSel, effortSel, pick]) enhance(sel) // the custom dropdowns, once they're in the page
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 
@@ -64,12 +67,17 @@ export function composer(S: Session, body: HTMLElement) {
       drawChips(S)
     })
   }
-  // images: paste them (Ctrl+V) or drop image files on the message box
+  // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
+  // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
   const attach = async (files: File[]) => {
     const got = await readImages(files)
     if (!got.length) return
+    const at = S.images.length
     S.images.push(...got)
+    const marks = got.map((_, i) => `[Image${at + i + 1}]`).join(' ') + ' '
+    ta.setRangeText(marks, ta.selectionStart, ta.selectionEnd, 'end')
     drawChips(S)
+    fit()
     ta.focus()
   }
   // anything else: text files go along as their contents (session/uploads.ts)

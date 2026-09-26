@@ -117,7 +117,7 @@ func writeMCPConfig(cid, token string) (string, error) {
 	return f.Name(), nil
 }
 
-func buildArgv(sid, mode, model, mcpPath string) []string {
+func buildArgv(sid, mode, model, effort, mcpPath string) []string {
 	argv := append([]string{}, claudeArgv...)
 	if mcpPath != "" {
 		argv = append(argv, "--mcp-config", mcpPath)
@@ -130,6 +130,9 @@ func buildArgv(sid, mode, model, mcpPath string) []string {
 	}
 	if model != "" {
 		argv = append(argv, "--model", model)
+	}
+	if config.Efforts[effort] {
+		argv = append(argv, "--effort", effort)
 	}
 	return argv
 }
@@ -144,7 +147,7 @@ func NewForTest(token, gen string) *Live {
 
 // New starts a `claude` process for a card. cid == "" is used for the one-off private instance meta() drives, and
 // skips the canvas MCP wiring (nothing to relay calls to).
-func New(cid, sid, mode, model string) (l *Live, err error) {
+func New(cid, sid, mode, model, effort string) (l *Live, err error) {
 	token, mcpPath := randHex(16), ""
 	if cid != "" {
 		if mcpPath, err = writeMCPConfig(cid, token); err != nil {
@@ -156,7 +159,7 @@ func New(cid, sid, mode, model string) (l *Live, err error) {
 			}
 		}()
 	}
-	argv := buildArgv(sid, mode, model, mcpPath)
+	argv := buildArgv(sid, mode, model, effort, mcpPath)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = config.Root
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // its own group, so Kill takes its tools and agents too

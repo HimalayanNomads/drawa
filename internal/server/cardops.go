@@ -21,13 +21,13 @@ var modelRe = regexp.MustCompile(`^[\w.\[\]/@][\w.\[\]:/@-]{0,199}$`)
 func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[string]any) {
 	var lv *live.Live
 	if r.URL.Path == "/api/send" {
-		sid, model := str(body["sid"]), str(body["model"])
-		if (sid != "" && !config.UUIDRe.MatchString(sid)) || (model != "" && !modelRe.MatchString(model)) {
+		sid, model, effort := str(body["sid"]), str(body["model"]), str(body["effort"])
+		if (sid != "" && !config.UUIDRe.MatchString(sid)) || (model != "" && !modelRe.MatchString(model)) || (effort != "" && !config.Efforts[effort]) {
 			http.Error(w, "", 400)
 			return
 		}
 		var err error
-		if lv, err = live.Start(cid, sid, str(body["mode"]), model); err != nil {
+		if lv, err = live.Start(cid, sid, str(body["mode"]), model, effort); err != nil {
 			http.Error(w, "", 500)
 			return
 		}
