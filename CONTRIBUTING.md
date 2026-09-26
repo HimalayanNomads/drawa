@@ -33,6 +33,8 @@ For anything visible, check it in both the light and dark themes, at phone width
 
 ## Releasing
 
+Only maintainers release. As a contributor or reviewer, your part ends at the pull request: once it's merged, it ships in the next release a maintainer cuts. The rest of this section is for maintainers.
+
 Merging a pull request doesn't release anything. A version tag (`v*.*.*`) does: it runs `.github/workflows/release.yml`, which builds the macOS and Linux binaries and publishes them, with `checksums.txt`, as a GitHub Release. `install.sh` always fetches the newest one.
 
 **From GitHub:** Releases → **Draft a new release** → under **Choose a tag** type the version (e.g. `v0.1.3`) and pick **Create new tag on publish**, target `main` → title it the same, optionally **Generate release notes** → **Publish release**. The workflow then uploads the binaries into that release within a minute or so.

@@ -133,7 +133,7 @@ To report a vulnerability, please open a [private security advisory](https://git
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and a map of the code, and [CLAUDE.md](CLAUDE.md) for the conventions the codebase follows.
+Issues and pull requests are welcome. Maintainers cut the releases; a merged pull request ships in the next one. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and a map of the code, and [CLAUDE.md](CLAUDE.md) for the conventions the codebase follows.
 
 ## License
 
