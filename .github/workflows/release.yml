@@ -86,9 +86,15 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # A release made on GitHub's Releases page creates the tag, which triggers this run: fill that release
+        # with the binaries instead of failing on "a release with the same tag name already exists".
         run: |
-          extra=()
-          case "${{ github.ref_name }}" in v*) ;; *) extra=(--prerelease) ;; esac
-          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz artifacts/checksums.txt \
-            --repo "${{ github.repository }}" \
-            --title "${{ github.ref_name }}" --generate-notes "${extra[@]}"
+          tag="${{ github.ref_name }}" repo="${{ github.repository }}"
+          files=(artifacts/*.tar.gz artifacts/checksums.txt)
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --repo "$repo" --clobber
+          else
+            extra=()
+            case "$tag" in v*) ;; *) extra=(--prerelease) ;; esac
+            gh release create "$tag" "${files[@]}" --repo "$repo" --title "$tag" --generate-notes "${extra[@]}"
+          fi

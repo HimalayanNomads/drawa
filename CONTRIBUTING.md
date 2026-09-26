@@ -31,6 +31,21 @@ go vet ./... && go test ./...
 
 For anything visible, check it in both the light and dark themes, at phone width (390px), and after a page reload (the layout restores from saved state). See "Before you finish any change" in [`CLAUDE.md`](CLAUDE.md).
 
+## Releasing
+
+Merging a pull request doesn't release anything. A version tag (`v*.*.*`) does: it runs `.github/workflows/release.yml`, which builds the macOS and Linux binaries and publishes them, with `checksums.txt`, as a GitHub Release. `install.sh` always fetches the newest one.
+
+**From GitHub:** Releases → **Draft a new release** → under **Choose a tag** type the version (e.g. `v0.1.3`) and pick **Create new tag on publish**, target `main` → title it the same, optionally **Generate release notes** → **Publish release**. The workflow then uploads the binaries into that release within a minute or so.
+
+**From a terminal**, on an up-to-date `main`:
+
+```sh
+git tag -a v0.1.3 -m v0.1.3
+git push origin v0.1.3
+```
+
+The workflow creates the release itself. Either way, follow the run under Actions → Release.
+
 ## Layout
 
 - `main.go`: the entry point (arg parsing, the self-restart loop, `main()`). `internal/`, one file per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config.go` (paths, constants, `Inside()`), `procx.go` (running `git`/`gh`/`claude` subprocesses), `gitx.go`, `github.go` + `detail.go` + `ops.go` (state/lists, single PR/issue reads, write operations), `filesx.go` (the file tree and `@` search), `images.go`, `sessions.go` (transcript loading, `Clip`/`Trimmed`), `canvastools.go` (the `Tools` schema Claude sees), `live.go` + `meta.go` (the `Live` type: one long-running `claude` process per card), `webassets/` (the built UI embedded for standalone release binaries, empty in a normal checkout), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close). Serves `web/dist` (falling back to `webassets` when it's absent) and the file/session/git/GitHub API.
