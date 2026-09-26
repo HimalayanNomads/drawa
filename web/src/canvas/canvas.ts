@@ -325,10 +325,13 @@ stage.addEventListener('pointerdown', e => {
   stage.addEventListener('pointerup', up)
 })
 
+/** The wheel's deltas, with Shift+wheel turned sideways (some browsers leave it on deltaY). */
+const deltas = (e: WheelEvent) => (e.shiftKey && !e.deltaX ? { dx: e.deltaY, dy: 0 } : { dx: e.deltaX, dy: e.deltaY })
 /** Is the pointer over something that scrolls (a card's log, a list, a code block)? Then the wheel is its, even
  *  at the end of its content: reaching the bottom of a log shouldn't start panning the canvas. */
 const inScroller = (el: Element | null, e: WheelEvent): boolean => {
-  const vertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX)
+  const { dx, dy } = deltas(e)
+  const vertical = Math.abs(dy) >= Math.abs(dx)
   for (; el && el !== stage; el = el.parentElement) {
     const s = el as HTMLElement, cs = getComputedStyle(s)
     if (vertical ? s.scrollHeight > s.clientHeight + 1 && /auto|scroll/.test(cs.overflowY) : s.scrollWidth > s.clientWidth + 1 && /auto|scroll/.test(cs.overflowX)) return true
@@ -344,8 +347,9 @@ stage.addEventListener('wheel', e => {
   }
   if (inScroller(e.target as Element, e)) return // let card logs, lists and code scroll natively
   e.preventDefault()
-  view.x -= e.deltaX
-  view.y -= e.deltaY
+  const { dx, dy } = deltas(e)
+  view.x -= dx
+  view.y -= dy
   apply()
 }, { passive: false })
 
