@@ -84,7 +84,7 @@
 .dnode-b{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:14px;cursor:pointer;container-type:size}
 .dnode-b::after{content:"Click for full view";position:absolute;right:8px;bottom:6px;padding:2px 7px;border-radius:2px;background:var(--hover);font:500 11px var(--sans);color:var(--muted);opacity:0;transition:opacity .15s;pointer-events:none}
 .dnode-b:hover::after{opacity:1}
-.full .dnode-b{cursor:auto}.full .dnode-b::after{content:none}
+.full .dnode-b{cursor:zoom-in}.full .dnode-b::after{content:"Click to zoom"}
 .dnode-b svg{max-width:100%;max-height:100%}
 .dnode-ed{flex:0 0 42%;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--line);background:var(--code)}
 .dnode-ed textarea{flex:1;min-height:0;padding:10px 12px;border:0;background:none;color:var(--ink);font:12px/1.55 var(--mono);font-variant-ligatures:none;resize:none;outline:none;tab-size:2}
@@ -165,7 +165,7 @@
 .inode-b{display:grid;place-items:center;background:var(--bg);overflow:hidden;container-type:size}
 .inode-img{object-fit:contain;user-select:none;cursor:zoom-in}
 .inode-b .none{padding:16px;color:var(--muted);font-size:12.5px;text-align:center}
-.full .inode-img{cursor:auto}
+.full .inode-img{cursor:zoom-in}
 .dnode-b:has(>.mmd-err)>.ink-box{display:none}
 
 /* GitHub (items/github.ts, and the pull request strip in the Git window) */

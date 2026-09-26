@@ -1,8 +1,8 @@
 // Mermaid code blocks -> diagrams, plus a zoom/pan view for them.
-import Panzoom, { type PanzoomObject } from '@panzoom/panzoom'
 import type { Mermaid } from 'mermaid'
 import { $, make, ICON, iconButton, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
+import { openZoom } from '../lib/zoom'
 import { isDark, onTheme } from '../lib/theme'
 import { items, savedRect, dragOut, spotBeside, changed, type Rect } from '../canvas/canvas'
 import { makeWindow, removeButton } from '../canvas/window'
@@ -173,7 +173,11 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid()) {
   ed.append(ta, status)
   ed.hidden = true
   body.append(view, ed)
-  view.onclick = () => { if (!isFull(node)) toggleFull(node) } // click the drawing: full view (Esc to come back)
+  view.onclick = () => { // click the drawing: full view (Esc to come back); in full view, zoom and pan it
+    if (!isFull(node)) return toggleFull(node)
+    const svg = view.querySelector('svg')
+    if (svg) openZoom(svg)
+  }
   // a new source from outside (Claude's canvas_update): checked first, so a bad one leaves the drawing as it was
   setSource.set(node, async text => {
     await (await load()).parse(text)
@@ -229,35 +233,3 @@ referable('diagram', {
   label: el => el.querySelector('.t')?.textContent ?? '',
   content: (el, label) => ({ text: `Diagram "${label}" (Mermaid):\n\`\`\`mermaid\n${el.dataset.src ?? ''}\n\`\`\`` }),
 })
-
-/* ---------- zoom dialog ---------- */
-const dialog = $<HTMLDialogElement>('#zoom')
-const stage = dialog.querySelector<HTMLElement>('.stage')!
-const content = dialog.querySelector<HTMLElement>('.content')!
-let pz: PanzoomObject | undefined
-
-function openZoom(svg: SVGSVGElement) {
-  const copy = svg.cloneNode(true) as SVGSVGElement
-  copy.removeAttribute('style') // Mermaid pins a max-width; let it fill the stage instead
-  content.replaceChildren(copy)
-  dialog.showModal()
-  pz = Panzoom(content, { maxScale: 12, minScale: 0.4, step: 0.35, cursor: 'grab' })
-}
-
-stage.addEventListener('wheel', e => pz?.zoomWithWheel(e), { passive: false })
-dialog.addEventListener('close', () => { pz?.destroy(); pz = undefined; content.replaceChildren() })
-dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close() }) // backdrop
-dialog.addEventListener('keydown', e => {
-  if (e.key === '+' || e.key === '=') pz?.zoomIn()
-  else if (e.key === '-') pz?.zoomOut()
-  else if (e.key === '0') pz?.reset()
-})
-for (const b of dialog.querySelectorAll<HTMLButtonElement>('[data-z]')) {
-  b.onclick = () => {
-    const z = b.dataset.z
-    if (z === 'in') pz?.zoomIn()
-    else if (z === 'out') pz?.zoomOut()
-    else if (z === 'fit') pz?.reset()
-    else dialog.close()
-  }
-}

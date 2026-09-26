@@ -1,5 +1,6 @@
 // Images you paste or drop into a message: read, scaled down to what Claude uses, shown as thumbnails.
 import { make } from '../lib/dom'
+import { openZoom } from '../lib/zoom'
 import { base64, imageBlock as block } from '../lib/blobs'
 
 export interface Pasted { type: string; data: string; url: string; blob?: Blob; w?: number; h?: number } // media type, base64, displayable URL; when read here: the bytes, pixel size
@@ -35,12 +36,12 @@ async function readOne(f: File): Promise<Pasted> {
 
 export const imageBlock = (img: Pasted) => block(img.type, img.data)
 
-/** A thumbnail; click to see it larger. With `remove`, an × to take it off the message. */
+/** A thumbnail; click to zoom and pan it. With `remove`, an × to take it off the message. */
 export function thumb(img: Pasted, remove?: () => void) {
   const t = make('span', 'thumb'), pic = make('img')
   pic.src = img.url
   pic.alt = 'Attached image'
-  pic.onclick = () => t.classList.toggle('big')
+  pic.onclick = () => openZoom(pic)
   t.append(pic)
   if (remove) {
     const x = make('button', 'x', '×')

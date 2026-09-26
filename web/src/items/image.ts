@@ -4,6 +4,7 @@
 // in this browser's IndexedDB (lib/blobs) and move to the server the first time they're shown. Draw on it to point at things, then @ it or drop it on a
 // card: Claude gets the picture, with your drawing when there is one.
 import { make, ping, toast, typing, uuid } from '../lib/dom'
+import { openZoom } from '../lib/zoom'
 import { post } from '../lib/api'
 import { persist } from '../lib/store'
 import { getBlob, putBlob, dropBlob, base64 } from '../lib/blobs'
@@ -46,7 +47,7 @@ function imageWindow(o: Saved) {
   body.classList.add('inode-b')
   box.append(img)
   body.append(box)
-  img.onclick = () => { if (!isFull(el)) toggleFull(el) } // click: see it full size (Esc to come back)
+  img.onclick = () => (isFull(el) ? openZoom(img) : toggleFull(el)) // click: full size (Esc to come back); again: zoom and pan
   const gone = () => body.replaceChildren(make('p', 'none', "This picture isn't stored anymore (it was kept in another browser, or its data was cleared)."))
   if (o.src) {
     const url = '/api/images/' + o.src

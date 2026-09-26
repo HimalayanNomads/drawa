@@ -75,8 +75,6 @@
 .chip .x:hover{color:var(--danger);background:var(--hover)}
 .thumb{position:relative;display:inline-flex;flex:none;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--code);overflow:hidden}
 .thumb img{display:block;height:52px;max-width:120px;object-fit:cover;cursor:zoom-in}
-.thumb.big img{height:auto;max-height:420px;max-width:100%;object-fit:contain;cursor:zoom-out}
-.thumb.big{flex-basis:100%}
 .thumb .x{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:var(--r-ctl);background:color-mix(in oklab,var(--bg) 88%,transparent);color:var(--ink);font-size:14px;line-height:1}
 .thumb .x:hover{color:var(--danger)}
 .card .dock.dropping .compose{border-color:var(--accent);background:var(--sel)}
