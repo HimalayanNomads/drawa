@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,10 +24,6 @@ import (
 
 const Keep = 20_000          // ponytail: output lines kept for re-attaching; older ones dropped (the transcript has them)
 const KeepBytes = 16_000_000 // and at most this much text
-
-// MaxLive caps running card processes: starting one more closes the least recently used idle card (--resume
-// brings it back on its next message).
-const MaxLive = 12
 
 // pipeGrace is how long output may keep arriving after the process exited, before its read end is closed so the
 // exit line arrives even when a background grandchild still holds stdout.
@@ -73,9 +70,10 @@ type Live struct {
 	asks    []ask    // open approval requests in arrival order (re-sent to pages that attach later)
 	readers []string // pages reading this stream (newest last): the newest carries out canvas tool calls
 	calls   map[string]*Call
-	busy    bool // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
-	openMsg *int // line where the message being streamed began: a page attaching now reads from there
-	exited  bool // the process exited, or its stdin broke: the next send starts a new one (Python: p.poll())
+	busy    bool            // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
+	tasks   map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
+	openMsg *int            // line where the message being streamed began: a page attaching now reads from there
+	exited  bool            // the process exited, or its stdin broke: the next send starts a new one (Python: p.poll())
 }
 
 type ask struct{ rid, line string }
@@ -227,6 +225,7 @@ func (l *Live) classify(line string) string {
 		b, _ := json.Marshal(map[string]any{"type": "error", "text": strings.TrimSpace(line)})
 		return string(b)
 	}
+	l.trackTasks(line)
 	switch {
 	case strings.HasPrefix(line, `{"type":"system","subtype":"init"`):
 		l.mu.Lock()
@@ -516,3 +515,50 @@ func (l *Live) SetMode(mode string)   { l.mu.Lock(); l.Mode = mode; l.mu.Unlock(
 func (l *Live) SetModel(model string) { l.mu.Lock(); l.Model = model; l.mu.Unlock() }
 func (l *Live) GetMode() string       { l.mu.Lock(); defer l.mu.Unlock(); return l.Mode }
 func (l *Live) GetModel() string      { l.mu.Lock(); defer l.mu.Unlock(); return l.Model }
+
+var (
+	launchedRe = regexp.MustCompile(`Async agent launched[^"]*?agentId: ([\w-]+)`)
+	taskIDRe   = regexp.MustCompile(`<task-id>([\w-]+)</task-id>`)
+)
+
+// trackTasks keeps the set of background agents still running: added when an Agent call answers "Async agent
+// launched" (its id), removed by a task notification naming that id (a live task_notification line, or the
+// <task-notification> message, which may list several). ponytail: a notification the CLI never sends keeps the
+// card from counting as idle until ReapCap; tracking the CLI's own task list would need a protocol for it.
+func (l *Live) trackTasks(line string) {
+	if m := launchedRe.FindStringSubmatch(line); m != nil {
+		l.mu.Lock()
+		if l.tasks == nil {
+			l.tasks = map[string]bool{}
+		}
+		l.tasks[m[1]] = true
+		l.mu.Unlock()
+		return
+	}
+	var ids []string
+	if strings.Contains(line, `"subtype":"task_notification"`) {
+		var d struct {
+			TaskID string `json:"task_id"`
+		}
+		if json.Unmarshal([]byte(line), &d) == nil && d.TaskID != "" {
+			ids = append(ids, d.TaskID)
+		}
+	}
+	if strings.Contains(line, "<task-notification>") {
+		for _, m := range taskIDRe.FindAllStringSubmatch(line, -1) {
+			ids = append(ids, m[1])
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	l.mu.Lock()
+	for _, id := range ids {
+		delete(l.tasks, id)
+	}
+	l.mu.Unlock()
+}
+
+// working reports whether the card is doing something a close would cut off: a turn, an open approval, or a
+// background agent. Called with l.mu held.
+func (l *Live) working() bool { return l.busy || len(l.asks) > 0 || len(l.tasks) > 0 }

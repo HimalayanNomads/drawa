@@ -162,27 +162,55 @@ type nopWriter struct{}
 func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (nopWriter) Close() error                { return nil }
 
-// Over MaxLive, the least recently used idle card goes; busy ones, ones with asks and the new one stay.
+// Over the cap, the least recently used idle card goes; working ones (a turn, an approval, a background agent)
+// and the new one stay. With no cap (the default) nothing goes.
 func TestEvictLRUIdle(t *testing.T) {
 	Mu.Lock()
-	saved := Registry
-	Registry = map[string]*Live{}
-	t.Cleanup(func() { Mu.Lock(); Registry = saved; Mu.Unlock() })
+	saved, savedMax := Registry, config.MaxLive
+	Registry, config.MaxLive = map[string]*Live{}, 4
+	t.Cleanup(func() { Mu.Lock(); Registry, config.MaxLive = saved, savedMax; Mu.Unlock() })
 	old := time.Now().Add(-time.Hour)
-	for i := 0; i <= MaxLive; i++ {
+	for i := 0; i <= config.MaxLive; i++ {
 		l := NewForTest("", "g")
 		l.last = time.Now()
 		Registry[string(rune('a'+i))] = l
 	}
 	Registry["a"].last, Registry["a"].busy = old.Add(-time.Hour), true
 	Registry["b"].last, Registry["b"].asks = old.Add(-time.Hour), []ask{{"r", "{}"}}
+	Registry["e"].last, Registry["e"].tasks = old.Add(-time.Hour), map[string]bool{"agent1": true}
 	Registry["c"].last = old
 	Registry["d"].last = old.Add(-2 * time.Hour) // oldest idle, but it's the one being started
+	config.MaxLive = 0
+	none := evictLocked("d")
+	config.MaxLive = 4
 	victim := evictLocked("d")
 	_, stillC := Registry["c"]
 	Mu.Unlock()
+	if none != nil {
+		t.Fatal("evicted with no cap set")
+	}
 	if victim == nil || stillC {
 		t.Fatalf("expected c evicted, got %v (c still registered: %v)", victim, stillC)
+	}
+}
+
+// A background agent keeps its card working from its launch until a notification names it.
+func TestTrackTasks(t *testing.T) {
+	l := NewForTest("", "g")
+	launch := `{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: a1b2c3 (internal ID)"}]}]}}`
+	for _, line := range []string{launch, strings.Replace(launch, "a1b2c3", "d4e5f6", 1)} {
+		l.trackTasks(line)
+	}
+	if len(l.tasks) != 2 {
+		t.Fatalf("tasks %v, want 2", l.tasks)
+	}
+	l.trackTasks(`{"type":"system","subtype":"task_notification","task_id":"a1b2c3","status":"completed"}`)
+	if l.tasks["a1b2c3"] || !l.working() {
+		t.Fatalf("after one notification: %v, working %v", l.tasks, l.working())
+	}
+	l.trackTasks(`{"type":"user","message":{"content":"<task-notification>\n<task-id>d4e5f6</task-id>\n<status>stopped</status>"}}`)
+	if l.working() {
+		t.Fatalf("still working: %v", l.tasks)
 	}
 }
 

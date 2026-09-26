@@ -6,13 +6,13 @@ import (
 	"drawa/internal/config"
 )
 
-// ReapCap: a busy card, or one waiting on an approval, is never reaped as idle, unless it has been silent this long.
+// ReapCap: a working card (a turn, an approval, a background agent) is never reaped as idle, unless it has been silent this long.
 // ponytail: a fixed hard cap for a turn stuck forever (a hung tool); make it a setting if real turns ever run longer.
 const ReapCap = 24 * time.Hour
 
 // Start returns the card's running process, starting one if there is none. Mu is not held while spawning (a
 // fork/exec can be slow): the card is reserved in `starting`, so concurrent sends for it still start only one.
-// Going over MaxLive closes the least recently used idle card.
+// Going over config.MaxLive (when set) closes the least recently used idle card.
 func Start(cid, sid, mode, model string) (*Live, error) {
 	Mu.Lock()
 	for {
@@ -49,14 +49,14 @@ func Start(cid, sid, mode, model string) (*Live, error) {
 	return l, err
 }
 
-// evictLocked removes and returns the least recently used idle card (not busy, no open asks, not keep) when more
-// than MaxLive are running, else nil. Called with Mu held.
+// evictLocked removes and returns the least recently used idle card (not working, not keep) when a cap is set and
+// more than config.MaxLive are running, else nil. Called with Mu held.
 func evictLocked(keep string) *Live {
 	running, lru, lruCid := 0, (*Live)(nil), ""
 	var lruAt time.Time
 	for cid, l := range Registry {
 		l.mu.Lock()
-		alive, idle, last := !l.exited, !l.busy && len(l.asks) == 0, l.last
+		alive, idle, last := !l.exited, !l.working(), l.last
 		l.mu.Unlock()
 		if !alive {
 			continue
@@ -66,7 +66,7 @@ func evictLocked(keep string) *Live {
 			lru, lruCid, lruAt = l, cid, last
 		}
 	}
-	if running <= MaxLive || lru == nil {
+	if config.MaxLive <= 0 || running <= config.MaxLive || lru == nil {
 		return nil
 	}
 	delete(Registry, lruCid)
@@ -82,7 +82,7 @@ func Reap() {
 		for cid, l := range Registry {
 			l.mu.Lock()
 			quiet := time.Since(l.last)
-			working := l.busy || len(l.asks) > 0
+			working := l.working()
 			stale := l.exited || (!working && quiet > config.IdleSecs*time.Second) || quiet > ReapCap
 			l.mu.Unlock()
 			if stale {

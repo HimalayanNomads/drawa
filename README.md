@@ -101,6 +101,7 @@ The Network link lets another device on the same network â€” a laptop, a phone â
 | `DRAWA_PORT` | `8765` | Port to serve on. Set it to run two projects at once. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
 | `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
+| `DRAWA_MAX_LIVE` | unset (no cap) | Most `claude` processes kept running at once (each takes a few hundred MB). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
 | `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh

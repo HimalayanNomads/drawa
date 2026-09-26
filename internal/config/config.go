@@ -21,6 +21,15 @@ const defaultPort = 8765
 // Port is 8765 unless DRAWA_PORT overrides it (e.g. two projects open at once, or 8765 is already taken).
 var Port = port()
 
+// MaxLive caps running Claude processes (DRAWA_MAX_LIVE; 0, the default, means no cap). No default number: how
+// many fit depends on the machine (each process is a few hundred MB), and the idle reaper already bounds them.
+var MaxLive = maxLive()
+
+func maxLive() int {
+	n, _ := strconv.Atoi(os.Getenv("DRAWA_MAX_LIVE"))
+	return max(n, 0)
+}
+
 func port() int {
 	if v := os.Getenv("DRAWA_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil && p > 0 && p < 65536 {
