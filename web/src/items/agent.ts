@@ -103,6 +103,10 @@ function hide(call: string) {
   changed()
 }
 
+/** The window title of the agent with this id (what SendMessage and hand-backs address), if it's one of ours. */
+export function agentTitle(id: string) {
+  for (const [call, aid] of ids) if (aid === id) { const a = agents.get(call); return a ? winTitle(a.el) : undefined }
+}
 /** A card's sub-agents that haven't finished (foreground and background), oldest first. */
 export const runningAgents = (S: Session) => [...running.get(S) ?? []]
 

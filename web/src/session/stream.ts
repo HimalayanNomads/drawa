@@ -18,6 +18,7 @@ import { replayShell } from './shell'
 import { setMode, modeRefused } from './mode'
 import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
+import { meta, handoff, report } from './notices'
 // what a refused tool call means in each mode, and what to do about it (shown under the turn)
 const REFUSED = 'It was refused. Switch this card to Allow edits, Auto or Allow everything and ask again to let it run.'
 const DENIED_HOW: Record<string, string> = {
@@ -31,20 +32,7 @@ const DENIED_HOW: Record<string, string> = {
 // Claude's stream-json lines; loosely typed on purpose, the CLI owns the schema.
 export type Msg = Record<string, any>
 
-/** Text Claude Code added to the conversation itself, like a skill's instructions: folded, rendered as Markdown
- *  only when opened (a skill can be pages long). */
-function meta(S: Session, text: string) {
-  const skill = /^Base directory for this skill: (\S+)/.exec(text)
-  const d = put(S, fold('meta', skill ? `Skill · ${skill[1].split('/').filter(Boolean).pop()}` : 'Added by Claude Code'))
-  d.addEventListener('toggle', () => {
-    if (!d.open || d.querySelector('.md')) return
-    const body = d.appendChild(make('div', 'md io'))
-    body.innerHTML = md(skill ? text.slice(skill[0].length).trim() : text)
-    enhance(body)
-  })
-}
-
-function fold(cls: string, title: string) {
+export function fold(cls: string, title: string) {
   const d = make('details', cls) as ToolRow, s = make('summary')
   s.append(make('b', '', title), make('span', 'arg'), make('span', 'st'))
   d.append(s)
@@ -220,13 +208,6 @@ export function rowStopped(S: Session, call: string, why: string) {
   io.appendChild(make('pre', '', why)).dataset.l = 'Result'
 }
 
-/** An agent's report without the harness's wrapping (the hand-back preface, its id line and usage). */
-const report = (t: string) => {
-  const body = t.replace(/^[\s\S]*?The report follows:\n/, '').replace(/\n?agentId: [\s\S]*$/, '')
-  // the harness indents every line by two: undo that only when it did (code and nested lists keep their own indent)
-  return (body.split('\n').every(l => !l.trim() || l.startsWith('  ')) ? body.replace(/^ {2}/gm, '') : body).trim()
-}
-
 /** A background agent finished: a <task-notification> message (transcripts), or a task_notification line (live). */
 function notification(S: Session, xml: string) {
   const summary = tag(xml, 'summary') ?? 'Background task finished'
@@ -300,7 +281,7 @@ export function on(S: Session, m: Msg) {
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n') : ''
     // a background task's report starts a turn of its own: its result mustn't un-queue a message Claude hasn't read
     if (text.startsWith('<task-notification>')) { notification(S, text); S.picked = true }
-    else if (m.isMeta && text) meta(S, text) // text the CLI adds itself (a skill's instructions): not something you typed
+    else if (m.isMeta && text) { if (!handoff(S, text, true)) meta(S, text) } // text the CLI adds itself (an agent's report, a skill's instructions): not something you typed
     else if (text) { // Claude picked up a message: ours (queued here), or one this page didn't send (restored card, another tab)
       const q = S.queued.shift()
       if (q) q.classList.remove('queued')
@@ -360,7 +341,7 @@ export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: str
     for (const b of blocks) {
       if (b.type === 'tool_result') result(S, b)
       else if (b.type === 'text' && b.text!.startsWith('<task-notification>')) notification(S, b.text!)
-      else if (b.type === 'text' && m.isMeta) meta(S, b.text!) // as live: a skill's instructions, not something you typed
+      else if (b.type === 'text' && m.isMeta) { if (!handoff(S, b.text!, false)) meta(S, b.text!) } // as live: an agent's report or a skill's instructions, not something you typed
       else if (b.type === 'text' && b.text!.startsWith('<bash-input>')) { const rest = replayShell(S, b.text!); if (rest) bubble = put(S, make('div', 'me', rest)) }
       else if (b.type === 'text' && !b.text!.startsWith('<')) bubble = put(S, make('div', 'me', relayed(b.text!) ?? b.text))
       else if (b.type === 'image' && ((b as any).source?.data || (b as any).source?.url)) { // images you sent: thumbnails

@@ -431,7 +431,7 @@ func Load(sid, agent string) []map[string]any {
 		Clip(content)
 		m := map[string]any{"role": t, "content": content}
 		if d.IsMeta {
-			m["isMeta"] = true // text the CLI added (a skill's instructions): the page folds it, as it does live
+			m["isMeta"] = true // text the CLI added (a skill's instructions, an agent's report): the page folds it, as it does live
 		}
 		if t == "assistant" && d.Message.Usage != nil {
 			m["usage"] = d.Message.Usage // for the context meter

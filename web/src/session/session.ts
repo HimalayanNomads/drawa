@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping, uuid } from '../lib/dom'
+import { make, ICON, iconButton, project, ping, uuid, perFrame } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
@@ -15,6 +15,7 @@ import type { Change } from '../panels/diff'
 import { dropPlans } from '../items/plan'
 import { runningAgents, showAgent, dropAgents } from '../items/agent'
 import { composer } from './composer'
+import { reportOf } from './notices'
 import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { loadSessions, resume } from './history'
@@ -114,6 +115,7 @@ referable('session', {
     const lines = [...(S?.log.children ?? [])].flatMap(r => {
       if (r.matches('.me')) return [`User: ${r.textContent?.trim()}`]
       if (r.matches('.md')) return [`Claude: ${r.textContent?.trim()}`]
+      if (r.matches('.handoff')) return [`(${r.querySelector('summary b')?.textContent}:)\n${reportOf(r) ?? ''}`]
       if (r.matches('details.tool')) return [`(Claude used ${r.querySelector('summary b')?.textContent ?? 'a tool'} ${r.querySelector('summary .arg')?.textContent ?? ''})`.replace(/ \)$/, ')')]
       return []
     })
@@ -180,7 +182,11 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   agentsBtn.onclick = e => { e.stopPropagation(); const run = runningAgents(S); if (run.length) showAgent(run[nextAgent++ % run.length]) }
   title.after(agentsBtn, make('span', 'm'), ctx)
   const log = make('div', 'log')
-  body.append(log)
+  // scrolled up to read: a way back to the latest message (appends while you're up there don't scroll, so it stays shown)
+  const down = iconButton(ICON.open, 'Scroll to the latest message', () => { log.scrollTop = log.scrollHeight }, 'tobottom')
+  down.hidden = true
+  log.addEventListener('scroll', perFrame(() => { down.hidden = log.scrollHeight - log.scrollTop - log.clientHeight < 200 }), { passive: true })
+  body.append(log, down)
 
   const S: Session = {
     cid: opts.cid ?? uuid(), sid: null, title: 'New session', model: '', cost: 0, done: false,
