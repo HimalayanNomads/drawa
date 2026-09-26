@@ -93,6 +93,8 @@ function setState(p: Plan, text: string, cls: string) {
 export function showPlan(S: Session, toolId: string, markdown: string): Plan | null {
   if (dismissed.has(toolId)) return null
   let p = current.get(S)
+  // the same call again: the CLI may ask for approval (with the text) before the streamed call, which has none, ends
+  if (p && !p.done && p.ids.includes(toolId)) { if (markdown.trim() && markdown !== p.md) render(p, markdown); return p }
   if (!p || p.done) { p = create(S, toolId); current.set(S, p) }
   p.version++
   p.done = false
