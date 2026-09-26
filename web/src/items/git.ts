@@ -2,9 +2,9 @@
 // unstage, commit (Claude can write the message), push and pull, recent commits. One per canvas; it refreshes
 // itself every few seconds while it's open and expanded.
 import { make, ICON, iconButton, button, confirmBox, ping, project } from '../lib/dom'
-import { api, q } from '../lib/api'
+import { api, post, q } from '../lib/api'
 import { persist } from '../lib/store'
-import { items, savedRect, centerOn, spotBeside, changed, type Rect } from '../canvas/canvas'
+import { savedRect, centerOn, spotBeside, changed, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
@@ -15,10 +15,14 @@ import { ghPost, tally, dot, stateOf, REVIEW, sendToClaude, type GhState } from 
 interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
 interface GitState { repo: boolean; missing?: boolean; error?: string; branch?: string; upstream?: boolean; ahead?: number; behind?: number; files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[] }
 
-let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; msg: HTMLTextAreaElement; out: HTMLElement; timers: number[]; open: Set<string>; last: string } | undefined
+let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; msg: HTMLTextAreaElement; out: HTMLElement; gh: number; poll: number; delay: number; stop: AbortController; open: Set<string>; last: string } | undefined
 
-const gitPost = (body: object) =>
-  fetch('/api/git', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json() as Promise<{ ok?: boolean; out?: string; message?: string; error?: string }>)
+const FAST = 4000, SLOW = 30_000 // git status polling: FAST after a change, doubling up to SLOW while nothing changes
+
+type GitReply = { ok?: boolean; out?: string; message?: string; error?: string }
+/** A git action. Never throws: a dead server comes back as a failed reply. */
+const gitPost = (body: object): Promise<GitReply> =>
+  post('git', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
 
 /** Open (or bring into view) the Git window. */
 export function openGit(r?: Rect) {
@@ -28,7 +32,7 @@ export function openGit(r?: Rect) {
     kind: 'git', cls: 'gnode', title: 'git', minW: 300, minH: 200,
     rect: r ?? spotBeside(null, 380, 520),
     actions: [iconButton(GH_ICON, 'GitHub: pull requests and issues (Shift+G)', () => openGitHub()),
-      iconButton(ICON.x, 'Close', () => { win!.timers.forEach(clearInterval); forget(el); el.remove(); win = undefined; changed() }, 'closebtn')],
+      iconButton(ICON.x, 'Close', () => { clearInterval(win!.gh); clearTimeout(win!.poll); win!.stop.abort(); forget(el); el.remove(); win = undefined; changed() }, 'closebtn')],
   })
   el.dataset.id = 'git' // one per project: arrows and pins find it again after a reload
   head.querySelector('.t')!.after(meta)
@@ -43,9 +47,25 @@ export function openGit(r?: Rect) {
   // slower loop (and after pushes and commits)
   // poll only while you can see it: page visible, window open, and on screen (each poll runs git status on the server)
   const seen = () => { const r = el.getBoundingClientRect(); return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight }
-  const every = (ms: number, f: () => void) => setInterval(() => { if (!document.hidden && !el.classList.contains('min') && seen()) f() }, ms)
-  win = { el, meta, body: list, msg, out, timers: [every(4000, refresh), every(60_000, ghRefresh)], open: new Set(), last: '' }
+  const showing = () => !document.hidden && !el.classList.contains('min') && seen()
+  const tick = async () => {
+    if (win?.el !== el) return
+    if (showing()) await refresh()
+    if (win?.el !== el) return
+    clearTimeout(win.poll) // a wake() during the await: one loop, not two
+    win.poll = setTimeout(tick, win.delay)
+  }
+  // back to fast polling (at once) when you might have changed something: focus, a click in the window, a turn ending
+  const wake = () => { if (win?.el !== el) return; win.delay = FAST; clearTimeout(win.poll); win.poll = setTimeout(tick, 0) }
+  const stop = new AbortController(), signal = stop.signal
+  addEventListener('focus', wake, { signal })
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake() }, { signal })
+  document.addEventListener('turnend', wake, { signal }) // ponytail: nothing dispatches this yet; the session's result handler should
+  el.addEventListener('pointerdown', wake, { signal })
+  el.addEventListener('collapse', wake, { signal })
+  win = { el, meta, body: list, msg, out, gh: setInterval(() => { if (showing()) ghRefresh() }, 60_000), poll: 0, delay: FAST, stop, open: new Set(), last: '' }
   refresh()
+  win.poll = setTimeout(tick, FAST)
   if (!strip.childElementCount) strip.replaceChildren(make('p', 'ghnote', 'Checking GitHub…'))
   ghRefresh()
   if (!r) centerOn(el) // a free spot can be off-screen: bring the new window into view
@@ -59,8 +79,9 @@ export async function refresh() {
   let st: GitState
   try { st = await api<GitState>('git') } catch (e) { return say(`Could not read git status: ${(e as Error).message}`, true) }
   const sig = JSON.stringify(st)
-  if (sig === win.last) return // nothing changed: keep the DOM (and any open diffs) as they are
+  if (sig === win.last) { win.delay = Math.min(win.delay * 2, SLOW); return } // nothing changed: keep the DOM (and any open diffs)
   win.last = sig
+  win.delay = FAST
   draw(st)
 }
 
@@ -136,11 +157,12 @@ function row(f: GitFile, isStaged: boolean) {
   const key = `${isStaged ? 's' : 'w'}:${f.path}`
   const wrap = make('div', 'gfile'), r = make('div', 'grow')
   wrap.dataset.state = word
-  const slash = f.path.lastIndexOf('/')
+  const folder = f.path.endsWith('/') // an untracked folder is one row (git status --untracked-files=normal)
+  const p = folder ? f.path.slice(0, -1) : f.path, slash = p.lastIndexOf('/')
   const name = make('button', 'gname')
   name.type = 'button'
-  name.title = `${f.path} (${word}). Click for the diff.`
-  name.append(make('span', 'gs', letter), make('span', 'gp', f.path.slice(slash + 1)), make('span', 'gd', slash > 0 ? f.path.slice(0, slash + 1) : ''))
+  name.title = folder ? `${f.path} (untracked folder). Stage it to see its files.` : `${f.path} (${word}). Click for the diff.`
+  name.append(make('span', 'gs', letter), make('span', 'gp', p.slice(slash + 1) + (folder ? '/' : '')), make('span', 'gd', slash > 0 ? p.slice(0, slash + 1) : ''))
   const stat = make('span', 's')
   if (a || d) stat.append(make('span', 'a', `+${a}`), ' ', make('span', 'r', `−${d}`))
   const act = iconButton(isStaged ? '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>' : ICON.plus, isStaged ? 'Unstage' : 'Stage', () => op(isStaged ? 'unstage' : 'stage', [f.path]))
@@ -155,6 +177,7 @@ function row(f: GitFile, isStaged: boolean) {
     const { diff } = await api<{ diff: string }>(`git/diff?path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
     wrap.append(unified(diff))
   }
+  if (folder) return wrap
   name.onclick = toggle
   if (win!.open.has(key)) toggle() // keep a diff you opened open across refreshes
   return wrap
@@ -199,7 +222,7 @@ async function writeMessage(b: HTMLButtonElement) {
   b.disabled = true
   const label = b.textContent
   b.textContent = 'Writing…'
-  const r = await gitPost({ op: 'message' }).catch(e => ({ error: (e as Error).message }) as { message?: string; error?: string })
+  const r = await gitPost({ op: 'message' })
   b.textContent = label
   b.disabled = false
   if (r.message) { win!.msg.value = r.message; win!.msg.style.height = 'auto'; win!.msg.style.height = Math.min(160, win!.msg.scrollHeight) + 'px'; say('') }
@@ -310,7 +333,6 @@ function buildForm(st: GhState) {
 }
 
 persist('git', () => (win ? savedRect(win.el) : null), (r: Rect | null) => { if (r) openGit(r) })
-export const gitOpen = () => !!win && items('git').length > 0
 
 // drop the Git window on a card: Claude gets the branch and what's changed (it can run git diff itself for details)
 referable('git', {

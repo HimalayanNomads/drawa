@@ -3,12 +3,13 @@
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
 import { make, ICON, iconButton, project, ping, uuid } from '../lib/dom'
 import { api, post } from '../lib/api'
-import { persist, save, saveSoon } from '../lib/store'
+import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
 import { makeWindow, expand } from '../canvas/window'
 import { dropSession, redraw, link, itemLinks } from '../canvas/graph'
 import { clearInk } from '../canvas/ink'
 import { referable, type Ref } from '../canvas/refs'
+import { removable } from '../canvas/select'
 import type { Pasted } from './images'
 import type { Change } from '../panels/diff'
 import { dropPlans } from '../items/plan'
@@ -70,12 +71,14 @@ persist('cards',
   () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
     // every transcript is fetched at once; they're replayed in order as they arrive
-    const got = new Map(list.filter(c => c.id).map(c => {
+    if (!Array.isArray(list)) throw new Error('not a list')
+    const got = new Map(list.filter(c => c?.id).map(c => {
       const p = api('session?id=' + c.id)
       p.catch(() => {}) // handled when its card is replayed
       return [c.id!, p] as const
     }))
-    for (const c of list) {
+    let bad: unknown // one bad entry doesn't stop the rest; rethrown at the end so the slice is kept as saved
+    for (const c of list) try {
       if (!c.id) {
         if (!c.cid) continue
         const S = newSession({ rect: c, cid: c.cid })
@@ -85,19 +88,23 @@ persist('cards',
         renderCard(S)
         continue
       }
-      await resume({ ...c, id: c.id }, c, { got: got.get(c.id), quiet: true })
+      const p = got.get(c.id)
+      got.delete(c.id) // replayed cards let go of their transcript: a long restore doesn't hold every one till the end
+      await resume({ ...c, id: c.id }, c, { got: p, quiet: true })
       // layouts saved before modes were per card carry one global mode (all.mode)
       const S = cards.find(s => s.sid === c.id)
       if (S) setMode(S, c.mode ?? all.mode ?? 'default', false)
-    }
+    } catch (e) { bad ??= e }
     attach() // pick up sessions still running on the server (in-flight replies, background agents)
-    save()
     loadSessions()
     const f = cards.find(S => S.sid === all.focus)
     if (f) focus(f)
     if (!all.view) fit(false)
+    if (bad) throw bad
   })
 persist('focus', () => cur?.sid ?? undefined)
+// a deleted selection clicks the card's own × (it doesn't ask), and says what closing means
+removable('session', null, 'Sessions are closed; their conversations stay in History.')
 // drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
 referable('session', {
   icon: '◆',
@@ -121,10 +128,11 @@ type ItemLink = { cid: string; id: string; acts: ('made' | 'edit')[] }
 let unplaced: ItemLink[] = []
 persist('itemLinks', () => [...itemLinks(), ...unplaced], (list: ItemLink[]) => {
   const ids = byIds()
-  unplaced = list.filter(l => {
+  unplaced = []
+  each(list, l => {
     const S = cards.find(s => s.cid === l.cid), el = ids.get(l.id)
     if (S && el) l.acts.forEach(a => link(S, el, a))
-    return !(S && el)
+    else unplaced.push(l)
   })
 }, 2)
 

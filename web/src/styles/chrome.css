@@ -35,7 +35,7 @@
 #fontpanel input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
 #fontpanel input:focus{border-color:var(--accent)}
 #fontpanel .preview{margin:8px 0 0;padding:10px;border-radius:var(--r-box);background:var(--rail);font:15px var(--sans);color:var(--ink)}
-#fontpanel .preview code{font:13px var(--mono);padding:1px 5px;border-radius:3px;background:var(--hover)}
+#fontpanel .preview code{font:13px var(--mono);padding:1px 5px;border-radius:var(--r-tag);background:var(--hover)}
 
 #nav{right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow)}
 .zoom{display:flex;align-items:center;gap:2px}
@@ -57,7 +57,8 @@
 
 /* find a window (Ctrl+K): a command-palette box, top center */
 .finder{position:fixed;left:50%;top:72px;z-index:var(--z-menu);transform:translateX(-50%);display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 100px));background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden;animation:enter .15s var(--ease)}
-.finder input{flex:none;height:46px;padding:0 16px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:15px var(--sans);outline:none}
+.finder input{flex:none;height:46px;padding:0 16px;border:0;border-bottom:1px solid var(--line);caret-color:var(--accent);background:none;color:var(--ink);font:15px var(--sans);outline:none}
+.finder input:focus{border-bottom-color:var(--accent)}
 .finder-list{flex:1;min-height:0;overflow:auto;padding:4px}
 .finder-row{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:6px 10px;border-radius:var(--r-ctl);text-align:left}
 .finder-row:hover{background:var(--hover)}

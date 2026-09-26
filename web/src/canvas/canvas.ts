@@ -23,27 +23,45 @@ export function changed(viewOnly = false) {
   requestAnimationFrame(() => { queued = false; const v = !moved; moved = false; listeners.forEach(f => f(v)) })
 }
 
+// The dot grid: a layer one cell bigger than the screen, moved by a transform (the offset modulo a cell), so a pan
+// only moves a composited layer instead of repainting a full-screen background. Its spacing (a repaint) changes
+// only with the zoom; the dots stay 1px at any zoom, as before.
+// ponytail: during a glide the grid shifts by the offset modulo a cell, not the whole way the world flies (a
+// slight drift for .45s); exact at rest. A JS-driven glide would fix it if anyone notices.
+const grid = stage.insertBefore(make('div', 'grid'), world)
+const zLabel = $('#z-label')
+let gridG = 0
 export function apply(glide = false) {
   for (const el of [world, inkworld, stage]) el.classList.toggle('glide', glide)
   if (glide) setTimeout(() => { for (const el of [world, inkworld, stage]) el.classList.remove('glide') }, 460)
   world.style.transform = inkworld.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`
-  const g = 24 * view.k
-  stage.style.backgroundSize = `${g}px ${g}px`
-  stage.style.backgroundPosition = `${view.x}px ${view.y}px`
-  $('#z-label').textContent = Math.round(view.k * 100) + '%'
+  const g = 24 * view.k, mod = (a: number) => ((a % g) + g) % g - g
+  if (g !== gridG) { grid.style.backgroundSize = `${g}px ${g}px`; gridG = g; zLabel.textContent = Math.round(view.k * 100) + '%' }
+  grid.style.transform = `translate(${mod(view.x)}px, ${mod(view.y)}px)`
   changed(true)
 }
+/** For input that fires many times a frame (pointer pans, wheels, trackpads): the view updates now, the DOM once a frame. */
+export const applySoon = perFrame(() => apply())
 
-export function zoomAt(k: number, cx = innerWidth / 2, cy = innerHeight / 2, glide = false) {
+export function zoomView(k: number, cx: number, cy: number) {
   k = clamp(k)
   view.x = cx - (cx - view.x) * (k / view.k)
   view.y = cy - (cy - view.y) * (k / view.k)
   view.k = k
+}
+export function zoomAt(k: number, cx = innerWidth / 2, cy = innerHeight / 2, glide = false) {
+  zoomView(k, cx, cy)
   apply(glide)
 }
 
 /* ---------- items ---------- */
 export interface Rect { x: number; y: number; w: number; h: number; min?: boolean }
+
+/** Where items live: the canvas, and where windows go when lifted off it (sidebar, floating, full view). Items are
+ *  always direct children of these, so listing them never walks into chat logs. */
+const holders: Element[] = [world]
+/** A place items can be moved to off the canvas (canvas/dock.ts, canvas/fullview.ts). */
+export const holder = <T extends Element>(el: T) => { holders.push(el); return el }
 
 /** Make `el` a canvas item of this kind and put it in the world. */
 export function addItem<T extends HTMLElement>(el: T, kind: string): T {
@@ -54,13 +72,12 @@ export function addItem<T extends HTMLElement>(el: T, kind: string): T {
   return el
 }
 /** Every canvas item, including windows pinned to the sidebar (they still belong to the canvas). */
-const HOLDERS = ['#world', '.pinbar', '.floats', '.fullview'] // the canvas, and where windows go when lifted off it
-export const items = (kind?: string) => [...document.querySelectorAll<HTMLElement>(HOLDERS.map(h => `${h} .item${kind ? `[data-kind="${kind}"]` : ''}`).join())]
+export const items = (kind?: string) => holders.flatMap(h => [...h.children]).filter((el): el is HTMLElement =>
+  el.classList.contains('item') && (!kind || (el as HTMLElement).dataset.kind === kind))
 /** Only what's laid out on the canvas itself: placement, fit and the minimap ignore pinned windows. */
-const placed = () => items().filter(onCanvas)
-/** Canvas items by their data-id: one DOM query, for restoring many saved references at once. */
+export const placed = () => [...world.children].filter((el): el is HTMLElement => el.classList.contains('item'))
+/** Canvas items by their data-id: one pass, for restoring many saved references at once. */
 export const byIds = () => new Map(items().map(el => [el.dataset.id!, el]))
-export const byId = (id: string) => items().find(el => el.dataset.id === id)
 /** An id as Claude sees it: UUIDs cut to 8 characters, readable ids (git, f:path, l:card…) kept whole. */
 export const shortId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(id) ? id.slice(0, 8) : id
 /** Where an item appears right now, in canvas units: on the canvas its layout rect, when pinned to the sidebar the
@@ -81,8 +98,8 @@ export const onCanvas = (el: HTMLElement) => el.parentElement === world
 export const place = (el: HTMLElement, x: number, y: number) => { el.style.left = `${Math.round(x)}px`; el.style.top = `${Math.round(y)}px` }
 /** Where an item is and how big it looks right now (edges, minimap, placement). */
 export const rect = (el: HTMLElement): Rect => ({ x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0,
-  // pinned or in full view: its canvas size is kept in its styles (what it gets back on the canvas)
-  ...(!onCanvas(el) ? { w: parseFloat(el.style.width) || el.offsetWidth, h: parseFloat(el.style.height) || el.offsetHeight } : { w: el.offsetWidth, h: el.offsetHeight }) })
+  // pinned or in full view (or placing in bulk): its canvas size is kept in its styles (what it gets back on the canvas)
+  ...(!onCanvas(el) || inBulk ? { w: parseFloat(el.style.width) || el.offsetWidth, h: parseFloat(el.style.height) || el.offsetHeight } : { w: el.offsetWidth, h: el.offsetHeight }) })
 /** Same, but with a collapsed window's expanded height: what saved layouts store. */
 export const savedRect = (el: HTMLElement): Rect => {
   const min = el.classList.contains('min')
@@ -153,7 +170,6 @@ export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => vo
   })
 }
 
-/** Follow one pointer press on `handle`: move(dx, dy) in screen px, end() on release. */
 /** A grip on a right-docked panel's left edge: drag to widen it (min `minW`, and never past the screen). */
 export function edgeGrip(panel: HTMLElement, minW: number, onMove?: () => void, onEnd?: () => void) {
   const grip = panel.appendChild(make('div', 'edge-grip'))
@@ -167,22 +183,27 @@ export function edgeGrip(panel: HTMLElement, minW: number, onMove?: () => void, 
   })
 }
 
-export function track(handle: Element, e: PointerEvent, move: (dx: number, dy: number) => void, end?: () => void) {
-  e.preventDefault()
-  e.stopPropagation()
+/** Follow one pointer press on `handle`: move(dx, dy, ev) in screen px, end(ev) on release or cancel (check
+ *  `ev.type`: a cancelled press's coordinates are 0,0). Options: `keep` leaves the press's default and propagation
+ *  alone (a canvas press should still blur what's focused); `every` sees every move, not one per frame (pen ink). */
+export function track(handle: Element, e: PointerEvent, move: (dx: number, dy: number, ev: PointerEvent) => void, end?: (ev: PointerEvent) => void,
+  o: { keep?: boolean; every?: boolean } = {}) {
+  if (!o.keep) { e.preventDefault(); e.stopPropagation() }
   const sx = e.clientX, sy = e.clientY
   handle.setPointerCapture(e.pointerId)
   let done = false
+  const step = (ev: PointerEvent) => { if (!done) move(ev.clientX - sx, ev.clientY - sy, ev) }
   // once a frame (high-rate mice send several moves per frame); nothing after the end, which applies the last one
-  const mv = perFrame((ev: PointerEvent) => { if (!done) move(ev.clientX - sx, ev.clientY - sy) }) as (ev: Event) => void
+  const mv = (o.every ? step : perFrame(step)) as (ev: Event) => void
   const up = (ev: Event) => {
     if (done) return
-    if (ev.type === 'pointerup') move((ev as PointerEvent).clientX - sx, (ev as PointerEvent).clientY - sy) // where it really ended
+    const p = ev as PointerEvent
+    if (ev.type === 'pointerup') move(p.clientX - sx, p.clientY - sy, p) // where it really ended
     done = true
     handle.removeEventListener('pointermove', mv)
     handle.removeEventListener('pointerup', up)
     handle.removeEventListener('pointercancel', up)
-    end?.()
+    end?.(p)
   }
   handle.addEventListener('pointermove', mv)
   handle.addEventListener('pointerup', up)
@@ -248,18 +269,28 @@ export function resizable(el: HTMLElement, minW: number, minH: number, onResize:
 }
 
 export const hits = (a: Rect, b: Rect, pad = 16) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad
+
+/* ---------- placing new items: a free spot that overlaps nothing ---------- */
+// Bulk mode (a transcript replaying makes many windows at once): the canvas is measured once and every spot handed
+// out is added to that list, instead of reading layout after each window is written. ponytail: a spot handed out
+// but not used (a saved position won) still counts as taken until bulk mode ends.
+let inBulk = false, taken: Rect[] | null = null
+/** Many items are being placed at once (the session owner sets it around a replay): no layout reads per item. */
+export const bulk = (on: boolean) => { inBulk = on; taken = null }
+const occupied = () => (inBulk ? (taken ??= placed().map(rect)) : placed().map(rect))
+const take = (r: Rect) => { taken?.push(r); return r }
 /** Move `r` down (then right) until it overlaps nothing on the canvas. */
 export function freeSpot(r: Rect, step = 56): Rect {
-  const others = placed().map(rect)
+  const others = occupied()
   for (let i = 0; i < 400 && others.some(o => hits(r, o)); i++) r = i % 12 === 11 ? { ...r, x: r.x + r.w + 40, y: r.y - step * 11 } : { ...r, y: r.y + step }
-  return r
+  return take(r)
 }
 /** The free spot nearest to `r` (in any direction) where it overlaps nothing: for things that should land right
  *  by where they came from. Searches rings outward and stops at the first ring with a free spot. */
 export function nearestFree(r: Rect, step = 24, reach = 60): Rect {
   const near = { x: r.x - reach * step, y: r.y - reach * step, w: r.w + 2 * reach * step, h: r.h + 2 * reach * step }
-  const others = placed().map(rect).filter(o => hits(near, o)) // only what the search can bump into
-  if (!others.some(o => hits(r, o))) return r
+  const others = occupied().filter(o => hits(near, o)) // only what the search can bump into
+  if (!others.some(o => hits(r, o))) return take(r)
   for (let ring = 1; ring <= reach; ring++) {
     let best: Rect | null = null, bd = Infinity
     for (let i = -ring; i <= ring; i++) for (let j = -ring; j <= ring; j++) {
@@ -269,13 +300,13 @@ export function nearestFree(r: Rect, step = 24, reach = 60): Rect {
       const c = { ...r, x: r.x + i * step, y: r.y + j * step }
       if (!others.some(o => hits(c, o))) { best = c; bd = d }
     }
-    if (best) return best
+    if (best) return take(best)
   }
   return freeSpot(r)
 }
 /** Just right of everything on the canvas, top-aligned with the current view. */
 export function nextColumn(w: number, h: number): Rect {
-  const all = placed().map(rect)
+  const all = occupied()
   const x = all.length ? Math.max(...all.map(r => r.x + r.w)) + 160 : 0
   const y = all.length ? Math.min(...all.map(r => r.y)) : 0
   return freeSpot({ x, y, w, h })
@@ -313,87 +344,4 @@ export function fit(glide = true, rs = placed().map(rect)) {
   apply(glide)
 }
 
-/* ---------- input: pan by dragging the background, wheel pans, Ctrl/Cmd+wheel (and pinch) zooms ---------- */
-stage.addEventListener('pointerdown', e => {
-  if (e.button > 1 || (e.target as Element).closest('.item, .fullview, .pinbar')) return
-  const sx = e.clientX - view.x, sy = e.clientY - view.y
-  stage.setPointerCapture(e.pointerId)
-  stage.classList.add('panning')
-  const move = (ev: PointerEvent) => { view.x = ev.clientX - sx; view.y = ev.clientY - sy; apply() }
-  const up = () => { stage.classList.remove('panning'); stage.removeEventListener('pointermove', move); stage.removeEventListener('pointerup', up) }
-  stage.addEventListener('pointermove', move)
-  stage.addEventListener('pointerup', up)
-})
-
-/** The wheel's deltas, with Shift+wheel turned sideways (some browsers leave it on deltaY). */
-const deltas = (e: WheelEvent) => (e.shiftKey && !e.deltaX ? { dx: e.deltaY, dy: 0 } : { dx: e.deltaX, dy: e.deltaY })
-/** Is the pointer over something that scrolls (a card's log, a list, a code block)? Then the wheel is its, even
- *  at the end of its content: reaching the bottom of a log shouldn't start panning the canvas. */
-const inScroller = (el: Element | null, e: WheelEvent): boolean => {
-  const { dx, dy } = deltas(e)
-  const vertical = Math.abs(dy) >= Math.abs(dx)
-  for (; el && el !== stage; el = el.parentElement) {
-    const s = el as HTMLElement, cs = getComputedStyle(s)
-    if (vertical ? s.scrollHeight > s.clientHeight + 1 && /auto|scroll/.test(cs.overflowY) : s.scrollWidth > s.clientWidth + 1 && /auto|scroll/.test(cs.overflowX)) return true
-  }
-  return false
-}
-stage.addEventListener('wheel', e => {
-  if ((e.target as Element).closest('.fullview, .floats .win, .pinbar')) return // full view, floating or pinned: its own scrolling only
-  if (e.ctrlKey || e.metaKey) {
-    e.preventDefault()
-    zoomAt(view.k * Math.exp(-e.deltaY * 0.0022), e.clientX, e.clientY)
-    return
-  }
-  if (inScroller(e.target as Element, e)) return // let card logs, lists and code scroll natively
-  e.preventDefault()
-  const { dx, dy } = deltas(e)
-  view.x -= dx
-  view.y -= dy
-  apply()
-}, { passive: false })
-
-/* ---------- minimap: one box per item, colored by data-kind (and data-state, e.g. a busy session) ---------- */
-const mm = $('#mm'), minimap = $('#minimap')
-let mmScale = 1, mmOrigin = { x: 0, y: 0 }
-// the items' boxes are measured and built only when something moved; a pan or zoom only re-scales from these
-let mmItems: { el: HTMLElement; r: Rect; i: HTMLElement }[] = [], mmVp = make('i'), mmKey = ''
-mmVp.dataset.k = 'vp'
-onChange(viewOnly => {
-  if (minimap.offsetParent === null) return // hidden on small screens
-  const W = minimap.clientWidth, H = minimap.clientHeight
-  const vp: Rect = { x: -view.x / view.k, y: -view.y / view.k, w: innerWidth / view.k, h: innerHeight / view.k }
-  if (!viewOnly || !mmItems.length) {
-    mmItems = placed().map(el => {
-      const i = make('i')
-      i.dataset.k = el.dataset.kind!
-      if (el.dataset.state) i.dataset.s = el.dataset.state
-      return { el, r: rect(el), i }
-    })
-    mm.replaceChildren(...mmItems.map(m => m.i), mmVp)
-    mmKey = ''
-  }
-  const all = [...mmItems.map(m => m.r), vp]
-  const x0 = Math.min(...all.map(r => r.x)), y0 = Math.min(...all.map(r => r.y))
-  const x1 = Math.max(...all.map(r => r.x + r.w)), y1 = Math.max(...all.map(r => r.y + r.h))
-  mmScale = Math.min((W - 12) / (x1 - x0), (H - 12) / (y1 - y0))
-  mmOrigin = { x: x0 - (W / mmScale - (x1 - x0)) / 2, y: y0 - (H / mmScale - (y1 - y0)) / 2 }
-  const at = (i: HTMLElement, r: Rect) => { i.style.cssText = `left:${(r.x - mmOrigin.x) * mmScale}px;top:${(r.y - mmOrigin.y) * mmScale}px;width:${Math.max(2, r.w * mmScale)}px;height:${Math.max(2, r.h * mmScale)}px` }
-  const key = `${mmScale},${mmOrigin.x},${mmOrigin.y}`
-  if (key !== mmKey) { mmItems.forEach(m => at(m.i, m.r)); mmKey = key } // the frame shifted: every box moves
-  at(mmVp, vp)
-  for (const m of mmItems) if ((m.el.dataset.state ?? '') !== (m.i.dataset.s ?? '')) m.i.dataset.s = m.el.dataset.state ?? '' // busy/asking sessions light up without moving
-})
-minimap.addEventListener('pointerdown', e => {
-  const b = minimap.getBoundingClientRect()
-  const wx = (e.clientX - b.left) / mmScale + mmOrigin.x, wy = (e.clientY - b.top) / mmScale + mmOrigin.y
-  view.x = innerWidth / 2 - wx * view.k
-  view.y = innerHeight / 2 - wy * view.k
-  apply(true)
-})
-
-$('#z-in').onclick = () => zoomAt(view.k * 1.25, undefined, undefined, true)
-$('#z-out').onclick = () => zoomAt(view.k / 1.25, undefined, undefined, true)
-$('#z-label').onclick = () => zoomAt(1, undefined, undefined, true)
-$('#z-fit').onclick = () => fit()
 addEventListener('resize', () => changed())

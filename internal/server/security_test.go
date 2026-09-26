@@ -52,6 +52,46 @@ func TestRequestChecks(t *testing.T) {
 	}
 }
 
+func TestBrowserGuards(t *testing.T) {
+	h := Handler()
+	do := func(method, path, ctype, fetchSite, body string) *http.Response {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Host = "127.0.0.1:8765"
+		if method == "POST" {
+			req.Header.Set("Origin", "http://127.0.0.1:8765")
+			req.Header.Set("Content-Type", ctype)
+		}
+		if fetchSite != "" {
+			req.Header.Set("Sec-Fetch-Site", fetchSite)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Result()
+	}
+	cid := `"cid":"0b7c1c2e-8f3a-4d1e-9c2b-1a2b3c4d5e6f"`
+	cases := []struct {
+		name                          string
+		method, path, ctype, site, in string
+		want                          int
+	}{
+		{"form-style POST", "POST", "/api/images", "text/plain;charset=UTF-8", "", `{"data":""}`, 415},
+		{"JSON POST", "POST", "/api/images", "application/json", "", `{"data":""}`, 200},
+		{"send, flag as sid", "POST", "/api/send", "application/json", "", `{` + cid + `,"sid":"--help"}`, 400},
+		{"send, flag as model", "POST", "/api/send", "application/json", "", `{` + cid + `,"model":"-p"}`, 400},
+		{"cross-site GET", "GET", "/api/gh", "", "cross-site", "", 403},
+		{"same-origin GET", "GET", "/api/info", "", "same-origin", "", 200},
+	}
+	for _, c := range cases {
+		resp := do(c.method, c.path, c.ctype, c.site, c.in)
+		if resp.StatusCode != c.want {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.want)
+		}
+		if resp.Header.Get("X-Frame-Options") != "DENY" || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			t.Errorf("%s: missing anti-framing headers", c.name)
+		}
+	}
+}
+
 func TestStashRefusesSpecialFiles(t *testing.T) {
 	for _, p := range []string{"/dev/zero", t.TempDir()} {
 		if _, err := images.Stash(p); err == nil {

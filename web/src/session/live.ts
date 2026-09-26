@@ -12,6 +12,8 @@ import { askPermission } from './notify'
 import { canvasCall } from '../canvas/tools'
 import { takeShell } from './shell'
 import { agentsStopped } from '../items/agent'
+import { expireAsks } from './asks'
+import { reload } from './history'
 
 /** Send a message (text, or content blocks like images with a short label for the bubble). Resolves to whether
  *  the server took it. */
@@ -116,29 +118,46 @@ async function read(ctrl: AbortController) {
   try { res = await fetch(`/api/events?page=${page}&c=${c}`, { signal: ctrl.signal }) } catch { return }
   if (!res.ok || !res.body) return
   const rd = res.body.getReader(), dec = new TextDecoder()
-  let buf = ''
+  // the server sends a keep-alive every 15s: this long without a byte is a half-open connection (sleep, network
+  // change) that would otherwise hang here for good. Aborting it reconnects (see listen).
+  let buf = '', idle = 0
+  const watch = () => { clearTimeout(idle); idle = setTimeout(() => ctrl.abort(), 40_000) }
+  watch()
   try {
     for (;;) {
       const { done, value } = await rd.read()
       if (done) return
-      buf += dec.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop()!
+      watch()
+      const got = dec.decode(value, { stream: true }), nl = got.lastIndexOf('\n')
+      if (nl < 0) { buf += got; continue } // a long line coming in pieces: only new text is searched for its end
+      const lines = (buf + got.slice(0, nl)).split('\n')
+      buf = got.slice(nl + 1)
       for (const l of lines) {
         if (!l.trim()) continue // keep-alive
-        let m: Msg
-        try { m = JSON.parse(l) } catch { continue }
-        const S = cards.find(s => s.cid === (m as any)._c)
+        let m: Msg | undefined
+        try { m = JSON.parse(l) } catch { /* still one of the card's lines: counted all the same (see line) */ }
+        const cid = m ? m._c : /^\{"_c":"([^"]+)"/.exec(l)?.[1]
+        const S = cards.find(s => s.cid === cid)
         if (S) line(S, m, l)
       }
     }
-  } catch { /* aborted, or the connection dropped */ }
+  } catch { /* aborted, or the connection dropped */ } finally { clearTimeout(idle) }
 }
 
-/** One line of a card's output. */
-function line(S: Session, m: Msg, raw: string) {
-  if (m.type === 'absent') { S.gone = true; agentsStopped(S); return } // no process: a restored agent can't be running
-  if (m.type === 'attach') {
+/** One line of a card's output. `m` is undefined for a line that isn't valid JSON: it still counts. */
+function line(S: Session, m: Msg | undefined, raw: string) {
+  if (m?.type === 'absent') { // no process: a restored agent can't be running, and a turn this page saw start never ends
+    if (S.gen && !S.gone) ended(S)
+    S.gone = true
+    agentsStopped(S)
+    return
+  }
+  if (m?.type === '_gap') { // lines were dropped before this page read them: the next is `to`; rebuild from the transcript
+    if (typeof m.to === 'number') S.n = m.to
+    if (!S.stale) reload(S)
+    return
+  }
+  if (m?.type === 'attach') {
     S.gone = false
     S.n = m.from
     S.gen = m.gen // the process these line numbers belong to
@@ -148,17 +167,24 @@ function line(S: Session, m: Msg, raw: string) {
     if (m.busy && !S.pending) { S.pending = 1; renderCard(S) }
     return
   }
-  S.n++
-  if (S.stale) return // /clear: the old process's last lines (its new one attaches with another gen)
+  if (!m?._r) S.n++ // re-sent on attach (an ask still open), not one of the process's numbered lines
+  if (!m || S.stale) return // stale: /clear, the old process's last lines (its new one attaches with another gen)
   if (m.type === 'exit') {
     // process ended (closed as idle, crashed, or server restarted): the next message starts a new one resuming this
     // session, and the same stream picks that one up from its first line
-    S.queued.splice(0).forEach(b => b.classList.replace('queued', 'failed'))
-    agentsStopped(S) // its agents were part of it
-    if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S); renderCard(S) }
+    ended(S)
     return
   }
   // a canvas tool call for this page (older ones replayed after a reconnect name an old reader: skip them)
   if (m.type === 'canvas_call') { if (m.to === S.reader) canvasCall(S, m as any); return }
   try { on(S, m) } catch (x) { console.error(x, raw) }
+}
+
+/** The card's process is gone: nothing it was doing will finish, and nothing it asked can be answered. */
+function ended(S: Session) {
+  S.queued.splice(0).forEach(b => b.classList.replace('queued', 'failed'))
+  agentsStopped(S) // its agents were part of it
+  expireAsks(S)
+  if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S) }
+  renderCard(S)
 }

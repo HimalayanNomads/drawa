@@ -1,7 +1,8 @@
 // Mermaid code blocks -> diagrams, plus a zoom/pan view for them.
 import type { Mermaid } from 'mermaid'
 import { $, make, ICON, iconButton, uuid } from '../lib/dom'
-import { persist } from '../lib/store'
+import { persist, each } from '../lib/store'
+import { onRendered } from '../lib/markdown'
 import { openZoom } from '../lib/zoom'
 import { isDark, onTheme } from '../lib/theme'
 import { items, savedRect, dragOut, spotBeside, changed, type Rect } from '../canvas/canvas'
@@ -31,7 +32,7 @@ function load() {
   }))
 }
 
-export async function renderDiagrams(el: HTMLElement) {
+async function renderDiagrams(el: HTMLElement) {
   const nodes = [...el.querySelectorAll('pre > code.language-mermaid')].map(code => {
     const d = make('div', 'mermaid', code.textContent)
     d.dataset.src = code.textContent ?? ''
@@ -73,6 +74,8 @@ export async function renderDiagrams(el: HTMLElement) {
   }
 }
 
+onRendered(renderDiagrams)
+
 /** Rename node ids spelled `graph` (a keyword Mermaid rejects) outside quoted labels, skipping the header line.
  *  ponytail: heuristic; also renames the word in unquoted labels like A[my graph]. */
 const unkeyword = (src: string) => {
@@ -93,11 +96,18 @@ const bareError = (e: unknown) => parseError(e).replace(' Source below.', '')
 const live = new Map<string, string | null>() // mermaid source -> rendered svg (null = rendering or invalid)
 const LIVE_MAX = 50 // streamed diagrams kept drawn; each frame re-renders the tail, so a shown one is still needed
 
+// fence lines counted per reply so far, up to its last line break: each frame only reads the new text
+const fences = new WeakMap<HTMLElement, { at: number; n: number }>()
+const isFence = (line: string) => /^\s*```/.test(line)
+
 /** Called on every streamed frame (after the markdown is re-rendered): diagrams whose code block is complete
  *  show up drawn right away instead of waiting for the whole reply. Full interactivity comes at the end. */
 export function liveDiagrams(el: HTMLElement, text: string) {
+  let f = fences.get(el)
+  if (!f || text.length < f.at) fences.set(el, (f = { at: 0, n: 0 }))
+  for (let nl; (nl = text.indexOf('\n', f.at)) >= 0; f.at = nl + 1) if (isFence(text.slice(f.at, nl))) f.n++
+  const open = (f.n + +isFence(text.slice(f.at))) % 2 === 1 // last fence not closed yet
   const codes = [...el.querySelectorAll<HTMLElement>('pre > code.language-mermaid')]
-  const open = (text.match(/^\s*```/gm)?.length ?? 0) % 2 === 1 // last fence not closed yet
   codes.forEach((code, i) => {
     if (open && i === codes.length - 1) return
     const src = code.textContent ?? ''
@@ -216,7 +226,7 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid()) {
 
 persist('diagrams',
   () => items('diagram').map(n => ({ id: n.dataset.id!, src: n.dataset.src!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
-  (list: (Rect & { src: string; title: string; id?: string })[]) => list.forEach(d => pin(d.src, d.title, d, d.id)))
+  (list: (Rect & { src: string; title: string; id?: string })[]) => each(list, d => pin(d.src, d.title, d, d.id)))
 creatable('diagram', {
   size: () => ({ w: 440, h: 320 }),
   create: async (a, r) => {

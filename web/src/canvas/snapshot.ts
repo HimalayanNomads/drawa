@@ -1,7 +1,8 @@
 // A picture of a canvas window as you see it, with whatever was drawn on it: its own ink (inside it) and canvas
 // strokes that cross it. Used to show Claude drawings: plan feedback, and canvas_read on any item.
 import { rect } from './canvas'
-import { strokesIn, hasInk } from './ink'
+import { hasInk } from './ink'
+import { strokesIn } from './inksel'
 
 /** PNG (base64) of `el` plus the ink on and over it. Without `always`, null when nothing was drawn there.
  *  `skip`: classes of parts left out of the picture (buttons, form fields). */

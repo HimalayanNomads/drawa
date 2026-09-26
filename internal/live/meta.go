@@ -4,31 +4,47 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
-
-	"drawa/internal/config"
 )
 
 var (
-	metaMu  sync.Mutex
-	metaVal map[string]any // nil (or empty) until a real answer has arrived
+	metaMu     sync.Mutex     // held for a whole ask: concurrent callers wait for the one claude process, not spawn more
+	metaVal    map[string]any // nil (or empty) until a real answer has arrived
+	metaFailed time.Time      // the last failed ask: not retried for a minute
 )
 
 // Meta returns models and slash commands/skills, from Claude's own `initialize` answer (asked once, cached).
-// A failed or timed-out attempt isn't cached, so the next call retries.
+// A failed or timed-out attempt is retried after a minute.
 func Meta() map[string]any {
 	metaMu.Lock()
+	defer metaMu.Unlock()
 	if len(metaVal) > 0 {
-		v := metaVal
-		metaMu.Unlock()
-		return v
+		return metaVal
 	}
-	metaMu.Unlock()
-
-	l, err := New("", "", "", "")
-	if err != nil {
+	if time.Since(metaFailed) < time.Minute {
 		return map[string]any{}
 	}
-	defer l.Close()
+	if v := askMeta(); len(v) > 0 {
+		metaVal = v
+		return v
+	}
+	metaFailed = time.Now()
+	return map[string]any{}
+}
+
+func askMeta() map[string]any {
+	l, err := New("", "", "", "")
+	if err != nil {
+		return nil
+	}
+	Mu.Lock()
+	metaLive = l
+	Mu.Unlock()
+	defer func() {
+		l.Close()
+		Mu.Lock()
+		metaLive = nil
+		Mu.Unlock()
+	}()
 	l.Control("initialize", nil)
 	deadline := time.Now().Add(20 * time.Second)
 	pos := 0
@@ -50,38 +66,12 @@ func Meta() map[string]any {
 			if commands == nil {
 				commands = []any{}
 			}
-			result := map[string]any{"models": models, "commands": commands}
-			metaMu.Lock()
-			metaVal = result
-			metaMu.Unlock()
-			return result
+			return map[string]any{"models": models, "commands": commands}
 		}
 		select {
 		case <-Changed.Wait():
 		case <-time.After(time.Second):
 		}
 	}
-	return map[string]any{}
-}
-
-// Reap closes live Claude processes with no traffic for IdleSecs (the next message resumes them).
-func Reap() {
-	for {
-		time.Sleep(60 * time.Second)
-		Mu.Lock()
-		var idle []*Live
-		for cid, l := range Registry {
-			l.mu.Lock()
-			stale := l.exited || time.Since(l.last) > config.IdleSecs*time.Second
-			l.mu.Unlock()
-			if stale {
-				idle = append(idle, l)
-				delete(Registry, cid)
-			}
-		}
-		Mu.Unlock()
-		for _, l := range idle { // outside Mu: a Close can take 5s, and every page's stream takes Mu
-			go l.Close()
-		}
-	}
+	return nil
 }

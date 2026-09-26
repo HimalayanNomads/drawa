@@ -2,14 +2,17 @@
 // a soft highlight drawn with the CSS Custom Highlight API, so the chat's DOM is never touched (streaming and
 // content-visibility keep working). Click marked text to jump to its snippet. A mark is saved with its snippet as
 // host key + exact text + a little text before it, and found again by text search when the host is back.
-import { ping, perFrame } from '../lib/dom'
+import { ping, perFrame, reducedMotion } from '../lib/dom'
 import { tipText, tipAt, hideTip } from '../lib/tooltip'
 import { onChange, onCanvas, centerOn, front } from '../canvas/canvas'
-import { winTitle } from '../canvas/window'
+import { winTitle } from '../canvas/refs'
 
 /** Where a mark lives, saved with the snippet: `h` host key (a data-ink key, or f:<path> for the inspector). */
 export interface MarkSrc { h: string; text: string; before: string }
-interface Mark { snip: HTMLElement; src: MarkSrc | null; host: HTMLElement | null; text: string; before: string; range: Range | null }
+interface Mark { snip: HTMLElement; src: MarkSrc | null; host: HTMLElement | null; text: string; before: string; range: Range | null; miss?: Miss }
+/** A search that found nothing: the host's size then, so the next search waits for new content and reads only that. */
+interface Miss { host: HTMLElement; kids: number; tail: number; n: number }
+const MISSES = 40 // then the mark stays unmarked until reload (the text is gone for good, or reworded)
 const marks: Mark[] = []
 const hl = typeof Highlight === 'function' ? new Highlight() : null
 if (hl) CSS.highlights.set('pinned', hl)
@@ -49,9 +52,10 @@ export function textBefore(el: Node, range: Range) {
 }
 
 /* ---------- finding the text again ---------- */
-/** A range over [start, end) character offsets of el's text. */
-function rangeAt(el: HTMLElement, start: number, end: number): Range | null {
+/** A range over [start, end) character offsets of el's text (from `from`, an element in it, when given). */
+function rangeAt(el: HTMLElement, start: number, end: number, from?: Element): Range | null {
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), r = document.createRange()
+  if (from) w.currentNode = from
   let at = 0, began = false
   for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
     const len = n.data.length
@@ -66,13 +70,22 @@ function resolve(m: Mark) {
   m.range = null
   if (m.src && !m.host?.isConnected) m.host = findHost(m.src.h)
   if (!m.host?.isConnected) return
-  const all = m.host.textContent ?? ''
+  watch(m.host)
+  // after a miss, search again only when the host grew (a row added, or its last row streaming), and only from
+  // its last row seen then: a streaming chat would otherwise re-read its whole text every 250ms
+  const host = m.host, kids = host.childElementCount, tail = host.lastElementChild?.textContent?.length ?? 0
+  const miss = m.miss?.host === host ? m.miss : undefined
+  if (miss && (miss.n >= MISSES || (kids <= miss.kids && tail <= miss.tail))) return
+  const from = miss ? host.children[Math.max(0, miss.kids - 1)] : undefined
+  let all: string
+  if (from) { const r = document.createRange(); r.setStartBefore(from); r.setEnd(host, host.childNodes.length); all = r.toString() }
+  else all = host.textContent ?? ''
   let i = all.indexOf(m.before + m.text)
   // the text around it changed: fall back to the text alone, only when that's unambiguous (long, and there once)
   if (i >= 0) i += m.before.length
   else if (m.text.length >= 20 && (i = all.indexOf(m.text)) >= 0 && all.indexOf(m.text, i + 1) >= 0) i = -1
-  if (i >= 0) m.range = rangeAt(m.host, i, i + m.text.length)
-  watch(m.host)
+  if (i >= 0) m.range = rangeAt(host, i, i + m.text.length, from)
+  m.miss = m.range ? undefined : { host, kids, tail, n: (miss?.n ?? 0) + 1 }
 }
 
 let timer = 0, tries = 0
@@ -132,6 +145,6 @@ addEventListener('click', e => {
   if (!m) return
   hideTip()
   const s = m.snip
-  if (onCanvas(s)) { front(s); centerOn(s) } else s.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) // pinned/floating/full view
+  if (onCanvas(s)) { front(s); centerOn(s) } else s.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }) // pinned/floating/full view
   ping(s)
 })

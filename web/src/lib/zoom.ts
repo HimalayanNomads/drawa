@@ -1,5 +1,5 @@
 // A zoom/pan view for any figure (a diagram's SVG, a picture): wheel or pinch zooms, drag pans, +/-/0 keys.
-import Panzoom, { type PanzoomObject } from '@panzoom/panzoom'
+import type { PanzoomObject } from '@panzoom/panzoom'
 import { $ } from './dom'
 
 const dialog = $<HTMLDialogElement>('#zoom')
@@ -13,7 +13,9 @@ export function openZoom(node: Element) {
   copy.removeAttribute('style') // Mermaid pins a max-width; let it fill the stage instead
   content.replaceChildren(copy)
   dialog.showModal()
-  pz = Panzoom(content, { maxScale: 12, minScale: 0.4, step: 0.35, cursor: 'grab' })
+  import('@panzoom/panzoom').then(({ default: Panzoom }) => { // loaded on first use, off the startup path
+    if (dialog.open && !pz) pz = Panzoom(content, { maxScale: 12, minScale: 0.4, step: 0.35, cursor: 'grab' })
+  }, console.error)
 }
 
 stage.addEventListener('wheel', e => pz?.zoomWithWheel(e), { passive: false })

@@ -16,19 +16,22 @@ import (
 )
 
 type Result struct {
-	Stdout string
-	Stderr string
-	Code   int
+	Stdout    string
+	Stderr    string
+	Code      int
+	Truncated bool // RunLimit: stdout passed its limit, so the process was killed and Stdout holds the first part
 }
 
-// Run runs argv in the project folder -> (result, nil), or (nil, err) if it couldn't be run at all (missing
-// binary, timeout) — a non-zero exit is a normal result, not a Go error, matching Python's subprocess.run.
-func Run(timeout time.Duration, stdin string, argv ...string) (*Result, error) {
-	return RunEnv(timeout, stdin, nil, argv...)
-}
-
-// RunEnv is Run with a replacement environment (nil keeps the current process's).
+// RunEnv runs argv in the project folder with a replacement environment (nil keeps the current process's) ->
+// (result, nil), or (nil, err) if it couldn't be run at all (missing binary, timeout) — a non-zero exit is a
+// normal result, not a Go error, matching Python's subprocess.run.
 func RunEnv(timeout time.Duration, stdin string, env []string, argv ...string) (*Result, error) {
+	return RunLimit(timeout, 0, stdin, env, argv...)
+}
+
+// RunLimit is RunEnv keeping at most limit bytes of stdout (0: no limit): past that the process group is killed
+// and the result is marked Truncated, so a huge output (a big diff) is never buffered whole.
+func RunLimit(timeout time.Duration, limit int, stdin string, env []string, argv ...string) (*Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
@@ -41,9 +44,13 @@ func RunEnv(timeout time.Duration, stdin string, env []string, argv ...string) (
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
+	var errb bytes.Buffer
+	out := &capped{max: limit, full: cancel}
+	cmd.Stdout, cmd.Stderr = out, &errb
 	runErr := cmd.Run()
+	if out.over {
+		return &Result{Stdout: out.String(), Stderr: errb.String(), Code: -1, Truncated: true}, nil
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, fmt.Errorf("timed out after %s", timeout)
 	}
@@ -58,9 +65,36 @@ func RunEnv(timeout time.Duration, stdin string, env []string, argv ...string) (
 	return &Result{Stdout: out.String(), Stderr: errb.String(), Code: code}, nil
 }
 
+// capped is a buffer that stops at max bytes (0: never) and calls full once, when something past that arrives.
+// The buffer is a named field, not embedded: embedding would inherit bytes.Buffer's ReadFrom, which io.Copy
+// prefers over Write, so the cap would never run and a big output would be buffered whole.
+type capped struct {
+	buf  bytes.Buffer
+	max  int
+	over bool
+	full func()
+}
+
+func (c *capped) Write(p []byte) (int, error) {
+	if c.max == 0 {
+		return c.buf.Write(p)
+	}
+	if room := c.max - c.buf.Len(); len(p) > room {
+		c.buf.Write(p[:room])
+		if !c.over {
+			c.over = true
+			c.full()
+		}
+		return len(p), nil
+	}
+	return c.buf.Write(p)
+}
+
+func (c *capped) String() string { return c.buf.String() }
+
 // Haiku is a one-off Claude call (commit messages, PR descriptions) -> (ok, its reply or the error).
 func Haiku(prompt, text string) (bool, string) {
-	r, err := Run(120*time.Second, text, "claude", "-p", "--model", "haiku", prompt)
+	r, err := RunEnv(120*time.Second, text, nil, "claude", "-p", "--model", "haiku", prompt)
 	if err != nil {
 		return false, err.Error()
 	}

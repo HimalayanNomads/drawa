@@ -23,14 +23,14 @@ textarea::placeholder,input::placeholder{color:var(--muted)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.primary:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink))}
-.btn.danger{background:var(--danger);border-color:var(--danger);color:oklch(1 0 0)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}
 .btn.danger:hover{background:color-mix(in oklab,var(--danger) 88%,var(--ink))}
 .btn.on{background:var(--sel);border-color:var(--accent);color:var(--ink)}
 .count{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);font:600 11px/18px var(--sans);text-align:center}
 .count:empty{display:none}
 .seg{display:flex;gap:2px;padding:3px;border-radius:var(--r-ctl);background:var(--hover)}
-.seg button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:3px;font-size:12.5px;font-weight:500;color:var(--muted);transition:background .15s,color .15s}
-.seg button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 2px oklch(0 0 0 / 0.1)}
+.seg button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--r-tag);font-size:12.5px;font-weight:500;color:var(--muted);transition:background .15s,color .15s}
+.seg button.on{background:var(--bg);color:var(--ink);box-shadow:var(--shadow-sm)}
 .none{color:var(--muted);padding:28px 20px;text-align:center;font-size:13px;text-wrap:balance}
 .sep{width:1px;height:22px;background:var(--line)}
 @keyframes enter{from{opacity:.35;transform:translateY(3px)}}

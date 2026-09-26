@@ -3,8 +3,8 @@
 // Three types, each shown and sent to Claude as what it is: output, code (with language and file lines), text.
 // Listens at the page level: the canvas layer doesn't import items.
 import { tipText } from '../lib/tooltip'
-import { make, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip, uuid } from '../lib/dom'
-import { persist } from '../lib/store'
+import { make, button, ICON, copyButton, ping, perFrame, EDITABLE, keepOnScreen, clip, uuid } from '../lib/dom'
+import { persist, each } from '../lib/store'
 import { items, savedRect, dragOut, changed, nearestFree, onCanvas, rect, viewCenter, centerOn, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
 import { referable } from '../canvas/refs'
@@ -135,7 +135,12 @@ function pin(src: Source, mark?: ReturnType<typeof markOf>) {
 }
 
 // select text anywhere: a "Pin to canvas" button appears by the selection
-const pinBtn = document.body.appendChild(make('button', 'btn pinsel'))
+const pinBtn = document.body.appendChild(button('', 'pinsel', () => {
+  if (!picked) return
+  const sel = getSelection()
+  pin(picked, sel?.rangeCount ? markOf(sel.getRangeAt(0)) : null)
+  sel?.removeAllRanges()
+}))
 pinBtn.innerHTML = ICON.pin + 'Pin to canvas'
 pinBtn.hidden = true
 let picked: Source | null = null
@@ -168,12 +173,6 @@ addEventListener('wheel', follow, { passive: true, capture: true })
 addEventListener('pointermove', e => { if (e.buttons) follow() }, { passive: true })
 addEventListener('resize', follow)
 pinBtn.addEventListener('pointerdown', e => e.preventDefault()) // keep the selection while clicking
-pinBtn.onclick = () => {
-  if (!picked) return
-  const sel = getSelection()
-  pin(picked, sel?.rangeCount ? markOf(sel.getRangeAt(0)) : null)
-  sel?.removeAllRanges()
-}
 
 /* ---------- saved, and sendable ---------- */
 const text = (el: HTMLElement) => el.querySelector('.xnode-b')?.textContent ?? ''
@@ -188,7 +187,7 @@ creatable('snippet', {
 })
 persist('snippets',
   () => items('snippet').map(el => ({ id: el.dataset.id!, title: title(el), text: text(el), type: el.dataset.type as SnipType, lang: el.dataset.lang, rect: savedRect(el), src: markSrcOf(el) })),
-  (list: Snippet[]) => list.forEach(snippet))
+  (list: Snippet[]) => each(list, snippet))
 referable('snippet', {
   icon: '$',
   content: el => el.dataset.type === 'code'

@@ -2,7 +2,7 @@
 // full editor in a dialog. (Excalidraw miscomputes pointer positions inside a CSS-scaled parent, so it can't
 // be edited in place on the zoomable canvas.)
 import { $, make, ICON, iconButton, project, confirmBox, uuid } from '../lib/dom'
-import { persist } from '../lib/store'
+import { persist, each } from '../lib/store'
 import { isDark, onTheme } from '../lib/theme'
 import { forget } from '../canvas/graph'
 import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
@@ -78,7 +78,7 @@ async function preview(node: HTMLElement) {
 }
 
 /** PNG (base64) of a sketch, for sending to Claude; null if it's empty. */
-export async function sketchPng(id: string): Promise<string | null> {
+async function sketchPng(id: string): Promise<string | null> {
   const scene = loadScene(id)
   if (!scene.elements.some(e => !e.isDeleted)) return null
   const { exportToBlob } = await excalidraw()
@@ -95,7 +95,7 @@ export async function sketchPng(id: string): Promise<string | null> {
 onTheme(() => items('sketch').forEach(preview)) // previews are drawn in the theme's colors
 persist('sketches',
   () => items('sketch').map(n => ({ id: n.dataset.id!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
-  (list: (Rect & { id: string; title: string })[]) => list.forEach(s => sketch({ id: s.id, title: s.title, rect: s })))
+  (list: (Rect & { id: string; title: string })[]) => each(list, s => sketch({ id: s.id, title: s.title, rect: s })))
 referable('sketch', {
   icon: '✎',
   name: 'whiteboard',

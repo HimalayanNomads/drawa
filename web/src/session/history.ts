@@ -3,11 +3,13 @@ import { api, type SavedMessage, type SessionInfo } from '../lib/api'
 import { $, make, ago, quietPings, button } from '../lib/dom'
 import { enhanceMarked } from '../lib/markdown'
 import { save } from '../lib/store'
-import { cards, newSession, focus, renderCard, pinToBottom } from './session'
+import { cards, newSession, focus, renderCard, pinToBottom, type Session } from './session'
 import { replay } from './stream'
-import { agentsStopped } from '../items/agent'
-import { centerOn, type Rect } from '../canvas/canvas'
-import { redraw } from '../canvas/graph'
+import { agentsStopped, dropAgents } from '../items/agent'
+import { dropPlans } from '../items/plan'
+import { clearInk } from '../canvas/ink'
+import { centerOn, bulk, type Rect } from '../canvas/canvas'
+import { redraw, dropSession } from '../canvas/graph'
 
 export async function loadSessions() {
   let list: SessionInfo[]
@@ -45,45 +47,74 @@ export async function resume(s: { id: string; title: string; cid?: string }, at?
   const S = blank || newSession(at ? { rect: at, cid: s.cid } : {})
   S.sid = s.id
   S.title = s.title.slice(0, 48)
-  S.log.replaceChildren(make('p', 'none', 'Loading session…'))
-  renderCard(S)
-  try {
-    const got = await (o.got ?? api('session?id=' + s.id)) as SavedMessage[] | { missing: true }
-    if (!Array.isArray(got)) throw new Error('No such file') // the server's newer answer for "no transcript yet"
-    const msgs = got
-    S.log.replaceChildren()
-    // one pass without layout reads (pinning to the bottom, pings, header updates), then settle once
-    S.replaying = true
-    quietPings(true)
-    const live = S.log, older = make('div') as HTMLDivElement
-    try {
-      // long sessions: only the newest messages go into the page; older ones are still replayed (so the Files
-      // window, terminal and plans are complete) but built off-page, and shown when you ask for them
-      // sub-agents' messages (their ids, what they did) go to their windows, not the log: counted apart
-      const own = (m: SavedMessage & { parent?: string }) => !m.parent
-      const main = msgs.filter(own), agents = msgs.filter(m => !own(m))
-      let cut = Math.max(0, main.length - SHOWN)
-      while (cut > 0 && main[cut].role !== 'user') cut--
-      agents.filter(m => (m as { aid?: string }).aid).forEach(m => replay(S, m)) // ids first: replayed SendMessage calls need them
-      S.log = older
-      main.slice(0, cut).forEach(m => replay(S, m))
-      S.log = live
-      main.slice(cut).forEach(m => replay(S, m))
-      agents.filter(m => !(m as { aid?: string }).aid).forEach(m => replay(S, m)) // after: their Agent calls made their windows
-    } finally { S.log = live; S.replaying = false; quietPings(false) }
-    if (older.childElementCount) live.prepend(earlier(live, older))
-    if (S.gone) agentsStopped(S) // the stream said so before the transcript arrived
-    renderCard(S) // skipped while replaying: its state (a background agent still running) and header
-    pinToBottom(S)
-  } catch (e) {
-    // restored mid-way through its first reply: the CLI hasn't written the transcript yet, but the live process has
-    // everything since it started (live.ts reads from line 0 when n is 0). ponytail: a dead process leaves it empty.
-    if (at && s.cid && /No such file|^404$/.test((e as Error).message)) { S.log.replaceChildren(); S.n = 0 }
-    else S.log.replaceChildren(make('div', 'err', `Could not load this session: ${(e as Error).message}`))
-  }
+  await fill(S, o.got ?? api('session?id=' + s.id), !!(at && s.cid))
   redraw()
   if (!at) centerOn(S.card)
   if (o.quiet) return
   save()
   loadSessions()
+}
+
+/** Lines of the card's process were dropped before this page read them (the stream said `_gap`): rebuild its log
+ *  from the transcript. ponytail: a reply still streaming shows from its next message on; replaying the live buffer's
+ *  open message too would need the server to send it along. */
+export async function reload(S: Session) {
+  if (!S.sid) return
+  dropSession(S)
+  dropPlans(S)
+  dropAgents(S)
+  clearInk(S.log)
+  Object.assign(S, { blocks: {}, tools: {} })
+  const asks = [...S.log.querySelectorAll('.ask:not(.done)')] // still waiting on you: not in the transcript
+  await fill(S, api('session?id=' + S.sid), false)
+  S.log.append(...asks)
+  redraw()
+}
+
+/** Put a transcript in the card. `restored`: a card reopened on reload, whose transcript may not be written yet. */
+async function fill(S: Session, fetched: Promise<unknown>, restored: boolean) {
+  S.log.replaceChildren(make('p', 'none', 'Loading session…'))
+  renderCard(S)
+  let msgs: SavedMessage[] | undefined
+  try {
+    const got = await fetched
+    if (Array.isArray(got)) msgs = got // else an older server's 200 {missing: true}
+  } catch (e) {
+    const x = e as Error & { body?: { missing?: boolean }; status?: number }
+    if (!x.body?.missing && x.status !== 404) { S.log.replaceChildren(make('div', 'err', `Could not load this session: ${x.message}`)); return }
+  }
+  if (!msgs) { // no transcript yet
+    // restored mid-way through its first reply: the CLI hasn't written the transcript yet, but the live process has
+    // everything since it started (live.ts reads from line 0 when n is 0). ponytail: a dead process leaves it empty.
+    if (restored) { S.log.replaceChildren(); S.n = 0 }
+    else S.log.replaceChildren(make('div', 'err', 'Could not load this session: its transcript isn\u2019t written yet.'))
+    return
+  }
+  S.log.replaceChildren()
+  // one pass without layout reads (pinning to the bottom, pings, header updates), then settle once
+  S.replaying = true
+  quietPings(true)
+  bulk(true) // new windows (agents) get spots from one measurement of the canvas, not one per window
+  const live = S.log, older = make('div') as HTMLDivElement
+  try {
+    // long sessions: only the newest messages go into the page; older ones are still replayed (so the Files
+    // window, terminal and plans are complete) but built off-page, and shown when you ask for them
+    // sub-agents' messages (their ids, what they did) go to their windows, not the log: counted apart
+    const own = (m: SavedMessage & { parent?: string }) => !m.parent
+    const main = msgs.filter(own), agents = msgs.filter(m => !own(m))
+    let cut = Math.max(0, main.length - SHOWN)
+    while (cut > 0 && main[cut].role !== 'user') cut--
+    agents.filter(m => (m as { aid?: string }).aid).forEach(m => replay(S, m)) // ids first: replayed SendMessage calls need them
+    S.log = older
+    main.slice(0, cut).forEach(m => replay(S, m))
+    S.log = live
+    main.slice(cut).forEach(m => replay(S, m))
+    agents.filter(m => !(m as { aid?: string }).aid).forEach(m => replay(S, m)) // after: their Agent calls made their windows
+  } catch (e) {
+    live.append(make('div', 'err', `Could not load all of this session: ${(e as Error).message}`))
+  } finally { S.log = live; S.replaying = false; quietPings(false); bulk(false) }
+  if (older.childElementCount) live.prepend(earlier(live, older))
+  if (S.gone) agentsStopped(S) // the stream said so before the transcript arrived
+  renderCard(S) // skipped while replaying: its state (a background agent still running) and header
+  pinToBottom(S)
 }

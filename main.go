@@ -11,9 +11,11 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -37,45 +39,12 @@ const banner = `
 ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝
 `
 
-// lineDelay paces startup output so it reads as a sequence instead of dumping everything at once.
-const lineDelay = 500 * time.Millisecond
-
-// printLines prints each line on its own, pausing lineDelay between them.
-func printLines(lines ...string) {
-	for _, l := range lines {
-		fmt.Println(l)
-		time.Sleep(lineDelay)
-	}
-}
-
 const (
 	green  = "\033[32m"
 	yellow = "\033[33m"
 	red    = "\033[31m"
 	reset  = "\033[0m"
 )
-
-// spinFrames renders frame-by-frame in place (each call to render overwrites the last) for d.
-func spinFrames(d time.Duration, render func(frame rune)) {
-	frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-	for deadline, i := time.Now().Add(d), 0; time.Now().Before(deadline); i++ {
-		render(frames[i%len(frames)])
-		time.Sleep(90 * time.Millisecond)
-	}
-}
-
-// spin shows a brief indeterminate loader (motion, not a percentage) for d, then clears the line.
-func spin(d time.Duration, label string) {
-	spinFrames(d, func(f rune) { fmt.Printf("\r%c %s", f, label) })
-	fmt.Print("\r" + strings.Repeat(" ", len(label)+2) + "\r")
-}
-
-// spinStatus spins for d, then resolves in place into a colored symbol: how a check "finishes" once its result
-// is already known (the checks themselves are near-instant; the spin is purely so it doesn't just flash).
-func spinStatus(d time.Duration, label, color, symbol string) {
-	spinFrames(d, func(f rune) { fmt.Printf("\r%c %s", f, label) })
-	fmt.Printf("\r%s%s%s %s\n", color, symbol, reset, label)
-}
 
 // preflight checks the external tools this app shells out to and prints a pass/fail line for each. claude is
 // required (every card is a `claude` process); git and gh are optional (the Git/GitHub windows and their
@@ -116,9 +85,7 @@ func preflight() {
 	} else if missing {
 		color, symbol = yellow, "!" // git and/or gh missing: degraded, but drawa still runs
 	}
-	spinStatus(900*time.Millisecond, "Checking prerequisites...", color, symbol)
-	printLines(lines...)
-	fmt.Println()
+	fmt.Printf("%s%s%s Prerequisites\n%s\n\n", color, symbol, reset, strings.Join(lines, "\n"))
 	if !ok {
 		os.Exit(1)
 	}
@@ -157,18 +124,6 @@ func mtimeSnapshot() map[string]time.Time {
 	return m
 }
 
-func mapsEqual(a, b map[string]time.Time) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if !b[k].Equal(v) {
-			return false
-		}
-	}
-	return true
-}
-
 func rebuild() error {
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
 		return err
@@ -189,7 +144,7 @@ func restartOnChange() {
 	for {
 		time.Sleep(time.Second)
 		now := mtimeSnapshot()
-		if mapsEqual(seen, now) {
+		if maps.EqualFunc(seen, now, time.Time.Equal) {
 			continue
 		}
 		seen = now
@@ -198,11 +153,7 @@ func restartOnChange() {
 			continue
 		}
 		fmt.Println("server changed, restarting")
-		live.Mu.Lock()
-		for _, lv := range live.Registry { // exec would orphan them; the page resumes each session on its next message
-			lv.Kill()
-		}
-		live.Mu.Unlock()
+		live.KillAll() // exec would orphan them; the page resumes each session on its next message
 		exe, err := filepath.Abs(binPath)
 		if err != nil {
 			continue
@@ -243,6 +194,13 @@ func main() {
 		}
 	}
 	go restartOnChange()
+	go func() { // each claude runs in its own process group, so Ctrl+C in this terminal no longer reaches it
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+		<-sig
+		live.KillAll()
+		os.Exit(130)
+	}()
 	go live.Reap()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
 	fmt.Printf("Opening drawa UI for %s\n\n", config.Root)
@@ -252,12 +210,11 @@ func main() {
 		for _, ip := range config.LocalIPs() {
 			fmt.Printf("  - Network: http://%s:%d/?token=%s\n", ip, config.Port, config.NetToken)
 		}
-		fmt.Println("\nThat Network link's token is only good for this run. Anyone who has it can run commands as you, so don't share it beyond people you trust on this network.")
+		fmt.Println("\nThat Network link's token lasts until you stop drawa (restarts after code changes keep it), and a browser that opens the link keeps it in a cookie. Anyone who has it can run commands as you, so don't share it beyond people you trust on this network.")
 		addr = fmt.Sprintf(":%d", config.Port) // every interface, not just loopback; config.Hosts still keeps DNS rebinding and outside hosts out
 	} else {
 		fmt.Println()
 	}
-	spin(1400*time.Millisecond, "Starting drawa...")
 	if os.Getenv("DRAWA_OPENED") == "" { // set before exec, so self-restarts don't open another tab
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)

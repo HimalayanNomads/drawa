@@ -1,8 +1,11 @@
 // Canvas items you can reference in a message (type @ in a card, or drop the item onto a card's message box).
 // Each item kind registers how it's labelled and what Claude receives for it (text, or text plus an image).
 import { items } from './canvas'
-import { winTitle } from './window' // used only inside functions (window.ts imports this module)
 import { imageBlock } from '../lib/blobs'
+
+/** A window's title as shown on its tab ('' for items without one). Here, not in window.ts, so this registry
+ *  imports nothing that imports it back: kinds can call referable() at their top level. */
+export const winTitle = (el: Element) => el.querySelector('.win-h .t')?.textContent ?? ''
 
 /** What Claude receives: text, maybe an image (base64; PNG unless `imageType` says otherwise). */
 interface Content { text: string; image?: string; imageType?: string }

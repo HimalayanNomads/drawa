@@ -10,7 +10,7 @@
 #ipath{flex:1;min-width:0;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono);color:var(--muted)}
 #ipath b{color:var(--ink);font-weight:500}
 #inspector>.bar:first-child{border-bottom:0;padding-bottom:4px}
-#inspector .edge-grip{position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none;z-index:2}
+#inspector .edge-grip{position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none;z-index:var(--z-over)}
 #inspector .edge-grip:hover,#inspector.resizing .edge-grip{background:linear-gradient(90deg,var(--accent) 2px,transparent 2px)}
 #inspector.resizing{user-select:none}
 
@@ -43,17 +43,18 @@
 #tree .file{padding-left:24px}
 #tree .file.cur{background:var(--sel);color:var(--ink)}
 #tree .mod::after{content:"M";margin-left:auto;padding-left:8px;font:500 11px var(--mono);color:var(--edit)}
+#tree .more{display:flex;align-items:center;height:26px;padding:0 8px 0 24px;font-size:12.5px;color:var(--muted)} /* a huge folder: what the server didn't list */
 
 /* changes: one diff block per edit */
 .chg{border-bottom:1px solid var(--line)}
-.chg .h{display:flex;align-items:center;gap:10px;min-height:38px;padding:6px 12px;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+.chg .h{display:flex;align-items:center;gap:10px;min-height:38px;padding:6px 12px;position:sticky;top:0;z-index:var(--z-sticky);background:var(--bg);border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
 .chg .h:hover{background:var(--hover)}
 .chg .h::before{content:"";flex:none;width:5px;height:5px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(45deg);transition:transform .15s var(--ease)}
 .chg.folded .h::before{transform:rotate(-45deg)}
 .chg.folded .diff{display:none}
 .chg.folded .h{border-bottom:0}
 .chg .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--ink-2)}
-.chg .who b{font:500 11px var(--mono);margin-right:6px;padding:1px 6px;border-radius:2px;text-transform:uppercase;color:var(--edit);background:color-mix(in oklab,var(--edit) 14%,transparent)}
+.chg .who b{font:500 11px var(--mono);margin-right:6px;padding:1px 6px;border-radius:var(--r-tag);text-transform:uppercase;color:var(--edit);background:color-mix(in oklab,var(--edit) 14%,transparent)}
 .chg .who b.write{color:var(--write);background:color-mix(in oklab,var(--write) 14%,transparent)}
 .chg .stat{font:12px var(--mono);white-space:nowrap}.stat .a{color:var(--add)}.stat .r{color:var(--del)}
 .chg .state{font-size:11.5px;font-weight:500;color:var(--muted)}
@@ -71,7 +72,7 @@
 .diff .sep::before{content:none}
 
 /* the file itself */
-.vhead{display:flex;align-items:center;justify-content:flex-end;gap:8px;height:44px;padding:0 8px;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--line)}
+.vhead{display:flex;align-items:center;justify-content:flex-end;gap:8px;height:44px;padding:0 8px;position:sticky;top:0;z-index:var(--z-sticky);background:var(--bg);border-bottom:1px solid var(--line)}
 .src{display:grid;grid-template-columns:auto 1fr;font:12px/19px var(--mono)}
 .src pre{margin:0;padding:10px 0;font:inherit}
 .src .ln{padding:10px 12px 10px 14px;text-align:right;color:var(--muted);opacity:.7;user-select:none;border-right:1px solid var(--line)}
@@ -86,7 +87,7 @@
 
 /* pinned windows: a sidebar on the right; windows stack and share its height, each keeping its folder tab */
 .pinbar{position:fixed;z-index:var(--z-float);top:64px;right:12px;bottom:12px;width:420px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:12px;padding-left:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
-.pinbar>.edge-grip{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;touch-action:none;z-index:2}
+.pinbar>.edge-grip{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;touch-action:none;z-index:var(--z-over)}
 .pinbar>.edge-grip:hover,.pinbar.resizing>.edge-grip{background:linear-gradient(90deg,var(--accent) 2px,transparent 2px)}
 .pinbar.resizing{user-select:none}
 .pinbar.compact{bottom:auto;width:auto!important;align-items:flex-end;padding-left:0}
@@ -100,13 +101,13 @@ body.has-dock #hint{display:none}
 
 /* full view: one window lifted out to fill the screen, above the canvas; the dimmed margin closes it */
 .fullview{position:fixed;inset:0;padding:64px 12px 12px;cursor:auto;background:color-mix(in oklab,var(--canvas) 72%,transparent);animation:enter .15s var(--ease)}
-.fullview>.win{position:relative;left:auto!important;top:auto!important;width:100%!important;height:100%!important;z-index:auto!important;--glow:var(--shadow-lift)}
+.fullview>.win{position:relative;left:auto!important;top:auto!important;width:100%!important;height:100%!important;z-index:auto!important}
 .fullview>.win>.grip{display:none}
 .fullview>.win>.win-h{cursor:default}
 
 /* stuck to the screen: floats where you put it while the canvas moves underneath; drag its tab to move it */
 .floats{position:fixed;inset:0;pointer-events:none}
-.floats>.win{position:fixed;left:var(--fx)!important;top:var(--fy)!important;z-index:var(--fz,1)!important;pointer-events:auto}
+.floats>.win{position:fixed;left:var(--fx)!important;top:var(--fy)!important;z-index:var(--fz,var(--z-sticky))!important;pointer-events:auto}
 .floats>.win>.win-h{cursor:grab}
 .floats>.win.dragging>.win-h{cursor:grabbing}
 body.has-full :is(#nav,#hint){display:none} /* a window in full view fills the screen: nothing to navigate, and it would cover the message box */

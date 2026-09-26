@@ -3,7 +3,7 @@
 // it again. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with canvas_create /
 // canvas_update (kind "doc").
 import { make, ICON, iconButton, clip, uuid } from '../lib/dom'
-import { persist } from '../lib/store'
+import { persist, each } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { onTheme } from '../lib/theme'
 import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
@@ -100,4 +100,4 @@ creatable('doc', {
 // (IntersectionObserver) if boot slows with dozens of diagram-heavy docs
 persist('docs',
   () => items('doc').map((el): Saved => ({ id: el.dataset.id!, title: winTitle(el), text: el.dataset.src ?? '', rect: savedRect(el) })),
-  (list: Saved[]) => list.forEach(d => doc(d)))
+  (list: Saved[]) => each(list, d => doc(d)))

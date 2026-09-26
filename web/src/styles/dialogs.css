@@ -1,7 +1,7 @@
 /* Modal dialogs: confirmation, diagram zoom, sketch editor. */
 dialog{padding:0;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);color:var(--ink);box-shadow:var(--shadow-lift)}
 dialog[open]{animation:enter .2s var(--ease)}
-dialog::backdrop{background:oklch(0 0 0 / 0.42)}
+dialog::backdrop{background:var(--backdrop)}
 dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--line)}
 
 #confirm{width:min(420px,calc(100vw - 32px));padding:20px 20px 16px}

@@ -1,9 +1,12 @@
 /* The canvas: stage, world transform, edges, ink, minimap. */
 #stage{position:fixed;inset:0;overflow:clip; /* not hidden: a hidden overflow can still be scrolled by focus() or scrollIntoView on an off-screen window, which shifts the canvas under the pen */ cursor:default;touch-action:none;
-  background-color:var(--canvas);background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.3px);background-size:24px 24px}
+  background-color:var(--canvas)}
+/* the dot grid: its own layer a cell (at most 48px) bigger than the screen, moved by a transform (canvas.ts apply) */
+#stage>.grid{position:absolute;left:0;top:0;width:calc(100% + 96px);height:calc(100% + 96px);pointer-events:none;will-change:transform;
+  background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.3px);background-size:24px 24px}
 #stage.hand{cursor:grab}
 #stage.panning{cursor:grabbing} /* Hand mode, Space held, or the middle button */
-#stage.glide{transition:background-position .45s var(--ease),background-size .45s var(--ease)}
+#stage.glide>.grid{transition:transform .45s var(--ease),background-size .45s var(--ease)}
 #world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;isolation:isolate}
 #world.glide{transition:transform .45s var(--ease)}
 .item{position:absolute}
@@ -23,7 +26,7 @@
 .edge.live{stroke-width:2.25;stroke-dasharray:7 6;animation:flow .7s linear infinite;opacity:1}
 @keyframes flow{to{stroke-dashoffset:-13}}
 /* edge labels: a flat tag in the edge's color, opaque so the line doesn't run through the text */
-.elabel{position:absolute;transform:translate(-50%,-50%);padding:1px 7px;border-radius:2px;background:color-mix(in oklab,currentColor 16%,var(--canvas));font:600 10.5px/16px var(--sans);letter-spacing:.02em;white-space:nowrap;pointer-events:none;z-index:1}
+.elabel{position:absolute;transform:translate(-50%,-50%);padding:1px 7px;border-radius:var(--r-tag);background:color-mix(in oklab,currentColor 16%,var(--canvas));font:600 10.5px/16px var(--sans);letter-spacing:.02em;white-space:nowrap;pointer-events:none;z-index:var(--z-sticky)}
 .elabel.plan,.elabel.made{color:var(--accent)}.elabel.agent{color:var(--write)}.elabel.ref{color:var(--ink-2)}.elabel.read{color:var(--read)}.elabel.edit{color:var(--edit)}.elabel.write{color:var(--write)}.elabel.run{color:var(--run)}
 
 /* ink: drawn above every canvas item; the capture layer takes the pointer only in draw mode */
@@ -32,7 +35,7 @@
 #ink{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #ink path{pointer-events:none}
 /* a window's own ink: overlay inside it (scroll containers carry it along with their content) */
-.ink-local{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:3}
+.ink-local{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:var(--z-ink)}
 .ink-local path{pointer-events:none}
 .ink-local.ink-fit{width:100%;height:100%}
 /* something that scales with its window (image, diagram, sketch): a box of the content's own shape, as big as fits */
@@ -60,7 +63,7 @@ body.drawing.erasing #stage .ink-shape path{pointer-events:visiblePainted}
 body.drawing:is(.erasing,.texting) #stage .ink-text{pointer-events:bounding-box}
 body.erasing .ink-shape:hover{opacity:.45}
 .shape-sel{position:fixed;z-index:var(--z-float);pointer-events:none;outline:1px dashed var(--accent);outline-offset:3px}
-.shape-sel .h{position:absolute;width:9px;height:9px;margin:-4.5px;border:1.5px solid var(--accent);border-radius:1px;background:var(--bg);pointer-events:auto}
+.shape-sel .h{position:absolute;width:9px;height:9px;margin:-4.5px;border:1.5px solid var(--accent);border-radius:var(--r-hair);background:var(--bg);pointer-events:auto}
 .shape-sel .h[data-c="0"]{left:-3px;top:-3px;cursor:nwse-resize}.shape-sel .h[data-c="1"]{left:calc(100% + 3px);top:-3px;cursor:nesw-resize}
 .shape-sel .h[data-c="2"]{left:calc(100% + 3px);top:calc(100% + 3px);cursor:nwse-resize}.shape-sel .h[data-c="3"]{left:-3px;top:calc(100% + 3px);cursor:nesw-resize}
 body.drawing .shape-sel{display:none}
@@ -69,14 +72,12 @@ body.drawing .shape-sel{display:none}
 body.erasing #ink path{pointer-events:visiblePainted;stroke:transparent;stroke-width:14px;vector-effect:non-scaling-stroke}
 body.erasing #ink path:hover{opacity:.45}
 
-/* minimap: one box per item, in its kind's color */
-#minimap{position:relative;width:200px;height:128px;border-radius:2px;background:var(--canvas);overflow:hidden;cursor:pointer}
-#mm i{position:absolute;display:block;border-radius:1px;background:color-mix(in oklab,var(--kind,var(--line-2)) 60%,transparent)}
-#mm i[data-k=session]{--kind:color-mix(in oklab,var(--ink) 50%,transparent)}
-#mm i[data-k=session][data-s=busy]{--kind:var(--accent)}#mm i[data-k=session][data-s=asking]{--kind:var(--run)}
-#mm i[data-k=run]{--kind:var(--run)}#mm i[data-k=diagram]{--kind:var(--write)}#mm i[data-k=sketch]{--kind:var(--run)}
-#mm i[data-k=plan]{--kind:var(--accent)}#mm i[data-k=files]{--kind:var(--edit)}#mm i[data-k=git]{--kind:var(--k-git)}#mm i[data-k=snippet]{--kind:var(--k-snippet)}#mm i[data-k=image]{--kind:var(--k-image)}#mm i[data-k=github]{--kind:var(--k-github)}#mm i[data-k=agent]{--kind:var(--k-agent)}#mm i[data-k=doc]{--kind:var(--k-doc)}#mm i[data-k=note]{--kind:var(--ink-2)}
-#mm i[data-k=file][data-s=edit]{--kind:var(--edit)}#mm i[data-k=file][data-s=write]{--kind:var(--write)}#mm i[data-k=file][data-s=fail]{--kind:var(--danger)}
+/* minimap: one box per item, in its kind's color (the kind map above); only states change it here */
+#minimap{position:relative;width:200px;height:128px;border-radius:var(--r-tag);background:var(--canvas);overflow:hidden;cursor:pointer}
+#mm i{position:absolute;display:block;border-radius:var(--r-hair);background:color-mix(in oklab,var(--kind,var(--line-2)) 60%,transparent)}
+#mm i[data-kind=session]{--kind:color-mix(in oklab,var(--ink) 50%,transparent)} /* idle: neutral, so a working one stands out */
+#mm i[data-kind=session][data-s=busy]{--kind:var(--accent)}#mm i[data-kind=session][data-s=asking]{--kind:var(--run)}
+#mm i[data-kind=file][data-s=edit]{--kind:var(--edit)}#mm i[data-kind=file][data-s=write]{--kind:var(--write)}#mm i[data-kind=file][data-s=fail]{--kind:var(--danger)}
 #mm i[data-k=vp]{background:none;border:1.5px solid var(--accent)}
 
 /* your arrows between items (Draw mode's Arrow tool); colored like the pen */
@@ -87,14 +88,14 @@ body.erasing #ink path:hover{opacity:.45}
 .ulink .hit{fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer}
 .ulink.on .line{stroke-width:3}
 .ulink.drafting .line{stroke-dasharray:6 5}
-.ulabel{position:absolute;transform:translate(-50%,-50%);z-index:2;max-width:220px;padding:1px 7px;border-radius:2px;background:var(--canvas);font:500 12px/18px var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.ulabel{position:absolute;transform:translate(-50%,-50%);z-index:var(--z-over);max-width:220px;padding:1px 7px;border-radius:var(--r-tag);background:var(--canvas);font:500 12px/18px var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .ulabel.on{outline:1px solid var(--accent);cursor:text;min-width:60px;background:var(--bg);text-overflow:clip}
 .ulabel.on:empty::before{content:attr(data-placeholder);color:var(--muted)}
 /* the small floating × of an arrow, a file node and a note: one look, each placed its own way */
 :is(.udel,.fdel,.ndel){position:absolute;width:22px;height:22px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);box-shadow:var(--shadow)}
 :is(.udel,.fdel,.ndel) svg{width:11px;height:11px}
 :is(.udel,.fdel,.ndel):hover{color:var(--danger)}
-.udel{z-index:3;margin:-11px 0 0 0;transform:translateX(calc(60px))}
+.udel{z-index:var(--z-ink);margin:-11px 0 0 0;transform:translateX(calc(60px))}
 
 /* selection (canvas/select.ts): windows show it on their outline and tab, bare nodes (notes, files) with an outline */
 .win.selected{--edge:var(--accent)}

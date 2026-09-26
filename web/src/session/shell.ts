@@ -27,7 +27,7 @@ export async function runShell(S: Session, cmd: string) {
   head.append(stop)
   const run: Run = { cmd, out: '', code: null, box }
   try {
-    const res = await fetch('/api/shell', { method: 'POST', body: JSON.stringify({ cmd }), signal: ctrl.signal })
+    const res = await fetch('/api/shell', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd }), signal: ctrl.signal })
     if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`)
     const rd = res.body.getReader(), dec = new TextDecoder()
     let raw = ''

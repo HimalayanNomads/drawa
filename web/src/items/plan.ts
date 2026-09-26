@@ -12,7 +12,7 @@ import { link, savedPos, forget } from '../canvas/graph'
 import { setDrawing, clearInk } from '../canvas/ink'
 import { snapshot } from '../canvas/snapshot'
 import { referable } from '../canvas/refs'
-import type { Session } from '../session/session'
+import { renderCard, type Session } from '../session/session'
 import { send } from '../session/live'
 import { setMode } from '../session/mode'
 
@@ -203,8 +203,24 @@ async function reject(p: Plan) {
   p.done = true
   setState(p, 'Rejected', 'rejected')
   const message = 'The user rejected this plan. Do not implement it or make any changes; stop and wait for their next instruction.'
-  if (req) await post('respond', { cid: p.S.cid, request_id: req, allow: false, message }).catch(() => {})
-  else send(p.S, 'Rejected the plan: don\u2019t implement it. Wait for my next instruction.')
+  if (req) await respond(p, req, { allow: false, message })
+  else if (!await send(p.S, 'Rejected the plan: don\u2019t implement it. Wait for my next instruction.')) unanswered(p)
+}
+
+/** Answer Claude's waiting request. Resolves to whether it got there (if not, the plan waits for you again). */
+function respond(p: Plan, req: string, body: object) {
+  return post('respond', { cid: p.S.cid, request_id: req, ...body }).then(() => {
+    p.S.asks.delete(req) // the card stops showing it as waiting on you
+    renderCard(p.S)
+    return true
+  }, (e: { status?: number }) => { unanswered(p, e.status === 409 ? undefined : req); return false }) // 409: its process is gone, so trying again sends a message
+}
+
+/** Claude didn't get the answer: back to waiting for your review, to try again. */
+function unanswered(p: Plan, req?: string) {
+  p.req = req
+  p.done = false
+  setState(p, 'Could not reach Claude, try again', 'review')
 }
 
 /** Take the plan off the canvas (rejecting it first if Claude is still waiting on it). */
@@ -226,10 +242,10 @@ async function approve(p: Plan, mode?: string) {
   // leaving plan mode: the chosen mode, or back to asking for each action
   if (mode || p.S.mode === 'plan') setMode(p.S, mode ?? 'default')
   if (req) {
-    await post('respond', { cid: p.S.cid, request_id: req, allow: true, mode }).catch(() => { p.req = req; p.done = false; setState(p, 'Could not reach Claude, try again', 'review') })
+    await respond(p, req, { allow: true, mode })
   } else {
     // Claude isn't waiting any more (its process ended, e.g. a server restart): say it as a message, which resumes the session
-    send(p.S, 'Approved the plan. Go ahead and implement it.')
+    if (!await send(p.S, 'Approved the plan. Go ahead and implement it.')) unanswered(p)
   }
 }
 
@@ -245,24 +261,23 @@ async function feedback(p: Plan) {
   const req = p.req
   p.req = undefined
   setState(p, 'Sending feedback…', 'revising')
-  try {
-    if (!req) { // not waiting any more: send the feedback as a message, and stay in plan mode for the revision
-      setMode(p.S, 'plan')
-      send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
-        ...(image ? [imageBlock('image/png', image)] : [])])
-      return
-    }
-    await post('respond', { cid: p.S.cid, request_id: req, allow: false, message })
-    if (image) send(p.S, 'Annotated plan (my drawing on it)', [
-      { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
-      imageBlock('image/png', image),
-    ])
-  } catch {
-    p.req = req
-    setState(p, 'Could not reach Claude, try again', 'review')
+  if (!req) { // not waiting any more: send the feedback as a message, and stay in plan mode for the revision
+    setMode(p.S, 'plan')
+    if (!await send(p.S, 'Feedback on the plan', [{ type: 'text', text: message.replace('They also drew on the plan: the annotated image follows in their next message.', 'They also drew on the plan: see the annotated image below.') },
+      ...(image ? [imageBlock('image/png', image)] : [])])) unanswered(p)
+    return
   }
+  if (await respond(p, req, { allow: false, message }) && image) send(p.S, 'Annotated plan (my drawing on it)', [
+    { type: 'text', text: 'My drawing on your plan, as an annotated screenshot:' },
+    imageBlock('image/png', image),
+  ])
 }
 
+
+/** The card's process ended: its plans' requests are gone, so answering one says it as a message instead. */
+export function plansExpired(S: Session) {
+  for (const p of all) if (p.S === S) p.req = undefined
+}
 
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {

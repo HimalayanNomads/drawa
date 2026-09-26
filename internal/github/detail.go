@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"drawa/internal/gitx"
 )
 
 // Pr fetches one pull request in full: its diff, comments, reviews and inline (line) comments. The three `gh`
@@ -90,26 +92,19 @@ func Pr(n string) (map[string]any, error) {
 	}
 	row := PrRow(p)
 	row["url"] = p["url"]
-	row["body"] = orEmptyStr(p["body"])
+	row["body"] = s(p["body"])
 	row["additions"] = p["additions"]
 	row["deletions"] = p["deletions"]
 	row["files"] = p["changedFiles"]
 	row["mergeable"] = p["mergeable"]
 	row["created"] = p["createdAt"]
-	row["comments"] = nonNilComments(comments)
-	row["reviews"] = nonNilComments(reviews)
-	row["inline"] = nonNilComments(inlineOut)
+	row["comments"] = gitx.NonNil(comments)
+	row["reviews"] = gitx.NonNil(reviews)
+	row["inline"] = gitx.NonNil(inlineOut)
 	row["inline_error"] = inlineError
 	row["diff"] = diff
 	row["diff_truncated"] = diffTrunc
 	return row, nil
-}
-
-func nonNilComments(c []map[string]any) []map[string]any {
-	if c == nil {
-		return []map[string]any{}
-	}
-	return c
 }
 
 func asList(v any) []map[string]any {
@@ -133,14 +128,14 @@ func Issue(n string) (map[string]any, error) {
 		return nil, err
 	}
 	row := IssueRow(i)
-	row["body"] = orEmptyStr(i["body"])
+	row["body"] = s(i["body"])
 	row["url"] = i["url"]
 	row["created"] = i["createdAt"]
 	var comments []map[string]any
 	for _, c := range asList(i["comments"]) {
 		comments = append(comments, Comment(c))
 	}
-	row["comments"] = nonNilComments(comments)
+	row["comments"] = gitx.NonNil(comments)
 	return row, nil
 }
 

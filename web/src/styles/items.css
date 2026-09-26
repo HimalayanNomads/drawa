@@ -35,7 +35,7 @@
 /* Git window */
 .gnode>.win-h .t,.gnode>.win-h .m{font:500 11.5px var(--mono)}
 .glist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
-.gsec{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 8px 4px 12px;background:var(--bg);font-size:12px}
+.gsec{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:8px;padding:8px 8px 4px 12px;background:var(--bg);font-size:12px}
 .gsec b{font-weight:600}.gsec .n{color:var(--muted);font:11.5px var(--mono);margin-right:auto}
 .gsec .btn{height:24px;padding:0 8px;font-size:11.5px}
 .grow{display:flex;align-items:center;gap:6px;padding:0 6px 0 8px}
@@ -67,12 +67,12 @@
 
 /* Files window: every file a session touched, grouped by folder, changed files first */
 .flist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
-.fdir{position:sticky;top:0;z-index:1;padding:6px 12px 3px;background:var(--bg);font:11px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fdir{position:sticky;top:0;z-index:var(--z-sticky);padding:6px 12px 3px;background:var(--bg);font:11px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frow{display:flex;align-items:center;gap:8px;width:100%;height:26px;padding:0 12px 0 14px;text-align:left;font:12.5px var(--mono);color:var(--ink);--kind:var(--read)}
 .frow:hover{background:var(--hover)}
 .frow.sel{background:var(--sel)}
 .frow[data-state=edit]{--kind:var(--edit)}.frow[data-state=write]{--kind:var(--write)}.frow[data-state=fail]{--kind:var(--danger)}
-.frow .g{flex:none;width:7px;height:7px;border-radius:1px;background:var(--kind)}
+.frow .g{flex:none;width:7px;height:7px;border-radius:var(--r-tag);background:var(--kind)}
 .frow[data-state=read] .g{background:none;border:1.5px dotted var(--kind)}
 .frow[data-state=read] .n{color:var(--ink-2)}
 .frow .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -82,12 +82,13 @@
 
 /* a pinned Mermaid diagram, with its source editor under the drawing */
 .dnode-b{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:14px;cursor:pointer;container-type:size}
-.dnode-b::after{content:"Click for full view";position:absolute;right:8px;bottom:6px;padding:2px 7px;border-radius:2px;background:var(--hover);font:500 11px var(--sans);color:var(--muted);opacity:0;transition:opacity .15s;pointer-events:none}
+.dnode-b::after{content:"Click for full view";position:absolute;right:8px;bottom:6px;padding:2px 7px;border-radius:var(--r-tag);background:var(--hover);font:500 11px var(--sans);color:var(--muted);opacity:0;transition:opacity .15s;pointer-events:none}
 .dnode-b:hover::after{opacity:1}
 .full .dnode-b{cursor:zoom-in}.full .dnode-b::after{content:"Click to zoom"}
 .dnode-b svg{max-width:100%;max-height:100%}
 .dnode-ed{flex:0 0 42%;display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--line);background:var(--code)}
 .dnode-ed textarea{flex:1;min-height:0;padding:10px 12px;border:0;background:none;color:var(--ink);font:12px/1.55 var(--mono);font-variant-ligatures:none;resize:none;outline:none;tab-size:2}
+.dnode-ed:focus-within{box-shadow:inset 0 0 0 1px var(--accent)}
 .dnode-st{flex:none;margin:0;padding:4px 12px 6px;font-size:11.5px;color:var(--muted)}
 .dnode-st:empty::before{content:"Edits redraw as you type"}
 .dnode-st.bad{color:var(--warn)}
@@ -102,7 +103,7 @@
 .pnode[data-state=review]>.win-h{box-shadow:inset 0 2px 0 var(--accent)}
 .pnode[data-state=approved]{--edge:color-mix(in oklab,var(--add) 50%,var(--line))}
 .pnode>.win-h{min-width:min(300px,100%)}
-.pstate{flex:none;margin-right:4px;padding:1px 7px;border-radius:2px;font-size:11px;font-weight:500;color:var(--muted);background:var(--hover);white-space:nowrap}
+.pstate{flex:none;margin-right:4px;padding:1px 7px;border-radius:var(--r-tag);font-size:11px;font-weight:500;color:var(--muted);background:var(--hover);white-space:nowrap}
 .pnode[data-state=review] .pstate{color:var(--on-accent);background:var(--accent)}
 .pnode[data-state=approved] .pstate{color:var(--add);background:var(--add-bg)}
 .pnode[data-state=rejected] .pstate{color:var(--danger);background:color-mix(in oklab,var(--danger) 12%,transparent)}
@@ -111,9 +112,9 @@
 .pnode[data-state=rejected] .pnode-f,.pnode[data-state=approved] .pnode-f{display:none}
 .pnode-b{position:relative;flex:1;min-height:0;overflow:auto;margin:0;padding:18px 26px 26px 22px;font-size:14px}
 .pnode-b h1{font-size:19px}.pnode-b h2{font-size:16px;margin-top:1.3em}.pnode-b h3{font-size:14.5px}
-.pblk{border-radius:2px;transition:background .15s}
+.pblk{border-radius:var(--r-tag);transition:background .15s}
 .pblk:hover{background:color-mix(in oklab,var(--accent) 6%,transparent)}
-.padd{position:absolute;right:8px;z-index:2;width:24px;height:24px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow)}
+.padd{position:absolute;right:8px;z-index:var(--z-over);width:24px;height:24px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow)}
 .padd:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink));color:var(--on-accent)}
 .pedit{margin:6px 0 12px;padding:8px;border:1px solid var(--accent);border-radius:var(--r-box);background:var(--bg)}
 .pedit textarea,.pnode-f textarea{width:100%;resize:none;min-height:44px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px/1.5 var(--sans);outline:none}
@@ -131,11 +132,11 @@
 
 /* ---------- file node: a file Claude touched, labelled with its extension ---------- */
 .fnode{display:flex;align-items:center;gap:10px;min-width:170px;max-width:280px;height:44px;padding:0 12px 0 6px;
-  background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow);cursor:pointer;user-select:none;transition:border-color .2s,box-shadow .2s}
-.fnode:hover,.fnode.dragging{border-color:var(--line-2);box-shadow:var(--shadow-lift)}
+  background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);cursor:pointer;user-select:none;transition:border-color .2s}
+.fnode:hover,.fnode.dragging{border-color:var(--line-2)}
 .fnode.sel{border-color:var(--accent)}
 .fnode{--kind:var(--read)}.fnode[data-state=edit]{--kind:var(--edit)}.fnode[data-state=write]{--kind:var(--write)}.fnode[data-state=fail]{--kind:var(--danger)}
-.fnode .g{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:2px;font:600 10px var(--mono);letter-spacing:.02em;text-transform:uppercase;
+.fnode .g{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:var(--r-tag);font:600 10px var(--mono);letter-spacing:.02em;text-transform:uppercase;
   color:var(--kind);background:color-mix(in oklab,var(--kind) 15%,transparent)}
 .fnode .n{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 .fnode .n b{font:500 12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -150,12 +151,12 @@
 .nnode:hover{outline-color:var(--line-2)}
 .nnode[style*="width"]{max-width:none} /* resized by hand: that width wins */
 .nnode::before,.nnode::after{content:"";position:absolute;pointer-events:none;opacity:0;transition:opacity .15s}
-.nnode::before{inset:0;z-index:-1;background:var(--bg);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);filter:drop-shadow(0 6px 14px oklch(0.2 0.02 255 / 0.14))}
+.nnode::before{inset:0;z-index:var(--z-under);background:var(--bg);border:1px solid var(--line-2);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)} /* the fold draws the cut corner's edge */
 .nnode::after{top:0;right:0;width:12px;height:12px;background:linear-gradient(to bottom left,transparent 50%,var(--accent) 50%)}
-.nnode.editing{outline-color:transparent;cursor:text}
-.nnode.editing::before,.nnode.editing::after{opacity:1}
+.nnode[data-state=editing]{outline-color:transparent;cursor:text}
+.nnode[data-state=editing]::before,.nnode[data-state=editing]::after{opacity:1}
 .ntext{min-height:1.5em;font:500 16px/1.5 var(--sans);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;outline:none}
-.nnode.editing .ntext:empty::before{content:"Type a note";color:var(--muted);white-space:nowrap}
+.nnode[data-state=editing] .ntext:empty::before{content:"Type a note";color:var(--muted);white-space:nowrap}
 .ntext::after{content:"\200b"} /* a trailing line break draws no empty line on its own: the caret would vanish after Enter */
 .ndel{top:-1px;left:calc(100% + 6px);width:24px;height:24px;opacity:0;transition:opacity .15s}
 .ndel svg{width:12px;height:12px}
@@ -171,7 +172,7 @@
 /* GitHub (items/github.ts, and the pull request strip in the Git window) */
 .ghbody{overflow:auto}
 .ghnote{margin:0;padding:12px;color:var(--muted);font-size:12.5px}.ghnote.bad{color:var(--danger)}
-.ghbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
+.ghbar{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
 .ghbar .btn{height:28px;padding:0 10px;font-size:12.5px}
 .ghbar .spacer,.ghacts .spacer,.ghsub .spacer{flex:1}
 .ghrow{display:grid;gap:3px;width:100%;padding:8px 12px;border-bottom:1px solid var(--line);text-align:left}

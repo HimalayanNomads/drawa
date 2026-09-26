@@ -14,7 +14,7 @@ Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` ru
 ```
 web/src/
   main.ts      boot, toolbar, keyboard shortcuts; imports features (importing a feature registers it)
-  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog)
+  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), theme, tooltip
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
   items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window)
@@ -39,12 +39,13 @@ The app scales through these registration points. A new feature should plug into
 | Survive a reload | `persist(key, save, load, phase)` | `lib/store.ts` |
 | Referenceable with `@` or by dropping on a card | `referable(kind, { icon, name, label, content })` (`name`: what Ctrl+K calls the kind) | `canvas/refs.ts` |
 | Recover after the server comes back | `onReconnect(fn)` | `lib/connection.ts` |
+| Post-process rendered Markdown (diagrams, anything drawn from a code block) | `onRendered(fn)` | `lib/markdown.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
-| Removed as part of a deleted selection, without its own confirm | `removable(kind, fn)` (only if its × button asks first or it has none; otherwise its × is clicked) | `canvas/select.ts` |
+| Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
-- Call `persist()` for its saved state. Binary data (images) goes in IndexedDB via `lib/blobs.ts`, keyed by the item's id; localStorage only holds the layout.
+- Call `persist()` for its saved state, and restore a list with `each(list, fn)` from `lib/store.ts` so one bad entry doesn't stop the rest. Binary data (images) goes in IndexedDB via `lib/blobs.ts`, keyed by the item's id; localStorage only holds the layout.
 - If its content scales with the window (a picture, a drawing), put it in `inkBox()` from `canvas/ink.ts`, so pen strokes on it keep their spot at any size, including full view.
 - Something Claude should receive that isn't on the canvas (a GitHub pull request) can still be a reference: `referable()` a kind, then `addRef()` a detached element whose dataset says what to fetch at send time (see `sendToClaude` in `items/gh.ts`). Such chips have no arrow; clicking one runs the element's `onclick`.
 - Text marked in place (like pinned snippets' sources in `items/pinmarks.ts`) uses the CSS Custom Highlight API, never wrapper elements: the chat re-renders while streaming and skips off-screen rows.
@@ -52,7 +53,7 @@ The app scales through these registration points. A new feature should plug into
 - Call `referable()` if Claude should be able to receive it (that also makes it readable with `canvas_read`).
 - Call `creatable()` if Claude should be able to create it with `canvas_create` (add the kind to that tool's `enum` in `Tools` in `internal/canvastools/canvastools.go`), with an `update` if Claude should be able to edit it with `canvas_update`.
 - Windows get renaming, pinning (sidebar or screen) and full view from `makeWindow()`; don't rebuild these per kind. Anything that asks "where is this item on screen" should use `liveRect()` (handles pinned, floating and collapsed windows); `rect()` is the canvas geometry that gets saved.
-- Add a `--k-<kind>` color in `tokens.css`, one `[data-kind=<kind>]` entry in the kind map at the top of `canvas.css` (it colors windows, Ctrl+K rows and chips alike), and a minimap rule. The tab's glyph is the kind's `referable` icon; don't add a per-kind `::before` rule.
+- Add a `--k-<kind>` color in `tokens.css` and one `[data-kind=<kind>]` entry in the kind map at the top of `canvas.css` (it colors windows, Ctrl+K rows, chips and minimap boxes alike). The tab's glyph is the kind's `referable` icon; don't add a per-kind `::before` rule.
 
 If you find yourself adding the new kind to a list in `canvas.ts`, the minimap, `main.ts` restore code or a CSS `:not(...)` selector, stop: that list should be a registry or a `data-kind` rule.
 
@@ -80,26 +81,26 @@ Rules for these registries:
   - Anything drawn with colors baked in (Mermaid, Excalidraw previews) reads `isDark()` and redraws in `onTheme()`.
 - **All values come from `styles/tokens.css`:**
   - Colors: derived from the active scheme, including the code highlighting colors (`--syn-*`).
-  - Radius scale: `--r-tab`, `--r-box`, `--r-ctl`.
-  - z scale: `--z-float`, `--z-panel`, `--z-menu`.
+  - Radius scale: `--r-tab`, `--r-box`, `--r-ctl`, and `--r-tag` for small labels (inline code, badges, swatches).
+  - z scale: `--z-float`, `--z-panel`, `--z-menu` for overlays; `--z-under`, `--z-sticky`, `--z-over` for stacking inside a window or panel.
   - Kind colors: `--k-*`.
   - Don't write raw colors, radii or z-index numbers in feature CSS.
 - **Shape language:**
   - Windows are folders. A tab on the top-left carries the title and buttons, and a concave shoulder joins it to a nearly square body.
   - Surfaces are square-cut (`--r-box`). The tab curve is the only prominent round corner.
   - Don't bring back 8–14px rounded cards, rounded boxes nested in rounded boxes, or pills. The user has rejected these repeatedly.
-- **Window states change `--edge` and `--glow` only;** `window.css` draws the outline from them. Don't restyle `.win-h` or `.win-b` per feature beyond what's in the kind's own section.
+- **Window states change `--edge` only;** `window.css` draws the outline from it (no blurred shadows on windows). Don't restyle `.win-h` or `.win-b` per feature beyond what's in the kind's own section.
 - **Color carries meaning:** read, edit, write and run are the action colors, and everything else is neutral. Mix tints with `color-mix(in oklab, …)`; oklch mixing shifts hues.
 - **Input fields must look like input fields:** a visible border, a text cursor, and a clear focus state.
 - **No native-looking controls:** `<select>` goes through `enhance()` from `lib/select.ts`.
-- **Every animation has a `prefers-reduced-motion` fallback.** It lives at the end of `index.css`.
+- **Every animation has a `prefers-reduced-motion` fallback.** CSS ones live at the end of `index.css`; animations started from script check `reducedMotion()` from `lib/dom.ts`.
 - **Layouts must work from phone width up.** Check at 390px.
 
 ## Performance rules
 
 These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0.5s, and streaming went from about 30fps to 60fps, by following them. Re-measure with a real large transcript after touching these paths.
 
-- **Never read layout inside a loop** (`scrollHeight`, `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` for sizes). Bulk work such as replaying a transcript sets `S.replaying`: `put()`, `follow()` and `renderCard()` skip their layout reads, and one final pass settles everything. `quietPings(true)` does the same for attention flashes.
+- **Never read layout inside a loop** (`scrollHeight`, `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` for sizes). Bulk work such as replaying a transcript sets `S.replaying` and `bulk(true)` from `canvas.ts` (new windows get spots from one measurement): `put()`, `follow()` and `renderCard()` skip their layout reads, and one final pass settles everything. `quietPings(true)` does the same for attention flashes.
 - **Streaming renders incrementally.** Complete markdown blocks are rendered once; only the unfinished tail re-renders each frame (`streamText` in `session/stream.ts`). Don't go back to re-rendering the whole buffer.
 - **Animations must not force layout.** Use the Web Animations API (`el.animate`), as `ping()` does, not the remove-class/`offsetWidth`/add-class trick.
 - **No decorative glows or big blurred shadows** on canvas windows. They cost paint on every pan and zoom frame, and the user rejected them visually too. Show state with `--edge` and the tab's top line.
@@ -117,9 +118,12 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
   - Every request checks `Host` (`config.Hosts`).
   - POSTs require a matching `Origin` (`config.Origins`).
   - Every file path goes through `config.Inside()` so it can't escape the project root.
+  - POST bodies must be `application/json` (anything else gets 415), so a plain cross-site form can't post.
+  - Cross-site GETs to `/api/*` (`Sec-Fetch-Site: cross-site`) are refused.
+  - The Vite dev origin (`:5173`) is trusted only when `DRAWA_DEV=1`.
   - Any new endpoint needs the same checks.
 - **Canvas tools:** each card's Claude gets an MCP server at `/mcp/<card>/<token>` (in `live.Live`). The token is per process, and requests carrying an `Origin` are refused, so only that process can call it. Calls are relayed to the newest page reading the card's stream and answered via `/api/canvas`. Tool definitions live in `canvastools.Tools`; reading is auto-allowed with `--allowedTools`, while changing things goes through the normal approval flow.
-- One long-lived `claude -p` process per card (`live.Live`), speaking the stream-json protocol over merged stdout/stderr pipes, read with a buffered line scanner. The page reads all its cards' output over one `/api/events?page=…&c=cid:line:gen,…` stream (lines tagged `_c` with the card, in `server/events.go`) and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off, including the message being streamed (`Live.openMsg`, via `Live.Snapshot()`). GET routes live in the `getRoutes` table in `server/handler.go`; add new ones there.
+- One long-lived `claude -p` process per card (`live.Live`), speaking the stream-json protocol over merged stdout/stderr pipes, read with a buffered line scanner. The page reads all its cards' output over one `/api/events?page=…&c=cid:line:gen,…` stream (lines tagged `_c` with the card, in `server/events.go`) and answers control requests via `/api/respond`. Don't break re-attaching: a reload must pick up a running session where it left off, including the message being streamed (`Live.openMsg`, via `Live.Snapshot()`). `live.Start` (`internal/live/registry.go`) is the one way to get or spawn a card's process: it caps live processes at `MaxLive`, closing the least recently used idle one. Lines the page must not count toward its position carry `"_r":1` (re-sent asks, `_gap`). GET routes live in the `getRoutes` table in `server/handler.go`; add new ones there.
 - **Concurrency:** a `Live`'s buffer is guarded by its own mutex; `live.Changed` (a `Broadcaster`, in `internal/live/broadcast.go`) is the one global wakeup signal, bumped by every `Live.Push()`. It stands in for Python's `threading.Condition` and is what the `/api/events` stream and `live.Meta()` block on — reuse it rather than adding another signaling mechanism.
 - The server rebuilds (`go build`) and re-execs itself (`syscall.Exec`) when a `.go` file changes; a build that fails to compile keeps the old server running, same spirit as the old syntax-check-before-restart. Test changes against a separate port rather than killing the user's running instance.
 

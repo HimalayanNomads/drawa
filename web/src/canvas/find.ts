@@ -1,6 +1,6 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
 // title and content, Enter flies to it, brings it to the front and expands it if it was collapsed.
-import { $, make, ping } from '../lib/dom'
+import { $, make, ping, reducedMotion } from '../lib/dom'
 import { items, centerOn, front, onCanvas } from './canvas'
 import { refIcon, kindName } from './refs'
 import { titleOf, expand, focusInput } from './window'
@@ -81,13 +81,13 @@ function draw() {
 function go(el: HTMLElement) {
   close()
   expand(el)
-  if (!onCanvas(el)) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) // pinned (or in full view): already on screen
+  if (!onCanvas(el)) el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' }) // pinned (or in full view): already on screen
   else { front(el); centerOn(el) }
   setTimeout(() => ping(el), 300) // after the glide
   focusInput(el)
 }
 
-export function openFinder() {
+function openFinder() {
   box.hidden = false
   input.value = ''
   sel = 0

@@ -1,10 +1,10 @@
 /* Every window on the canvas is a folder: a tab on the top-left carries its title and buttons, the body sits
    under it with square-cut corners. The tab's right side curves down into the body's top edge (the "shoulder").
-   --edge is the outline color for tab, shoulder and body together; states only change --edge and the shadow. */
-.win{display:flex;flex-direction:column;--edge:var(--line);--glow:var(--shadow);cursor:auto}
-.win.focus{--edge:var(--line-2);--glow:var(--shadow-lift)}
+   --edge is the outline color for tab, shoulder and body together; states only change --edge and the tab's top line: no blurred shadows on canvas windows (paint on every pan and zoom frame). */
+.win{display:flex;flex-direction:column;--edge:var(--line);cursor:auto}
+.win.focus{--edge:var(--line-2)}
 
-.win-h{position:relative;z-index:1;display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
+.win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
   min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 94px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;
   background:var(--rail);border:1px solid var(--edge);border-bottom:0;border-radius:var(--r-tab) var(--r-tab) 0 0;
   cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s}
@@ -15,7 +15,7 @@
 .win.focus>.win-h{box-shadow:inset 0 2px 0 var(--kind)}
 /* no min-width: one wider than a short title makes Chrome size the tab too small and squeeze the .m next to it */
 .win-h .t{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:var(--ink);padding-right:6px}
-.win-h .t.renaming{outline:1px solid var(--accent);outline-offset:2px;border-radius:2px;padding:0 4px;cursor:text;user-select:text;text-overflow:clip;min-width:6em}
+.win-h .t.renaming{outline:1px solid var(--accent);outline-offset:2px;border-radius:var(--r-tag);padding:0 4px;cursor:text;user-select:text;text-overflow:clip;min-width:6em}
 .win-h .t.renaming::before{display:none}
 .win-h .t::before{content:attr(data-glyph);margin-right:7px;color:var(--kind);font-weight:500}
 .card>.win-h .t::before{content:none} /* a session's tab has its status dot instead */
@@ -34,22 +34,21 @@
 .win-h .icon svg{width:15px;height:15px}
 
 .win-b{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;
-  background:var(--bg);border:1px solid var(--edge);border-radius:0 var(--r-box) var(--r-box) var(--r-box);box-shadow:var(--glow);
-  transition:border-color .25s,box-shadow .25s}
+  background:var(--bg);border:1px solid var(--edge);border-radius:0 var(--r-box) var(--r-box) var(--r-box);
+  transition:border-color .25s}
 
 /* collapsed: only the tab is left, closed off at the bottom */
 .win.min{height:auto!important;min-height:0!important}
 .win.min>.win-b,.win.min>.grip{display:none}
-.win.min>.win-h{margin:0;border-bottom:1px solid var(--edge);border-radius:var(--r-tab);box-shadow:var(--glow)}
+.win.min>.win-h{margin:0;border-bottom:1px solid var(--edge);border-radius:var(--r-tab)}
 .win.min>.win-h::after{display:none}
 
-.win.dragging{--glow:var(--shadow-lift)}
 .win.dragging>.win-h{cursor:grabbing}
-.win.resizing{--glow:var(--shadow-lift);user-select:none}
+.win.resizing{user-select:none}
 .win.resizing,.win.resizing *{cursor:var(--resize-cursor,nwse-resize)!important} /* the pulled grip's own cursor (set in resizable) */
 
 /* resize grip: an invisible corner hit area; hovering it draws the corner it resizes */
-.grip{position:absolute;z-index:4;touch-action:none}
+.grip{position:absolute;z-index:var(--z-grip);touch-action:none}
 /* the edges: a thin band just inside the body's sides (below the tab), the corners: a small square */
 .grip[data-edge=e],.grip[data-edge=w]{top:var(--tab-h);bottom:14px;width:7px;cursor:ew-resize}
 .grip[data-edge=e]{right:-3px}.grip[data-edge=w]{left:-3px}

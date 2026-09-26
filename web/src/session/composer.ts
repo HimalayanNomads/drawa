@@ -56,7 +56,13 @@ export function composer(S: Session, body: HTMLElement) {
     ta.style.height = ''
     const refs = S.refs.splice(0), images = S.images.splice(0)
     drawChips(S)
-    send(S, p || (images.length && !refs.length ? 'Take a look at this.' : 'Take a look at these.'), undefined, refs, images)
+    send(S, p || (images.length && !refs.length ? 'Take a look at this.' : 'Take a look at these.'), undefined, refs, images).then(ok => {
+      if (ok || ta.value || S.refs.length || S.images.length) return // sent, or you've started the next one: keep that
+      ta.value = p // not sent: put it back to try again
+      S.refs.push(...refs)
+      S.images.push(...images)
+      drawChips(S)
+    })
   }
   // images: paste them (Ctrl+V) or drop image files on the message box
   const attach = async (files: File[]) => {

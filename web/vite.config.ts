@@ -17,7 +17,8 @@ export default defineConfig({
     configureServer() {
       const bin = resolve('../.bin/drawa-server')
       if (spawnSync('go', ['build', '-o', bin, '.'], { cwd: '..', stdio: 'inherit' }).status) throw new Error('go build failed')
-      const go = spawn(bin, [resolve(process.env.DRAWA_ROOT ?? '..')], { cwd: '..', stdio: 'inherit' })
+      // DRAWA_DEV makes the server trust this dev server's origin, which it refuses otherwise
+      const go = spawn(bin, [resolve(process.env.DRAWA_ROOT ?? '..')], { cwd: '..', stdio: 'inherit', env: { ...process.env, DRAWA_DEV: '1' } })
       process.on('exit', () => go.kill())
     },
   }],

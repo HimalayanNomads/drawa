@@ -3,7 +3,7 @@
 // them in canvas_list and can draw them too (canvas_link).
 import { make, ICON, iconButton, EDITABLE, closestAt, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, type Rect } from './canvas'
+import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, track, type Rect } from './canvas'
 
 const NS = 'http://www.w3.org/2000/svg'
 // its own layer, big enough to contain every arrow: pointer hits only count inside an SVG's box (session arrows'
@@ -14,7 +14,7 @@ layer.setAttribute('class', 'ulinks')
 layer.setAttribute('aria-hidden', 'true')
 const svg = layer.appendChild(document.createElementNS(NS, 'g'))
 svg.setAttribute('transform', `translate(${R},${R})`)
-export interface Link { id: string; from: HTMLElement; to: HTMLElement; label: string; color: string; g: SVGGElement; text: HTMLElement }
+interface Link { id: string; from: HTMLElement; to: HTMLElement; label: string; color: string; g: SVGGElement; text: HTMLElement }
 const links: Link[] = []
 let selected: Link | null = null
 
@@ -77,7 +77,7 @@ export function addLink(from: HTMLElement, to: HTMLElement, label = '', color = 
   return l
 }
 
-export function removeLink(l: Link) {
+function removeLink(l: Link) {
   if (selected === l) select(null)
   l.g.remove()
   l.text.remove()
@@ -137,15 +137,12 @@ export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
     line.setAttribute('d', d)
     tip.setAttribute('d', head)
   }
-  const up = (ev: PointerEvent) => {
-    over.removeEventListener('pointermove', move)
-    over.removeEventListener('pointerup', up)
+  track(over, e, (_x, _y, ev) => move(ev), ev => {
     g.remove()
+    if (ev.type !== 'pointerup') return // cancelled (a touch the browser took over): no arrow
     const to = itemAt(ev.clientX, ev.clientY)
     if (to && to !== from) { select(addLink(from, to, '', color)); selected?.text.focus() } // type a label now, or just move on
-  }
-  over.addEventListener('pointermove', move)
-  over.addEventListener('pointerup', up)
+  }, { keep: true })
   move(e)
 }
 

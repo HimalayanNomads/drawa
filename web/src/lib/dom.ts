@@ -25,6 +25,8 @@ export const ICON = {
   full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
   collapse: svg('<path d="M3.5 8h9"/>'),
   open: svg('<path d="M4 6.5 8 10.5l4-4"/>'),
+  sun: svg('<circle cx="8" cy="8" r="2.8"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1"/>'),
+  moon: svg('<path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/>'),
   grip: svg('<circle cx="6" cy="4" r=".9"/><circle cx="10" cy="4" r=".9"/><circle cx="6" cy="8" r=".9"/><circle cx="10" cy="8" r=".9"/><circle cx="6" cy="12" r=".9"/><circle cx="10" cy="12" r=".9"/>'),
 }
 
@@ -38,10 +40,10 @@ export function uuid() {
   return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h.slice(10).join('')}`
 }
 
-/** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
 /** At most `max` characters, saying so at the end. The result stays within `max`, so clipping it again changes nothing. */
 export const clip = (text: string, max: number, note = '\n… (truncated)') => (text.length > max ? text.slice(0, max - note.length) + note : text)
 
+/** Elements you type into: keys there aren't shortcuts, and pasting there isn't the canvas's. */
 export const EDITABLE = 'input, textarea, select, [contenteditable="plaintext-only"], [contenteditable="true"]'
 /** Put a fixed-position element at (x, y), moved just enough to stay on screen (`top`: the lowest top allowed). */
 export function keepOnScreen(el: HTMLElement, x: number, y: number, top = 8) {
@@ -107,7 +109,7 @@ export const ago = (t: number | string) => {
 /** A link that opens outside the app, in a new tab. */
 export function extLink(cls: string, text: string, href: string) {
   const a = make('a', cls, text) as HTMLAnchorElement
-  Object.assign(a, { href, target: '_blank', rel: 'noopener' })
+  if (/^https?:\/\//i.test(href)) Object.assign(a, { href, target: '_blank', rel: 'noopener' }) // never javascript: from a server field
   return a
 }
 
@@ -124,8 +126,12 @@ let quietUntil = 0
 export const ping = (el: HTMLElement) => {
   if (performance.now() < quietUntil || !el.isConnected) return
   const c = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
-  el.animate([{ outline: `2px solid ${c}`, outlineOffset: '3px' }, { outline: '2px solid transparent', outlineOffset: '9px' }], { duration: 650, easing: 'cubic-bezier(.22,1,.36,1)' })
+  const to = reducedMotion() ? '3px' : '9px' // reduced motion: the outline fades where it is instead of spreading
+  el.animate([{ outline: `2px solid ${c}`, outlineOffset: '3px' }, { outline: '2px solid transparent', outlineOffset: to }], { duration: 650, easing: 'cubic-bezier(.22,1,.36,1)' })
 }
+const still = matchMedia('(prefers-reduced-motion: reduce)')
+/** Has the user asked for less motion? (For script-driven motion like smooth scrolling; CSS has its own fallback.) */
+export const reducedMotion = () => still.matches
 /** No pings while something rebuilds in bulk (replaying a saved session would flash every file it touched). */
 export const quietPings = (on: boolean) => { quietUntil = on ? Infinity : 0 }
 

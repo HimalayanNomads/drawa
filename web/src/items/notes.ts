@@ -1,6 +1,6 @@
 // Text on the canvas: double-click empty space (or press T) and type. Click a note to edit it; empty notes vanish.
 import { make, uuid } from '../lib/dom'
-import { persist } from '../lib/store'
+import { persist, each } from '../lib/store'
 import { addItem, items, place, rect, draggable, resizable, front, changed, toWorld, stage, viewCenter } from '../canvas/canvas'
 import { removeButton } from '../canvas/window'
 import { forget } from '../canvas/graph'
@@ -24,7 +24,7 @@ export function note(opts: Note) {
 
   const edit = () => {
     text.contentEditable = 'plaintext-only'
-    el.classList.add('editing')
+    el.dataset.state = 'editing'
     text.focus()
     const range = document.createRange() // caret at the end
     range.selectNodeContents(text)
@@ -34,7 +34,7 @@ export function note(opts: Note) {
   }
   const done = () => {
     text.contentEditable = 'false'
-    el.classList.remove('editing')
+    delete el.dataset.state
     if (!text.textContent?.trim()) { forget(el); el.remove() }
     changed()
   }
@@ -44,7 +44,7 @@ export function note(opts: Note) {
     if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); text.blur() }
   })
   text.addEventListener('input', () => changed())
-  draggable(el, el, changed, () => { if (!el.classList.contains('editing')) edit() })
+  draggable(el, el, changed, () => { if (el.dataset.state !== 'editing') edit() })
   resizable(el, 80, 0, changed, true) // drag the corner to set the width; text wraps to fit
   if (opts.edit) edit()
   return el
@@ -57,7 +57,7 @@ persist('notes',
     const r = rect(n)
     return { id: n.dataset.id!, text: noteText(n), x: r.x, y: r.y, w: n.style.width ? r.w : undefined }
   }),
-  (list: Note[]) => list.forEach(note))
+  (list: Note[]) => each(list, note))
 creatable('note', {
   size: a => ({ w: Math.min(360, Math.max(120, String(a.text).length * 8)), h: 60 }),
   create: (a, r) => note({ x: r.x, y: r.y, text: String(a.text), w: String(a.text).length > 45 ? 360 : undefined }),

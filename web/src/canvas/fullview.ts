@@ -1,13 +1,13 @@
 // Full view: any window can be lifted out to fill the screen (its tab's ⤢ button), still live: a session keeps
 // streaming and takes typing. Esc or the same button puts it back exactly where it was (canvas or sidebar).
 import { $, make, EDITABLE } from '../lib/dom'
-import { changed, stage, onChange } from './canvas'
+import { changed, stage, onChange, holder } from './canvas'
 import { redraw } from './graph'
 import { setToggle } from './dock'
 import { expand, focusInput } from './window'
 
 // inside the stage, just under the pen's capture layer: Draw mode works on a window in full view too
-const layer = stage.insertBefore(make('div', 'fullview'), $('#ink-capture'))
+const layer = holder(stage.insertBefore(make('div', 'fullview'), $('#ink-capture')))
 layer.hidden = true
 layer.setAttribute('role', 'dialog')
 layer.setAttribute('aria-modal', 'false')
@@ -17,6 +17,8 @@ layer.addEventListener('pointerdown', e => { if (e.target === layer) exitFull() 
 let open: { el: HTMLElement; spot: Comment } | undefined
 
 export const isFull = (el: HTMLElement) => open?.el === el
+/** Is any window in full view? */
+export const anyFull = () => !!open
 // the window in full view was closed (its ×): take the dimmed layer down with it
 onChange(() => { if (open && !open.el.isConnected) exitFull() })
 

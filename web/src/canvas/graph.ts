@@ -1,172 +1,26 @@
 // The work as a graph: session card --action--> its Files window, --run--> its commands window, --plan/ref--> other items.
 // Files a session touches are rows in one Files window per session (grouped by folder), not one node each:
 // a session that reads 100 files is still one window and one edge. A file becomes its own canvas node only when
-// you open it from the file tree.
-import { tipText } from '../lib/tooltip'
-import { make, ping, iconButton } from '../lib/dom'
-import { persist } from '../lib/store'
-import { world, onCanvas, liveRect, view, onChange, addItem, place, rect, savedRect, draggable, freeSpot, spotBeside, changed, items, byIds, type Rect } from './canvas'
-import { makeWindow } from './window'
-import { referable } from './refs'
+// you open it from the file tree. The windows themselves are canvas/sessionwins.ts's; this module draws the arrows.
+import { make, ping, clip } from '../lib/dom'
+import { persist, each } from '../lib/store'
+import { world, onCanvas, liveRect, view, onChange, place, rect, changed, items, byIds } from './canvas'
+import { info, paint, fileList, addRow, order, termNode, dropWindows, refreshInspector, type FileInfo } from './sessionwins'
 import type { Session } from '../session/session'
 import type { Change } from '../panels/diff'
-import { openInspector, inspecting } from '../panels/files'
+
+// what other modules have always imported from here
+export { files, savedPos, pin, refreshSelection } from './sessionwins'
 
 export type Act = 'read' | 'edit' | 'write' | 'run' | 'plan' | 'made' | 'agent' | 'ref'
 const RANK: Act[] = ['plan', 'write', 'edit', 'run', 'agent', 'made', 'read', 'ref'] // which action colors an edge that carries several
-/** Everything known about one file across sessions: its diffs (for the inspector) and where it's shown. */
-interface FileInfo { path: string; add: number; del: number; changes: Change[]; kind: Act | 'fail'; rows: Set<HTMLElement>; node?: HTMLElement }
-interface FileList { el: HTMLElement; list: HTMLElement; count: HTMLElement; rows: Map<string, HTMLElement> }
-interface TermNode { el: HTMLElement; list: HTMLElement; count: HTMLElement; n: number }
 interface Edge { S: Session; target: HTMLElement; path: SVGPathElement; label: HTMLElement; counts: Partial<Record<Act, number>>; live: number }
 interface Pending { edge: Edge; file?: FileInfo; row?: HTMLElement; cmd?: HTMLDetailsElement; act: Act }
 
-export const files = new Map<string, FileInfo>()
-const lists = new Map<Session, FileList>()
-const terms = new Map<Session, TermNode>()
 const edges = new Map<Session, Map<HTMLElement, Edge>>()
 const pending = new Map<string, Pending>() // tool_use id -> what to settle when its result arrives
-/** Positions restored from the saved layout: "f:<path>" pinned files, "l:<sid>" Files windows, "t:<sid>" commands windows, "p:<id>" plans. */
-export const savedPos: Record<string, Rect | { x: number; y: number }> = {}
-persist('nodes', layout, v => Object.assign(savedPos, v), 0)
-referable('files', {
-  icon: '≡',
-  label: () => 'files a session touched',
-  content: el => ({ text: 'Files a session on my canvas worked with (edit/write = changed, read = only read):\n' +
-    [...el.querySelectorAll<HTMLElement>('.frow')].map(r => `- ${tipText(r)} (${r.dataset.state ?? 'read'})`).join('\n') }),
-})
-referable('run', {
-  icon: '$',
-  name: 'commands',
-  label: () => 'commands a session ran',
-  content: el => {
-    let budget = 20_000 // ponytail: long outputs are cut, newest commands first to keep
-    const rows = [...el.querySelectorAll<HTMLElement>('.tcmd')].reverse().map(r => {
-      const out = (r.querySelector('pre')?.textContent ?? '').slice(-Math.max(0, Math.min(3000, budget)))
-      budget -= out.length
-      return `$ ${tipText(r) || r.querySelector('summary')?.textContent}\n${out}`
-    }).reverse()
-    return { text: `Commands a session on my canvas ran, with their output:\n\n\`\`\`\n${rows.join('\n\n')}\n\`\`\`` }
-  },
-})
-referable('file', { icon: '≡', label: el => tipText(el), content: (_, path) => ({ text: `File: ${path} (read it if you need its contents)` }) })
-
 const svg = document.getElementById('edges') as unknown as SVGSVGElement
 const SVGNS = 'http://www.w3.org/2000/svg'
-
-/* ---------- files ---------- */
-function info(path: string): FileInfo {
-  let f = files.get(path)
-  if (!f) files.set(path, (f = { path, add: 0, del: 0, changes: [], kind: 'read', rows: new Set() }))
-  return f
-}
-const RANK_FILE = { write: 0, edit: 1, fail: 2, read: 3 } as Record<string, number>
-const stat = (f: FileInfo) => (f.add || f.del ? [make('span', 'a', `+${f.add}`), ' ', make('span', 'r', `−${f.del}`)] : [])
-
-/** Every place a file shows (rows in Files windows, its pinned node) reflects its state. */
-function paint(f: FileInfo) {
-  for (const el of [...f.rows, ...(f.node ? [f.node] : [])]) {
-    el.dataset.state = f.kind
-    el.classList.toggle('sel', inspecting === f.path)
-    el.querySelector('.s')!.replaceChildren(...stat(f))
-  }
-}
-
-/** The session's Files window: right of its card, one row per file, grouped by folder, changed files first. */
-function fileList(S: Session): FileList {
-  const have = lists.get(S)
-  if (have) return have
-  const saved = S.sid ? savedPos['l:' + S.sid] as Rect | undefined : undefined
-  const count = make('span', 'm'), list = make('div', 'flist')
-  const reads = iconButton('<svg viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>', 'Hide files that were only read', () => {
-    const hide = l.el.classList.toggle('hide-reads')
-    reads.classList.toggle('on', hide)
-    reads.title = hide ? 'Show files that were only read' : 'Hide files that were only read'
-  })
-  // collapsed to its tab by default, like commands: the count says enough until you want the list (your choice is saved)
-  const { el, head, body } = makeWindow({ kind: 'files', cls: 'lnode', title: 'files', rect: { min: true, ...spotBeside(S.card, 300, 380, 150, 0), ...saved }, minW: 220, minH: 120, actions: [reads] })
-  el.dataset.id = 'l:' + S.cid // stable across reloads (the card's id is saved), so arrows and pins come back
-  head.querySelector('.t')!.after(count)
-  body.append(list)
-  const l: FileList = { el, list, count, rows: new Map() }
-  lists.set(S, l)
-  return l
-}
-
-function addRow(l: FileList, f: FileInfo) {
-  const slash = f.path.lastIndexOf('/'), dir = slash > 0 ? f.path.slice(0, slash + 1) : './'
-  const row = make('button', 'frow')
-  row.title = f.path
-  row.dataset.dir = dir
-  row.append(make('span', 'g'), make('span', 'n', f.path.slice(slash + 1)), make('span', 's'))
-  row.onclick = () => openInspector(f.path)
-  l.rows.set(f.path, row)
-  f.rows.add(row)
-  let group = [...l.list.children].find(g => (g as HTMLElement).dataset.dir === dir) as HTMLElement | undefined
-  if (!group) {
-    group = make('div', 'fgroup')
-    group.dataset.dir = dir
-    group.append(make('div', 'fdir', dir))
-    l.list.append(group) // order() puts it in place
-  }
-  group.append(row)
-  return row
-}
-
-/** Keep changed files at the top of their folder, and the header count current. */
-function order(l: FileList, row: HTMLElement) {
-  const group = row.parentElement!, rank = (r: Element) => RANK_FILE[(r as HTMLElement).dataset.state ?? 'read']
-  const before = [...group.querySelectorAll(':scope > .frow')].find(r => r !== row && rank(r) > rank(row))
-  if (before && before !== row.nextSibling) group.insertBefore(row, before)
-  const all = [...l.rows.values()], changed = all.filter(r => r.dataset.state !== 'read').length
-  l.count.textContent = changed ? `${changed} changed · ${all.length - changed} read` : `${all.length} read`
-  group.classList.toggle('reads-only', ![...group.querySelectorAll(':scope > .frow')].some(r => (r as HTMLElement).dataset.state !== 'read'))
-  // folders with changes first, then folders that were only read; each in path order
-  const key = (g: Element) => (g.classList.contains('reads-only') ? '1' : '0') + (g as HTMLElement).dataset.dir
-  const groups = [...l.list.children].sort((a, b) => key(a).localeCompare(key(b)))
-  if (groups.some((g, i) => g !== l.list.children[i])) l.list.append(...groups)
-}
-
-/** A file on the canvas by itself, opened from the file tree. */
-function fileNode(f: FileInfo): HTMLElement {
-  if (f.node) return f.node
-  const el = make('div', 'fnode'), n = make('span', 'n'), slash = f.path.lastIndexOf('/')
-  const ext = f.path.includes('.') ? f.path.split('.').pop()!.slice(0, 4) : 'file'
-  n.append(make('b', '', f.path.slice(slash + 1)), make('small', '', slash > 0 ? f.path.slice(0, slash + 1) : './'))
-  el.append(make('span', 'g', ext), n, make('span', 's'))
-  el.title = f.path
-  el.tabIndex = 0
-  el.setAttribute('role', 'button')
-  el.setAttribute('aria-label', `Open ${f.path}`)
-  el.dataset.id = 'f:' + f.path
-  addItem(el, 'file')
-  const p = savedPos['f:' + f.path] ?? spotBeside(null, 220, 44)
-  place(el, p.x, p.y)
-  f.node = el
-  draggable(el, el, redraw, () => openInspector(f.path))
-  el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInspector(f.path) } }
-  el.append(iconButton('<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>', 'Remove from canvas', () => {
-    forget(el); el.remove(); f.node = undefined; changed()
-  }, 'fdel'))
-  paint(f)
-  return el
-}
-
-function termNode(S: Session): TermNode {
-  const have = terms.get(S)
-  if (have) return have
-  const r = rect(S.card), saved = S.sid ? savedPos['t:' + S.sid] as Rect | undefined : undefined
-  const at = freeSpot({ x: r.x + 40, y: r.y + r.h + 90, w: 420, h: 240 })
-  const count = make('span', 'm'), list = make('div', 'cmds-list')
-  // collapsed to its tab by default: the run count says enough until you want the output (your choice is saved)
-  const { el, head, body } = makeWindow({ kind: 'run', cls: 'tnode', title: 'commands', rect: { min: true, ...at, ...saved }, minW: 240, minH: 120 })
-  el.dataset.id = 't:' + S.cid
-  head.querySelector('.t')!.after(count)
-  body.append(list)
-  const t = { el, list, count, n: 0 }
-  terms.set(S, t)
-  return t
-}
 
 /* ---------- edges ---------- */
 function edge(S: Session, target: HTMLElement): Edge {
@@ -192,32 +46,39 @@ function paintEdge(e: Edge) {
 }
 
 // a pan or zoom moves only edges with a pinned or floating end (the rest are in world coordinates)
+const loose = (e: Edge) => !onCanvas(e.S.card) || !onCanvas(e.target)
 onChange(viewOnly => {
-  if (viewOnly && [...edges.values()].some(m => [...m.values()].some(e => !onCanvas(e.S.card) || !onCanvas(e.target)))) schedule(true)
+  if (viewOnly && [...edges.values()].some(m => [...m.values()].some(loose))) schedule(true)
 })
 
-let drawing = false, moved = false
+let drawing = false, moved = false, only = true
 /** Recompute every edge's curve from the current card / node positions (next frame, batched). */
 export const redraw = () => schedule(false) // no arguments: it's passed around as a callback
-/** `viewOnly`: only the view changed, so the rest of the canvas (arrows, minimap) needn't redo its work. */
+/** `viewOnly`: only the view changed, so only edges with a pinned or floating end move, and nothing else on the
+ *  canvas is told: a view change already reached every listener (telling them again would loop, once a frame). */
 function schedule(viewOnly: boolean) {
   moved ||= !viewOnly
+  only &&= viewOnly
   if (drawing) return
   drawing = true
   requestAnimationFrame(() => {
+    const all = !only, didMove = moved
     drawing = false
-    for (const m of edges.values()) for (const e of m.values()) geometry(e)
-    changed(!moved)
     moved = false
+    only = true
+    // every edge measured first, then all written: one layout, not one per edge
+    const todo = [...edges.values()].flatMap(m => [...m.values()]).filter(e => all || loose(e)).map(measure)
+    todo.forEach(w => w())
+    if (didMove) changed() // cards or nodes moved: the minimap and the saved layout follow
   })
 }
 
-function geometry(e: Edge) {
+/** Where an edge's curve goes (layout reads only); returns the writes that put it there. */
+function measure(e: Edge): () => void {
   // full view covers the canvas: its arrows would only draw over it. Pinned windows keep theirs.
   // (and arrows to windows gathered under their collapsed session: they sit right there)
   const hide = e.S.card.classList.contains('full') || e.target.classList.contains('full') || !!e.target.dataset.home
-  e.path.style.display = e.label.style.display = hide ? 'none' : ''
-  if (hide) return
+  if (hide) return () => { e.path.style.display = e.label.style.display = 'none' }
   const a = liveRect(e.S.card), b = liveRect(e.target)
   const s = onCanvas(e.target) ? 1 : 1 / view.k // a pinned window isn't scaled with the canvas: its offsets are screen px
   let sx: number, sy: number, tx: number, ty: number, c1x: number, c1y: number, c2x: number, c2y: number
@@ -239,10 +100,14 @@ function geometry(e: Edge) {
     const d = Math.max(60, Math.abs(tx - sx) / 2) * (right ? 1 : -1)
     c1x = sx + d; c1y = sy; c2x = tx - d; c2y = ty
   }
-  e.path.setAttribute('d', `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`)
-  // label at the curve's midpoint
-  e.label.style.left = `${(sx + 3 * c1x + 3 * c2x + tx) / 8}px`
-  e.label.style.top = `${(sy + 3 * c1y + 3 * c2y + ty) / 8}px`
+  const d = `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`
+  const lx = (sx + 3 * c1x + 3 * c2x + tx) / 8, ly = (sy + 3 * c1y + 3 * c2y + ty) / 8 // label at the curve's midpoint
+  return () => {
+    e.path.style.display = e.label.style.display = ''
+    e.path.setAttribute('d', d)
+    e.label.style.left = `${lx}px`
+    e.label.style.top = `${ly}px`
+  }
 }
 
 /* ---------- what chat.ts calls ---------- */
@@ -260,7 +125,7 @@ export function touch(S: Session, toolId: string, act: Act, path: string, chg?: 
   paintEdge(e)
   pending.set(toolId, { edge: e, file: f, row, act })
   redraw()
-  if (inspecting === path) openInspector(path)
+  refreshInspector(path)
 }
 
 /** Claude ran a shell command. */
@@ -293,7 +158,7 @@ export function settle(toolId: string, ok: boolean, output?: string) {
   paintEdge(p.edge)
   if (p.cmd) {
     status(p.cmd, ok ? 'ok' : 'bad')
-    if (output) p.cmd.querySelector('pre')!.append('\n\n' + (output.length > 20000 ? output.slice(0, 20000) + '\n\u2026 (truncated)' : output))
+    if (output) p.cmd.querySelector('pre')!.append('\n\n' + clip(output, 20_000))
   }
   p.row?.classList.remove('live')
   if (p.file && !ok && p.act !== 'read') { p.file.kind = 'fail'; paint(p.file) }
@@ -316,11 +181,7 @@ export function dropSession(S: Session) {
   quiet(S)
   for (const e of edges.get(S)?.values() ?? []) { e.path.remove(); e.label.remove() }
   edges.delete(S)
-  terms.get(S)?.el.remove()
-  terms.delete(S)
-  const l = lists.get(S)
-  if (l) { l.el.remove(); lists.delete(S); for (const [path, row] of l.rows) files.get(path)?.rows.delete(row) }
-  for (const [path, f] of files) if (!f.rows.size && !f.node) files.delete(path)
+  dropWindows(S)
   // (plan nodes are removed by plan.ts)
   redraw()
 }
@@ -377,12 +238,12 @@ persist('gathered',
     .map(el => [el.dataset.id!, { home: el.dataset.home, folded: !!el.dataset.folded }])),
   (v: Record<string, { home?: string; folded?: boolean }>) => {
     const found = byIds()
-    for (const [id, g] of Object.entries(v ?? {})) {
+    each(Object.entries(v ?? {}), ([id, g]) => {
       const el = found.get(id)
-      if (!el) continue
+      if (!el) return
       if (g.home) el.dataset.home = g.home
       if (g.folded) el.dataset.folded = '1'
-    }
+    })
     redraw()
   }, 2)
 
@@ -408,22 +269,4 @@ export function unlink(S: Session, el: HTMLElement, act?: Act) {
 /** A node left the canvas: drop every edge pointing at it. */
 export function forget(el: HTMLElement) {
   for (const S of edges.keys()) unlink(S, el)
-}
-
-/** Put a file on the canvas by itself (opened from the file tree). */
-export function pin(path: string) {
-  const el = fileNode(info(path))
-  ping(el)
-  redraw()
-  return el
-}
-
-export function refreshSelection() { for (const f of files.values()) paint(f) }
-
-function layout() {
-  const pos: typeof savedPos = {}
-  for (const [path, f] of files) if (f.node) { const r = rect(f.node); pos['f:' + path] = { x: r.x, y: r.y } }
-  for (const [S, l] of lists) if (S.sid) pos['l:' + S.sid] = savedRect(l.el)
-  for (const [S, t] of terms) if (S.sid) pos['t:' + S.sid] = savedRect(t.el)
-  return pos
 }

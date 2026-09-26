@@ -25,4 +25,5 @@
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .edge.live{stroke-dasharray:none;stroke-width:2.5}
   .run>summary .st{border-color:var(--accent)}
+  .frow.live .g{border-color:var(--kind)} /* a stopped spinner would read as a broken ring */
 }

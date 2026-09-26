@@ -2,17 +2,23 @@
 // box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item moves them all; Delete (or the
 // bar by the selection) removes them, each through its own remove path. Only items laid out on the canvas take part:
 // pinned, floating and full-view windows don't.
-import { make, ICON, button, iconButton, confirmBox, perFrame, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
-import { stage, items, onCanvas, rect, place, toWorld, view, onChange, setGroup, setMoveAlong, changed, swallowNext, hits, type Rect, type Mover } from './canvas'
+import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
+import { stage, placed, onCanvas, rect, place, toWorld, view, onChange, setGroup, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
-import { drawing, canvasStrokes, strokeRect, markStroke, strokeMover, remove, type Stroke } from './ink'
+import { drawing, remove, type Stroke } from './ink'
+import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
 import { handDrag } from './mode'
 
 const sel = new Set<HTMLElement>()
-const removers = new Map<string, (el: HTMLElement) => void>()
+const removers = new Map<string, (el: HTMLElement) => void>(), notes = new Map<string, string>()
 /** How items of this kind are removed when a selection is deleted, without asking again (the selection asks once).
- *  Kinds that don't register are removed by clicking their own × button; kinds with neither are left alone. */
-export const removable = (kind: string, fn: (el: HTMLElement) => void) => { removers.set(kind, fn) }
+ *  Kinds that don't register are removed by clicking their own × button; kinds with neither are left alone.
+ *  `fn` null: its × still does it. `note`: a line the delete confirmation adds when the selection has this kind
+ *  (what removing it really means, e.g. a session's conversation stays in History). */
+export const removable = (kind: string, fn: ((el: HTMLElement) => void) | null, note?: string) => {
+  if (fn) removers.set(kind, fn)
+  if (note) notes.set(kind, note)
+}
 
 /** The item's own × (every kind's close/remove button carries .closebtn). */
 const closeButton = (el: HTMLElement) => el.querySelector<HTMLButtonElement>(':scope > .win-h .closebtn, :scope > .closebtn')
@@ -41,12 +47,12 @@ export function selectionMover(): Mover {
   return Object.assign(move, { end: () => { ink.end(); changed() } })
 }
 /** Select every item laid out on the canvas (Ctrl/Cmd+A). */
-export function selectAll() { for (const el of items().filter(onCanvas)) set(el, true); for (const s of canvasStrokes()) setInk(s, true); sync() }
+function selectAll() { for (const el of placed()) set(el, true); for (const s of canvasStrokes()) setInk(s, true); sync() }
 function set(el: HTMLElement, on: boolean) {
   if (on) sel.add(el); else sel.delete(el)
   el.classList.toggle('selected', on)
 }
-export function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
+function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
 
 setGroup(el => (sel.has(el) ? [...sel] : [el]))
 setMoveAlong(el => (sel.has(el) && inkSel.size ? strokeMover([...inkSel]) : null))
@@ -85,9 +91,9 @@ async function removeSelected() {
     sync()
     return
   }
-  const sessions = gone.some(el => el.dataset.kind === 'session') ? 'Sessions are closed; their conversations stay in History. ' : ''
+  const said = [...new Set(gone.map(el => notes.get(el.dataset.kind!)).filter(Boolean))].join(' ')
   const left = kept ? `${plural(kept)} can't be removed this way and stay${kept === 1 ? 's' : ''}.` : ''
-  if (!await confirmBox(`Delete ${plural(gone.length + ink.length)}?`, (sessions + left).trim() || 'They are removed from the canvas.', 'Delete')) return
+  if (!await confirmBox(`Delete ${plural(gone.length + ink.length)}?`, `${said} ${left}`.trim() || 'They are removed from the canvas.', 'Delete')) return
   drop()
   for (const el of gone) {
     set(el, false)
@@ -130,12 +136,11 @@ stage.addEventListener('pointerdown', e => {
   e.stopImmediatePropagation() // not a pan
   e.preventDefault() // and not a text selection: selected note text would turn the next drag into the browser's own
   getSelection()?.removeAllRanges()
-  stage.setPointerCapture(e.pointerId)
   const start = toWorld(e.clientX, e.clientY), before = e.shiftKey ? new Set(sel) : new Set<HTMLElement>()
   const inkBefore = e.shiftKey ? new Set(inkSel) : new Set<Stroke>()
-  const candidates = items().filter(onCanvas).map(el => ({ el, r: rect(el) })), drawings = canvasStrokes()
+  const candidates = placed().map(el => ({ el, r: rect(el) })), drawings = canvasStrokes()
   let moved = false
-  const move = perFrame((ev: PointerEvent) => {
+  track(stage, e, (_x, _y, ev) => {
     if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return
     moved = true
     const x0 = Math.min(e.clientX, ev.clientX), y0 = Math.min(e.clientY, ev.clientY)
@@ -154,18 +159,11 @@ stage.addEventListener('pointerdown', e => {
       if (on !== inkSel.has(s)) { setInk(s, on); changes++ }
     }
     if (changes) sync()
-  })
-  const up = () => {
-    stage.removeEventListener('pointermove', move)
-    stage.removeEventListener('pointerup', up)
-    stage.removeEventListener('pointercancel', up)
+  }, () => {
     box.hidden = true
     if (!moved) { if (!again && !e.shiftKey) clearSelection(); return } // a click clears; a double-click still makes a note
     swallowNext('dblclick', 400) // a double-tap-drag's own dblclick mustn't make a note
-  }
-  stage.addEventListener('pointermove', move)
-  stage.addEventListener('pointerup', up)
-  stage.addEventListener('pointercancel', up)
+  })
 }, true)
 
 const NUDGE: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }

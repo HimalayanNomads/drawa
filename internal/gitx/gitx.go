@@ -66,35 +66,20 @@ const GitFiles = 500 // files listed in the Git window; the rest are counted
 var aheadRe = regexp.MustCompile(`ahead (\d+)`)
 var behindRe = regexp.MustCompile(`behind (\d+)`)
 
-// gitStatus reports branch, ahead/behind, changed files (staged / unstaged / untracked with line counts), and
-// recent commits.
-func gitStatus() map[string]any {
-	if _, err := exec.LookPath("git"); err != nil { // not "no repo": the Git window mustn't offer a git init that can't run
-		return map[string]any{"repo": false, "missing": true, "error": "git isn't installed. Get it from https://git-scm.com/downloads, then reopen this window."}
-	}
-	ok, out := Git("status", "--porcelain=v1", "-b", "-z", "--untracked-files=all")
-	if !ok {
-		return map[string]any{"repo": false, "error": out}
-	}
+type fileRow struct {
+	Path             string
+	X, Y             string
+	Staged, Unstaged [2]int
+}
+
+// parseStatus reads `git status --porcelain=v1 -b -z` -> the branch line and the changed files. Porcelain paths are
+// relative to the repo's top even when git runs in a subfolder: prefix (`rev-parse --show-prefix`) is cut off so
+// they're relative to Root like every other path the page sends back, and anything outside Root is left out.
+func parseStatus(out, prefix string) (head string, files []*fileRow) {
 	entries := strings.Split(out, "\x00")
-	head := ""
 	if len(entries) > 0 && strings.HasPrefix(entries[0], "## ") {
 		head = entries[0][3:]
 	}
-	branch := strings.Replace(strings.SplitN(head, "...", 2)[0], "No commits yet on ", "", 1)
-	ahead, behind := 0, 0
-	if m := aheadRe.FindStringSubmatch(head); m != nil {
-		ahead, _ = strconv.Atoi(m[1])
-	}
-	if m := behindRe.FindStringSubmatch(head); m != nil {
-		behind, _ = strconv.Atoi(m[1])
-	}
-	type fileRow struct {
-		Path             string
-		X, Y             string
-		Staged, Unstaged [2]int
-	}
-	var files []*fileRow
 	for i := 1; i < len(entries); i++ {
 		e := entries[i]
 		if len(e) < 4 {
@@ -104,40 +89,92 @@ func gitStatus() map[string]any {
 		if x == "R" || x == "C" {
 			i++ // the rename's old path follows
 		}
-		files = append(files, &fileRow{Path: path, X: x, Y: y})
-	}
-	type key struct {
-		path   string
-		staged bool
-	}
-	counts := map[key][2]int{}
-	for _, staged := range []bool{true, false} {
-		diffArgs := []string{"diff", "--numstat"}
-		if staged {
-			diffArgs = append(diffArgs, "--cached")
-		}
-		ok, out := Git(diffArgs...)
-		if !ok {
+		if !strings.HasPrefix(path, prefix) {
 			continue
 		}
-		for _, line := range strings.Split(out, "\n") {
-			if line == "" {
-				continue
-			}
-			parts := strings.SplitN(line, "\t", 3)
-			for len(parts) < 3 {
-				parts = append(parts, "")
-			}
-			a, d, path := parts[0], parts[1], parts[2]
-			path = strings.TrimSuffix(strings.Split(path, " => ")[len(strings.Split(path, " => "))-1], "}")
-			ai, _ := strconv.Atoi(a)
-			di, _ := strconv.Atoi(d)
-			counts[key{path, staged}] = [2]int{ai, di}
+		files = append(files, &fileRow{Path: path[len(prefix):], X: x, Y: y})
+	}
+	return head, files
+}
+
+// parseNumstat reads `git diff --numstat -z` -> added/deleted per (new) path. A rename is "a\td\t\0old\0new\0";
+// -z keeps paths raw (no quoting, no "{a => b}"), so they match status's.
+func parseNumstat(out string) map[string][2]int {
+	counts := map[string][2]int{}
+	tok := strings.Split(out, "\x00")
+	for i := 0; i < len(tok); i++ {
+		parts := strings.SplitN(tok[i], "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		path := parts[2]
+		if path == "" && i+2 < len(tok) {
+			path = tok[i+2]
+			i += 2
+		}
+		a, _ := strconv.Atoi(parts[0]) // "-" for binary files: 0
+		d, _ := strconv.Atoi(parts[1])
+		counts[path] = [2]int{a, d}
+	}
+	return counts
+}
+
+var prefixCache = struct {
+	sync.Mutex
+	val string
+	ok  bool
+}{}
+
+// prefix is Root's place in its repo ("" at the top, "sub/dir/" below it). Cached once known: Root never moves.
+func prefix() string {
+	prefixCache.Lock()
+	defer prefixCache.Unlock()
+	if !prefixCache.ok {
+		if ok, out := Git("rev-parse", "--show-prefix"); ok {
+			prefixCache.val, prefixCache.ok = out, true
 		}
 	}
+	return prefixCache.val
+}
+
+// gitStatus reports branch, ahead/behind, changed files (staged / unstaged / untracked with line counts), and
+// recent commits.
+func gitStatus() map[string]any {
+	if _, err := exec.LookPath("git"); err != nil { // not "no repo": the Git window mustn't offer a git init that can't run
+		return map[string]any{"repo": false, "missing": true, "error": "git isn't installed. Get it from https://git-scm.com/downloads, then reopen this window."}
+	}
+	// "normal", not "all": an untracked folder is one row, not a walk through every file in it (polled every few seconds)
+	ok, out := Git("status", "--porcelain=v1", "-b", "-z", "--untracked-files=normal", "--", ".")
+	if !ok {
+		return map[string]any{"repo": false, "error": out}
+	}
+	head, files := parseStatus(out, prefix())
+	branch := strings.Replace(strings.SplitN(head, "...", 2)[0], "No commits yet on ", "", 1)
+	ahead, behind := 0, 0
+	if m := aheadRe.FindStringSubmatch(head); m != nil {
+		ahead, _ = strconv.Atoi(m[1])
+	}
+	if m := behindRe.FindStringSubmatch(head); m != nil {
+		behind, _ = strconv.Atoi(m[1])
+	}
+	// line counts only for the sides that have changes: each is a full diff
+	var anyStaged, anyUnstaged bool
 	for _, f := range files {
-		f.Staged = counts[key{f.Path, true}]
-		f.Unstaged = counts[key{f.Path, false}]
+		anyStaged = anyStaged || (f.X != " " && f.X != "?")
+		anyUnstaged = anyUnstaged || (f.Y != " " && f.X != "?")
+	}
+	numstat := func(want bool, extra ...string) map[string][2]int {
+		if !want {
+			return nil
+		}
+		if ok, out := Git(append([]string{"diff", "--numstat", "-z", "--relative"}, extra...)...); ok {
+			return parseNumstat(out)
+		}
+		return nil
+	}
+	staged, unstaged := numstat(anyStaged, "--cached"), numstat(anyUnstaged)
+	for _, f := range files {
+		f.Staged, f.Unstaged = staged[f.Path], unstaged[f.Path]
 	}
 	ok, out = Git("log", "-n", "12", "--pretty=format:%h\x1f%s\x1f%cr\x1f%an")
 	var log []map[string]string
@@ -169,16 +206,19 @@ func gitStatus() map[string]any {
 	}
 	return map[string]any{
 		"repo": true, "branch": branch, "upstream": strings.Contains(head, "..."),
-		"ahead": ahead, "behind": behind, "files": fileList, "total": len(files), "log": nonNil(log),
+		"ahead": ahead, "behind": behind, "files": fileList, "total": len(files), "log": NonNil(log),
 	}
 }
 
-func nonNil(log []map[string]string) []map[string]string {
-	if log == nil {
-		return []map[string]string{}
+// NonNil turns a nil list into an empty one, so it's [] in JSON rather than null.
+func NonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
 	}
-	return log
+	return s
 }
+
+const diffMax = 400_000
 
 func GitDiff(rel string, staged bool) (map[string]any, error) {
 	rel, err := rootRel(rel)
@@ -190,14 +230,24 @@ func GitDiff(rel string, staged bool) (map[string]any, error) {
 		args = append(args, "--cached")
 	}
 	args = append(args, "--", rel)
-	ok, out := Git(args...)
+	ok, out := gitHead(diffMax, args...)
 	if ok && out == "" && !staged { // untracked: show the whole file as added
-		_, out = Git("diff", "--no-index", "--", "/dev/null", rel) // --no-index exits 1 when files differ
-	}
-	if len(out) > 400_000 {
-		out = out[:400_000]
+		_, out = gitHead(diffMax, "diff", "--no-index", "--", "/dev/null", rel) // --no-index exits 1 when files differ
 	}
 	return map[string]any{"diff": out}, nil
+}
+
+// gitHead runs git and keeps only the first max bytes of its output, then stops it: a huge diff is never held whole.
+// Returns (exited cleanly or was cut short, stdout or else stderr).
+func gitHead(max int, args ...string) (bool, string) {
+	r, err := procx.RunLimit(30*time.Second, max, "", append(os.Environ(), "GIT_LITERAL_PATHSPECS=1"), append([]string{"git"}, args...)...)
+	if err != nil {
+		return false, err.Error()
+	}
+	if r.Stdout == "" {
+		return r.Code == 0, strings.Trim(r.Stderr, "\n")
+	}
+	return r.Code == 0 || r.Truncated, strings.Trim(r.Stdout, "\n")
 }
 
 // GitMessage writes a commit message for the staged changes, via a one-off Claude call.
@@ -246,17 +296,17 @@ func GitOp(body map[string]any) (map[string]any, error) {
 		if len(paths) > 0 {
 			ok, out = Git(append([]string{"add", "--"}, paths...)...)
 		} else {
-			ok, out = Git("add", "-A")
+			ok, out = Git("add", "-A", "--", ".") // ".": only Root, which may be a subfolder of the repo
 		}
 	case "unstage":
 		if len(paths) > 0 {
 			ok, out = Git(append([]string{"restore", "--staged", "--"}, paths...)...)
 		} else {
-			ok, out = Git("reset", "-q")
+			ok, out = Git("reset", "-q", "--", ".")
 		}
 	case "commit":
-		msg := strings.TrimSpace(anyToStr(body["message"]))
-		if msg == "" {
+		msg, _ := body["message"].(string)
+		if msg = strings.TrimSpace(msg); msg == "" {
 			return map[string]any{"ok": false, "out": "Write a commit message first."}, nil
 		}
 		ok, out = GitOpts(Opts{Stdin: msg}, "commit", "-F", "-")
@@ -280,17 +330,20 @@ func GitOp(body map[string]any) (map[string]any, error) {
 	return map[string]any{"ok": ok, "out": out}, nil
 }
 
-// rootRel checks rel is inside the project and returns the resolved path relative to Root: what git gets, never
-// the raw input (git runs in Root, which may be a subfolder of the repo).
+// rootRel checks rel is inside the project and returns it relative to Root: what git gets, never the raw input (git
+// runs in Root, which may be a subfolder of the repo). Containment is checked on the resolved path, but git gets the
+// cleaned unresolved one: a tracked symlink stages the link itself, not its target.
 func rootRel(rel string) (string, error) {
-	resolved, err := config.Inside(rel)
-	if err != nil {
+	if _, err := config.Inside(rel); err != nil {
 		return "", err
 	}
-	return filepath.Rel(config.Root, resolved)
-}
-
-func anyToStr(v any) string {
-	s, _ := v.(string)
-	return s
+	p := rel
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(config.Root, p)
+	}
+	r, err := filepath.Rel(config.Root, filepath.Clean(p))
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", config.ErrOutside // "../x" can resolve back inside through a link, but git would take it literally
+	}
+	return r, nil
 }

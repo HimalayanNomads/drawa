@@ -3,7 +3,7 @@ import { tipText } from '../lib/tooltip'
 import { api, q, type TreeItem } from '../lib/api'
 import { $, make, pathEl } from '../lib/dom'
 import { md, enhance, highlighter } from '../lib/markdown'
-import { files, pin, refreshSelection } from '../canvas/graph'
+import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
 import type { Change } from './diff'
 import { centerOn } from '../canvas/canvas'
 
@@ -14,11 +14,13 @@ let lastInput: HTMLTextAreaElement | null = null // composer to receive "Insert 
 addEventListener('focusin', e => { if ((e.target as Element).matches?.('.card textarea')) lastInput = e.target as HTMLTextAreaElement })
 
 /* ---------- tree ---------- */
+/** A folder's entries; a huge folder ends with `{ name: '', more: N }`: the server's cut (N entries not listed). */
 export async function tree(path = '', ul: HTMLElement = $('#tree')) {
   let items: TreeItem[]
   try { items = await api<TreeItem[]>('tree?path=' + q(path)) } catch (e) { return ul.replaceChildren(make('li', 'none', (e as Error).message)) }
   if (!path && !items.length) return ul.replaceChildren(make('li', 'none', 'This folder is empty. Files Claude creates will show up here.'))
   ul.replaceChildren(...items.map(it => {
+    if (it.more != null) return make('li', 'more', `${it.more.toLocaleString()} more`)
     const p = path ? `${path}/${it.name}` : it.name, li = make('li'), b = make('button', it.dir ? 'dir' : 'file')
     b.append(make('span', '', it.name))
     b.title = p
@@ -44,6 +46,9 @@ export async function tree(path = '', ul: HTMLElement = $('#tree')) {
 
 /* ---------- inspector ---------- */
 const inspector = $('#inspector')
+
+// the canvas's Files windows and file nodes open files here (canvas/ can't import panels/)
+setInspector({ open: p => openInspector(p), current: () => inspecting })
 
 export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: Change) {
   const changes = files.get(path)?.changes ?? []

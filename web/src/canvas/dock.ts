@@ -3,12 +3,12 @@
 // it was on the canvas: pinned windows keep their canvas position and size in their inline styles (see rect()).
 import { $, make } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip } from './canvas'
+import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder } from './canvas'
 import { redraw } from './graph'
 import { exitFull } from './fullview'
 
 // inside the stage, just under the pen's capture layer: Draw mode reaches pinned windows too (canvas.css)
-const dock = stage.insertBefore(make('aside', 'pinbar'), $('#ink-capture'))
+const dock = holder(stage.insertBefore(make('aside', 'pinbar'), $('#ink-capture')))
 let wasCompact = false
 dock.setAttribute('aria-label', 'Pinned windows')
 dock.hidden = true
@@ -72,7 +72,7 @@ const sync = syncPin
 
 /* ---------- floating: stuck to the screen wherever you put it ---------- */
 // in the stage (above the canvas, under full view and the pen's layer, so you can draw on it too)
-const floats = stage.insertBefore(make('div', 'floats'), $('.fullview') ?? $('#ink-capture'))
+const floats = holder(stage.insertBefore(make('div', 'floats'), $('.fullview') ?? $('#ink-capture')))
 export const floating = (el: HTMLElement) => el.classList.contains('floating')
 const setAt = (el: HTMLElement, x: number, y: number) => {
   const nx = Math.min(Math.max(0, x), innerWidth - 120), ny = Math.min(Math.max(56, y), innerHeight - 40) // a tab stays reachable

@@ -2,6 +2,7 @@
 package github
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,7 +118,7 @@ func Checks(rollup []any) []map[string]any {
 			}
 			r = map[string]any{"name": name, "state": st, "url": s(c["detailsUrl"])}
 		}
-		ts := firstNonEmpty(s(c["startedAt"]), s(c["completedAt"]), s(c["createdAt"]))
+		ts := cmp.Or(s(c["startedAt"]), s(c["completedAt"]), s(c["createdAt"]))
 		newness := [2]any{ts, st == "pending"}
 		name, _ := r["name"].(string)
 		prev, exists := out[name]
@@ -140,18 +141,10 @@ func newnessGE(a, b [2]any) bool {
 	if as != bs {
 		return as >= bs
 	}
-	return toBool(a[1]) == toBool(b[1]) || toBool(a[1])
+	return truthy(a[1]) == truthy(b[1]) || truthy(a[1])
 }
-func toBool(v any) bool { b, _ := v.(bool); return b }
-func firstNonEmpty(vs ...string) string {
-	for _, v := range vs {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-func s(v any) string { x, _ := v.(string); return x }
+func truthy(v any) bool { b, _ := v.(bool); return b }
+func s(v any) string    { x, _ := v.(string); return x }
 
 func who(a any) string {
 	m, ok := a.(map[string]any)
@@ -283,11 +276,6 @@ func Comment(c map[string]any) map[string]any {
 	if author == nil {
 		author = c["user"]
 	}
-	when := firstNonEmpty(s(c["createdAt"]), s(c["submittedAt"]), s(c["created_at"]))
-	return map[string]any{"author": who(author), "body": orEmptyStr(c["body"]), "when": when}
-}
-
-func orEmptyStr(v any) string {
-	s, _ := v.(string)
-	return s
+	when := cmp.Or(s(c["createdAt"]), s(c["submittedAt"]), s(c["created_at"]))
+	return map[string]any{"author": who(author), "body": s(c["body"]), "when": when}
 }

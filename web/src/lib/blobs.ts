@@ -4,15 +4,14 @@ const open = () => (db ??= new Promise((res, rej) => {
   const r = indexedDB.open('claude-ui', 1) // the name from before the rename to Drawa: renaming would lose pictures kept here
   r.onupgradeneeded = () => r.result.createObjectStore('blobs')
   r.onsuccess = () => res(r.result)
-  r.onerror = () => rej(r.error)
+  r.onerror = () => { db = undefined; rej(r.error) } // try again next time
 }))
 
 async function run<T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest): Promise<T> {
-  const s = (await open()).transaction('blobs', mode).objectStore('blobs')
-  return new Promise((res, rej) => {
-    const r = f(s)
-    r.onsuccess = () => res(r.result as T)
-    r.onerror = () => rej(r.error)
+  const tx = (await open()).transaction('blobs', mode), r = f(tx.objectStore('blobs'))
+  return new Promise((res, rej) => { // a write is only kept once its transaction completes, not when the request succeeds
+    tx.oncomplete = () => res(r.result as T)
+    tx.onerror = tx.onabort = () => rej(tx.error ?? r.error)
   })
 }
 

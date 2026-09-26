@@ -97,6 +97,10 @@ function row(r: PrRow | IssueRow) {
   return b
 }
 
+// URLs in GitHub's data open only if they're https: (a commit status's targetUrl is whatever its sender set)
+const https = (u: string) => /^https:\/\//i.test(u ?? '')
+const ghLink = (url: string) => https(url) ? [extLink('btn', 'Open on GitHub', url)] : []
+
 /* ---------- one pull request ---------- */
 function header(title: string, n: number, back: string, state: string, facts: string[]) {
   const top = make('div', 'ghhead'), h = make('h3')
@@ -121,7 +125,7 @@ async function prDetail(n: number) {
   const sendReviews = button(`Review comments${reviews ? ` (${reviews})` : ''}`, '', send('reviews'))
   sendReviews.disabled = !reviews && !p.comments.length
   acts.append(make('span', 'ghsend', 'Send to Claude:'), button('This PR', 'ai', send('pr')), sendChecks, sendReviews,
-    make('span', 'spacer'), button('Check out', '', () => checkout(p)), extLink('btn', 'Open on GitHub', p.url))
+    make('span', 'spacer'), button('Check out', '', () => checkout(p)), ...ghLink(p.url))
   const tabs = make('div', 'ghtabs'), pane = make('div', 'ghpane')
   const subs = [['conv', `Conversation${p.comments.length + p.reviews.length ? ` (${p.comments.length + p.reviews.length})` : ''}`], ['files', `Files (${p.files})`], ['checks', `Checks${p.checks.length ? ` (${t.pass}/${p.checks.length})` : ''}`]] as const
   for (const [k, label] of subs) {
@@ -171,7 +175,7 @@ function checkList(checks: Check[]) {
   return [...checks].sort((a, b) => order[a.state] - order[b.state]).map(c => {
     const r = make('div', 'ghcheck')
     r.dataset.state = c.state
-    r.append(dot(c.state), extLink('ghcheck-n', c.name, c.url), make('span', 'ghcheck-s', c.state))
+    r.append(dot(c.state), https(c.url) ? extLink('ghcheck-n', c.name, c.url) : make('span', 'ghcheck-n', c.name), make('span', 'ghcheck-s', c.state))
     if (c.state === 'fail' && c.url.includes('/actions/runs/')) {
       const pre = make('pre', 'ghlog')
       r.append(button('Show log', '', async () => {
@@ -195,7 +199,7 @@ async function issueDetail(n: number) {
   const i = await load(`issue #${n}`, () => getIssue(n))
   if (!i) return
   const w = win!, acts = make('div', 'ghacts')
-  acts.append(make('span', 'ghsend', 'Send to Claude:'), button('This issue', 'ai', () => sendToClaude('issue', n, i.title)), make('span', 'spacer'), extLink('btn', 'Open on GitHub', i.url))
+  acts.append(make('span', 'ghsend', 'Send to Claude:'), button('This issue', 'ai', () => sendToClaude('issue', n, i.title)), make('span', 'spacer'), ...ghLink(i.url))
   const pane = make('div', 'ghpane'), box = make('form', 'ghreply'), ta = make('textarea')
   ta.rows = 3
   ta.placeholder = 'Comment on this issue'

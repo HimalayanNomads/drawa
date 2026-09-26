@@ -92,7 +92,7 @@ By default Drawa only answers on localhost. Pass `--net` (in any position) and, 
   - Network: http://192.168.1.23:8765/?token=fpKZrzCN
 ```
 
-The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once and then remembered via a cookie), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
+The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once, then kept in a cookie and dropped from the address), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
 
 ## Configuration
 
@@ -100,6 +100,8 @@ The Network link lets another device on the same network — a laptop, a phone �
 |---|---|---|
 | `DRAWA_PORT` | `8765` | Port to serve on. Set it to run two projects at once. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
+| `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
+| `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh
 DRAWA_PORT=8766 CLAUDE_CONFIG_DIR=$HOME/.claude-work drawa ~/other/project

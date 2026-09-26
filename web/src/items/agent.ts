@@ -62,7 +62,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
   const state = make('span', 'm')
   const { el, head, body } = makeWindow({
     kind: 'agent', cls: 'anode', title: String(inp.description ?? type), minW: 300, minH: 180,
-    rect: { min: !live, ...spotBeside(S.card, 440, 440, 520, 0), ...saved },
+    rect: { min: !live, ...(saved ?? spotBeside(S.card, 440, 440, 520, 0)) },
     actions: [iconButton(ICON.x, "Close window (the session's Agent row reopens it)", () => hide(call), 'closebtn')],
   })
   el.dataset.id = 'a:' + call
@@ -154,6 +154,10 @@ export function showAgent(call: string) {
 }
 
 /** The agent's own id, from the CLI's task_started line (live) or its Agent result's "agentId: …" (replay). */
+/** The Agent call that started the agent with this id (task notifications may name only the id). */
+export function agentCall(id: string) {
+  for (const [call, aid] of ids) if (aid === id) return call
+}
 export function agentId(call: string, id: string, later = false) {
   ids.set(call, id)
   if (later) lazy.add(call)

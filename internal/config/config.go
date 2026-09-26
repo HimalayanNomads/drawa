@@ -4,6 +4,7 @@ package config
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -58,33 +59,28 @@ func hasFlag(name string) bool {
 	return false
 }
 
-const tokenChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-
-// NetToken guards the network address when --net is passed (127.0.0.1/localhost never need it: see
-// IsLocalHost). It's short (8 characters — a URL you can read out or type), so the request path that checks
-// it (internal/server's netAuthorized) also locks out an address after repeated wrong guesses; the length
-// alone isn't the defense. Empty, and unused, when --net wasn't passed.
+// NetToken guards the network address when --net is passed (only loopback clients skip it: see internal/server's
+// netAuthorized). 16 random bytes, so guessing it is hopeless; it's typed once from the printed link and then
+// lives in a cookie. Kept in DRAWA_NET_TOKEN so the self-restart (syscall.Exec with os.Environ) keeps it and
+// already-open browsers stay signed in. Empty, and unused, when --net wasn't passed.
 var NetToken = netToken()
+
+const netTokenEnv = "DRAWA_NET_TOKEN"
 
 func netToken() string {
 	if !Net {
 		return ""
 	}
-	b := make([]byte, 8)
+	if t := os.Getenv(netTokenEnv); len(t) >= 22 { // a short hand-set value would undo the point of the length
+		return t
+	}
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		panic(err) // the OS RNG failing is not something we can recover from
 	}
-	out := make([]byte, len(b))
-	for i, c := range b {
-		out[i] = tokenChars[int(c)%len(tokenChars)]
-	}
-	return string(out)
-}
-
-// IsLocalHost is true for the loopback Host header: always trusted, so it never needs NetToken. Anything else
-// accepted by Hosts is one of this machine's LAN addresses (only present there when --net was passed).
-func IsLocalHost(host string) bool {
-	return host == fmt.Sprintf("127.0.0.1:%d", Port) || host == fmt.Sprintf("localhost:%d", Port)
+	t := base64.RawURLEncoding.EncodeToString(b)
+	os.Setenv(netTokenEnv, t)
+	return t
 }
 
 // Root is the project folder Claude works in: the first non-flag argument, default the current folder.
@@ -160,11 +156,15 @@ func LocalIPs() []string {
 	return []string{addr.IP.String()}
 }
 
-// + the Vite dev server, which proxies to us
+// Origins are the pages allowed to POST: our own hosts, plus the Vite dev server (which proxies to us but keeps
+// the browser's Origin) only when DRAWA_DEV=1, so another app on :5173 can't drive a normal run.
 var Origins = mergeOrigins()
 
 func mergeOrigins() map[string]bool {
-	m := map[string]bool{"127.0.0.1:5173": true, "localhost:5173": true}
+	m := map[string]bool{}
+	if os.Getenv("DRAWA_DEV") == "1" {
+		m["127.0.0.1:5173"], m["localhost:5173"] = true, true
+	}
 	for k := range Hosts {
 		m[k] = true
 	}
@@ -192,11 +192,31 @@ func Inside(rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Rel, not a string prefix: /root2 isn't inside /root, and everything is inside Root == "/"
-	if r, err := filepath.Rel(Root, resolved); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+	if !contains(resolved) {
 		return "", ErrOutside
 	}
 	return resolved, nil
+}
+
+// contains: Rel, not a string prefix: /root2 isn't inside /root, and everything is inside Root == "/".
+func contains(abs string) bool {
+	r, err := filepath.Rel(Root, abs)
+	return err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator))
+}
+
+// Opened re-checks, after the open, that f (opened from path p, which Inside approved) is still inside Root:
+// a symlink swapped in between Inside and the open would otherwise let the read escape. Linux asks the kernel
+// what f really is; elsewhere it resolves p again. ponytail: the fallback only narrows the race, not closes it;
+// openat2(RESOLVE_BENEATH) if that ever matters off Linux.
+func Opened(f *os.File, p string) error {
+	real, err := os.Readlink("/proc/self/fd/" + strconv.Itoa(int(f.Fd())))
+	if err != nil {
+		real, err = filepath.EvalSymlinks(p)
+	}
+	if err != nil || !contains(real) {
+		return ErrOutside
+	}
+	return nil
 }
 
 // resolve follows symlinks in p even when its leaf doesn't exist yet: the deepest existing ancestor is resolved

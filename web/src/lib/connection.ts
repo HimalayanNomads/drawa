@@ -7,7 +7,6 @@ const EVERY = 5000, RETRY = 2000
 let misses = 0, down = false, timer = 0
 const listeners: (() => void)[] = []
 export const onReconnect = (f: () => void) => listeners.push(f)
-export const online = () => !down
 
 async function ping() {
   clearTimeout(timer)

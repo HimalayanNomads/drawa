@@ -12,7 +12,7 @@ import (
 func TestNetAuth(t *testing.T) {
 	oldNet, oldToken, oldHosts := config.Net, config.NetToken, config.Hosts
 	config.Net = true
-	config.NetToken = "testtok1"
+	config.NetToken = "testtok1testtok1testtok1"
 	config.Hosts = map[string]bool{"127.0.0.1:8765": true, "localhost:8765": true, "10.0.0.5:8765": true}
 	t.Cleanup(func() {
 		config.Net, config.NetToken, config.Hosts = oldNet, oldToken, oldHosts
@@ -21,35 +21,34 @@ func TestNetAuth(t *testing.T) {
 		netAuthMu.Unlock()
 	})
 
-	srv := httptest.NewServer(Handler())
-	defer srv.Close()
+	h := Handler()
 	const netHost = "10.0.0.5:8765" // stands in for this machine's LAN address
-
-	get := func(path, host string, cookies []*http.Cookie) *http.Response {
+	get := func(path, host, from string, cookies ...*http.Cookie) *http.Response {
 		t.Helper()
-		req, _ := http.NewRequest("GET", srv.URL+path, nil)
-		req.Host = host
+		req := httptest.NewRequest("GET", path, nil)
+		req.Host, req.RemoteAddr = host, from
 		for _, c := range cookies {
 			req.AddCookie(c)
 		}
-		resp, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		return resp
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Result()
+	}
+	const lan, lan2 = "10.0.0.9:5000", "10.0.0.10:5000"
+
+	if resp := get("/api/info", netHost, lan); resp.StatusCode != 403 {
+		t.Errorf("network client, no token: status %d, want 403", resp.StatusCode)
+	}
+	if resp := get("/api/info", "localhost:8765", lan); resp.StatusCode != 403 {
+		t.Errorf("network client forging Host: localhost: status %d, want 403", resp.StatusCode)
+	}
+	if resp := get("/api/info", "127.0.0.1:8765", "127.0.0.1:5000"); resp.StatusCode != 200 {
+		t.Errorf("loopback client, no token: status %d, want 200", resp.StatusCode)
 	}
 
-	if resp := get("/api/info", netHost, nil); resp.StatusCode != 403 {
-		t.Errorf("network host, no token: status %d, want 403", resp.StatusCode)
-	}
-	if resp := get("/api/info", "127.0.0.1:8765", nil); resp.StatusCode != 200 {
-		t.Errorf("localhost, no token: status %d, want 200 (localhost never needs one)", resp.StatusCode)
-	}
-
-	resp := get("/api/info?token=testtok1", netHost, nil)
-	if resp.StatusCode != 200 {
-		t.Fatalf("network host, valid token: status %d, want 200", resp.StatusCode)
+	resp := get("/?token="+config.NetToken+"&x=1", netHost, lan)
+	if resp.StatusCode != 302 || resp.Header.Get("Location") != "/?x=1" {
+		t.Fatalf("valid token: status %d to %q, want 302 to /?x=1", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	var cookie *http.Cookie
 	for _, c := range resp.Cookies() {
@@ -60,14 +59,28 @@ func TestNetAuth(t *testing.T) {
 	if cookie == nil {
 		t.Fatal("valid token didn't set the auth cookie")
 	}
-	if resp := get("/api/info", netHost, []*http.Cookie{cookie}); resp.StatusCode != 200 {
+	if resp := get("/api/info", netHost, lan, cookie); resp.StatusCode != 200 {
 		t.Errorf("cookie from earlier valid token: status %d, want 200", resp.StatusCode)
 	}
 
-	for i := 0; i < maxNetAttempts; i++ {
-		get("/api/info?token=wrong", netHost, nil)
+	stale := &http.Cookie{Name: netCookie, Value: "from-an-earlier-run"}
+	for i := 0; i < 2*maxNetAttempts; i++ {
+		get("/favicon.ico", netHost, lan2, stale)
 	}
-	if resp := get("/api/info?token=testtok1", netHost, nil); resp.StatusCode != 403 {
+	if lockedOut("10.0.0.10") {
+		t.Error("a stale cookie and missing tokens locked the address out")
+	}
+
+	for i := 0; i < maxNetAttempts; i++ {
+		get("/api/info?token=wrong", netHost, lan)
+	}
+	if resp := get("/api/info?token="+config.NetToken, netHost, lan); resp.StatusCode != 403 {
 		t.Errorf("locked-out address, even with the right token: status %d, want 403", resp.StatusCode)
+	}
+	netAuthMu.Lock()
+	netLocked["10.0.0.9"] = time.Now().Add(-time.Second)
+	netAuthMu.Unlock()
+	if lockedOut("10.0.0.9") || len(netLocked) != 0 {
+		t.Error("an expired lock wasn't lifted and dropped")
 	}
 }

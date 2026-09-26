@@ -4,31 +4,41 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"drawa/internal/config"
 	"drawa/internal/live"
 )
 
+// modelRe: model names and aliases as Claude takes them ("opus", "claude-opus-4-1", "sonnet[1m]", Bedrock/Vertex
+// ARNs with / and @); they end up on its command line, so nothing starting with - (it would read as an option).
+var modelRe = regexp.MustCompile(`^[\w.\[\]/@][\w.\[\]:/@-]{0,199}$`)
+
 // handleCardOp is the per-card operations: send a message, answer an approval, change mode, answer a canvas
-// call, interrupt, or close. live.Mu only guards the Registry map itself (so two concurrent /api/send calls for
-// a new card can't both spawn a process for it); once a *Live is in hand, every card's I/O runs unlocked from
-// every other card's, and Live.Write serializes writes to that one card's stdin internally.
+// call, interrupt, or close. live.Mu only guards the Registry map itself (live.Start spawns outside it, so two
+// concurrent /api/send calls for a new card still start one process); once a *Live is in hand, every card's I/O
+// runs unlocked from every other card's, and Live.Write serializes writes to that one card's stdin internally.
 func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[string]any) {
-	live.Mu.Lock()
-	lv := live.Registry[cid]
-	if r.URL.Path == "/api/send" && (lv == nil || !lv.Alive()) {
-		newLv, err := live.New(cid, str(body["sid"]), str(body["mode"]), str(body["model"]))
-		if err != nil {
-			live.Mu.Unlock()
+	var lv *live.Live
+	if r.URL.Path == "/api/send" {
+		sid, model := str(body["sid"]), str(body["model"])
+		if (sid != "" && !config.UUIDRe.MatchString(sid)) || (model != "" && !modelRe.MatchString(model)) {
+			http.Error(w, "", 400)
+			return
+		}
+		var err error
+		if lv, err = live.Start(cid, sid, str(body["mode"]), model); err != nil {
 			http.Error(w, "", 500)
 			return
 		}
-		live.Registry[cid] = newLv
-		lv = newLv
-	} else if r.URL.Path == "/api/close" && lv != nil {
-		delete(live.Registry, cid)
+	} else {
+		live.Mu.Lock()
+		lv = live.Registry[cid]
+		if r.URL.Path == "/api/close" && lv != nil {
+			delete(live.Registry, cid)
+		}
+		live.Mu.Unlock()
 	}
-	live.Mu.Unlock()
 
 	var err error // stdin broke (the process died): answer 500, and the next send starts a new one
 	switch r.URL.Path {
@@ -55,9 +65,11 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		err = lv.Write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 
 	case "/api/respond":
-		if lv != nil && lv.Alive() {
-			err = respond(lv, body)
+		if lv == nil || !lv.Alive() { // the process that asked is gone: nothing can take this answer
+			sendJSON(w, map[string]any{"error": "not running"}, 409)
+			return
 		}
+		err = respond(lv, body)
 
 	case "/api/mode":
 		m := str(body["mode"])

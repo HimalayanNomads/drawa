@@ -1,0 +1,126 @@
+package live
+
+import (
+	"time"
+
+	"drawa/internal/config"
+)
+
+// ReapCap: a busy card, or one waiting on an approval, is never reaped as idle, unless it has been silent this long.
+// ponytail: a fixed hard cap for a turn stuck forever (a hung tool); make it a setting if real turns ever run longer.
+const ReapCap = 24 * time.Hour
+
+// Start returns the card's running process, starting one if there is none. Mu is not held while spawning (a
+// fork/exec can be slow): the card is reserved in `starting`, so concurrent sends for it still start only one.
+// Going over MaxLive closes the least recently used idle card.
+func Start(cid, sid, mode, model string) (*Live, error) {
+	Mu.Lock()
+	for {
+		if l := Registry[cid]; l != nil && l.Alive() {
+			Mu.Unlock()
+			return l, nil
+		}
+		ch, busy := starting[cid]
+		if !busy {
+			break
+		}
+		Mu.Unlock()
+		<-ch // another send is starting it: use that one (or try again if it failed)
+		Mu.Lock()
+	}
+	ch := make(chan struct{})
+	starting[cid] = ch
+	Mu.Unlock()
+
+	l, err := New(cid, sid, mode, model)
+
+	Mu.Lock()
+	delete(starting, cid)
+	close(ch)
+	var victim *Live
+	if err == nil {
+		Registry[cid] = l
+		victim = evictLocked(cid)
+	}
+	Mu.Unlock()
+	if victim != nil {
+		go victim.Close() // can take 5s: outside Mu
+	}
+	return l, err
+}
+
+// evictLocked removes and returns the least recently used idle card (not busy, no open asks, not keep) when more
+// than MaxLive are running, else nil. Called with Mu held.
+func evictLocked(keep string) *Live {
+	running, lru, lruCid := 0, (*Live)(nil), ""
+	var lruAt time.Time
+	for cid, l := range Registry {
+		l.mu.Lock()
+		alive, idle, last := !l.exited, !l.busy && len(l.asks) == 0, l.last
+		l.mu.Unlock()
+		if !alive {
+			continue
+		}
+		running++
+		if cid != keep && idle && (lru == nil || last.Before(lruAt)) {
+			lru, lruCid, lruAt = l, cid, last
+		}
+	}
+	if running <= MaxLive || lru == nil {
+		return nil
+	}
+	delete(Registry, lruCid)
+	return lru
+}
+
+// Reap closes live Claude processes with no traffic for IdleSecs (the next message resumes them).
+func Reap() {
+	for {
+		time.Sleep(60 * time.Second)
+		Mu.Lock()
+		var idle []*Live
+		for cid, l := range Registry {
+			l.mu.Lock()
+			quiet := time.Since(l.last)
+			working := l.busy || len(l.asks) > 0
+			stale := l.exited || (!working && quiet > config.IdleSecs*time.Second) || quiet > ReapCap
+			l.mu.Unlock()
+			if stale {
+				idle = append(idle, l)
+				delete(Registry, cid)
+			}
+		}
+		Mu.Unlock()
+		for _, l := range idle { // outside Mu: a Close can take 5s, and every page's stream takes Mu
+			go l.Close()
+		}
+	}
+}
+
+// KillAll kills every card's process group (and Meta's), and waits up to 2s in all for them to exit, so they're
+// reaped before this server exits or execs itself.
+func KillAll() {
+	Mu.Lock()
+	all := make([]*Live, 0, len(Registry)+1)
+	for _, l := range Registry {
+		all = append(all, l)
+	}
+	if metaLive != nil {
+		all = append(all, metaLive)
+	}
+	Mu.Unlock()
+	deadline := time.After(2 * time.Second)
+	for _, l := range all {
+		l.Kill()
+	}
+	for _, l := range all {
+		if l.done == nil { // NewForTest
+			continue
+		}
+		select {
+		case <-l.done:
+		case <-deadline:
+			return
+		}
+	}
+}

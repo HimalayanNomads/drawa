@@ -3,12 +3,15 @@ package filesx
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -19,7 +22,11 @@ import (
 type TreeItem struct {
 	Name string `json:"name"`
 	Dir  bool   `json:"dir"`
+	More int    `json:"more,omitempty"` // only on a last, nameless item: how many entries past maxTree were left out
 }
+
+// maxTree caps one folder's listing: a folder of 100k generated files would otherwise stall the panel.
+const maxTree = 2000
 
 func Tree(rel string) ([]TreeItem, error) {
 	p, err := config.Inside(rel)
@@ -43,6 +50,9 @@ func Tree(rel string) ([]TreeItem, error) {
 		}
 		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
 	})
+	if len(items) > maxTree {
+		items = append(items[:maxTree], TreeItem{More: len(items) - maxTree})
+	}
 	return items, nil
 }
 
@@ -59,6 +69,8 @@ var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "dist": true, "build": true, ".venv": true,
 	"venv": true, "__pycache__": true, ".next": true, "target": true,
 }
+
+var listing sync.Mutex
 
 var filesCache = struct {
 	sync.Mutex
@@ -80,7 +92,16 @@ func projectFiles() ([]string, []string) {
 		defer filesCache.Unlock()
 		return filesCache.list, filesCache.low
 	}
-	filesCache.Unlock() // not held while listing: a big walk mustn't stall every search behind it
+	filesCache.Unlock() // not held while listing: a search with a fresh cache mustn't wait on a walk
+	// one listing at a time: concurrent misses (a burst of @ keystrokes) wait for it rather than each spawning git
+	listing.Lock()
+	defer listing.Unlock()
+	filesCache.Lock()
+	if time.Since(filesCache.at) < 30*time.Second && index.Equal(filesCache.index) {
+		defer filesCache.Unlock()
+		return filesCache.list, filesCache.low
+	}
+	filesCache.Unlock()
 	ok, out := gitx.Git("ls-files", "-co", "--exclude-standard")
 	var files []string
 	if ok {
@@ -162,12 +183,22 @@ type scored struct {
 	path  string
 }
 
+func (a scored) less(b scored) bool {
+	if a.score != b.score {
+		return a.score < b.score
+	}
+	if a.plen != b.plen {
+		return a.plen < b.plen
+	}
+	return a.path < b.path
+}
+
 // Find is fuzzy file search for @ mentions. Ranks: substring of the file name, substring of the path, letters in
 // order within the file name, then within the path; tighter matches and shorter paths first.
 func Find(q string, limit int) []string {
 	q = strings.ToLower(strings.ReplaceAll(q, " ", ""))
 	files, low := projectFiles()
-	var scores []scored
+	scores := make([]scored, 0, limit+1)
 	for i, f := range files {
 		l := low[i]
 		slash := strings.LastIndex(l, "/")
@@ -189,19 +220,16 @@ func Find(q string, limit int) []string {
 		} else {
 			continue
 		}
-		scores = append(scores, scored{s, len(f), f})
-	}
-	sort.Slice(scores, func(i, j int) bool {
-		if scores[i].score != scores[j].score {
-			return scores[i].score < scores[j].score
+		// top-k by insertion: limit is small (40) and most files don't beat the current last place
+		c := scored{s, len(f), f}
+		at := sort.Search(len(scores), func(j int) bool { return c.less(scores[j]) })
+		if at >= limit {
+			continue
 		}
-		if scores[i].plen != scores[j].plen {
-			return scores[i].plen < scores[j].plen
+		scores = slices.Insert(scores, at, c)
+		if len(scores) > limit {
+			scores = scores[:limit]
 		}
-		return scores[i].path < scores[j].path
-	})
-	if len(scores) > limit {
-		scores = scores[:limit]
 	}
 	out := make([]string, len(scores))
 	for i, s := range scores {
@@ -210,17 +238,25 @@ func Find(q string, limit int) []string {
 	return out
 }
 
+var errNotFile = errors.New("not a file")
+
 // Get reads a file for the viewer.
 func Get(rel string) (map[string]any, error) {
 	p, err := config.Inside(rel)
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(p)
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NONBLOCK, 0) // a plain open of a FIFO waits for a writer forever
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() { // FIFOs, devices, folders
+		return nil, errNotFile
+	}
+	if err := config.Opened(f, p); err != nil {
+		return nil, err
+	}
 	data, err := io.ReadAll(io.LimitReader(f, 1_000_000)) // ponytail: 1MB cap, viewer not an editor
 	if err != nil {
 		return nil, err

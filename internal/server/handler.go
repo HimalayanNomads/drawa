@@ -4,6 +4,9 @@
 package server
 
 import (
+	"bytes"
+	"cmp"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"drawa/internal/config"
 	"drawa/internal/filesx"
@@ -27,30 +31,24 @@ import (
 	"drawa/internal/webassets"
 )
 
-type Q map[string]string
-
-func (q Q) require(key string) (string, error) {
-	v, ok := q[key]
-	if !ok {
-		return "", fmt.Errorf("missing %s", key)
-	}
-	return v, nil
-}
-
-func defaultStr(v, def string) string {
-	if v == "" {
-		return def
-	}
-	return v
-}
-
 func truthy(v any) bool { b, _ := v.(bool); return b }
 func str(v any) string  { s, _ := v.(string); return s }
+
+// need is a required query parameter: absent (not just empty) is an error, e.g. a diff of "" would be the whole repo.
+func need(q url.Values, key string) (string, error) {
+	if !q.Has(key) {
+		return "", fmt.Errorf("missing %s", key)
+	}
+	return q.Get(key), nil
+}
 
 // Handler is the whole HTTP surface: localhost only unless --net, since this endpoint runs Claude Code with
 // your permissions (with --net, netAuthorized gates the network address with config.NetToken instead).
 func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header() // no other site may frame the page and click through its approvals
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Frame-Options", "DENY")
 		switch r.Method {
 		case http.MethodGet:
 			doGET(w, r)
@@ -73,16 +71,7 @@ func sendJSON(w http.ResponseWriter, body any, status int) {
 	w.Write(data)
 }
 
-func sendBytes(w http.ResponseWriter, data []byte, kind, cache string) {
-	w.Header().Set("Content-Type", kind)
-	if cache != "" {
-		w.Header().Set("Cache-Control", cache)
-	}
-	w.WriteHeader(200)
-	w.Write(data)
-}
-
-type routeFunc func(Q) (any, int, error)
+type routeFunc func(url.Values) (any, int, error)
 
 func ok(body any, err error) (any, int, error) {
 	if err != nil {
@@ -92,55 +81,56 @@ func ok(body any, err error) (any, int, error) {
 }
 
 var getRoutes = map[string]routeFunc{
-	"/api/info": func(q Q) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
-	"/api/tree": func(q Q) (any, int, error) { return ok(filesx.Tree(q["path"])) },
-	"/api/file": func(q Q) (any, int, error) {
-		p, err := q.require("path")
+	"/api/info": func(q url.Values) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
+	"/api/tree": func(q url.Values) (any, int, error) { return ok(filesx.Tree(q.Get("path"))) },
+	"/api/file": func(q url.Values) (any, int, error) {
+		p, err := need(q, "path")
 		if err != nil {
 			return nil, 0, err
 		}
 		return ok(filesx.Get(p))
 	},
-	"/api/git": func(q Q) (any, int, error) { return gitx.GitState(), 200, nil },
-	"/api/git/diff": func(q Q) (any, int, error) {
-		p, err := q.require("path")
+	"/api/git": func(q url.Values) (any, int, error) { return gitx.GitState(), 200, nil },
+	"/api/git/diff": func(q url.Values) (any, int, error) {
+		p, err := need(q, "path")
 		if err != nil {
 			return nil, 0, err
 		}
-		return ok(gitx.GitDiff(p, q["staged"] == "1"))
+		return ok(gitx.GitDiff(p, q.Get("staged") == "1"))
 	},
-	"/api/files": func(q Q) (any, int, error) { return filesx.Find(q["q"], 40), 200, nil },
-	"/api/meta":  func(q Q) (any, int, error) { return live.Meta(), 200, nil },
-	"/api/sessions": func(q Q) (any, int, error) {
+	"/api/files": func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
+	"/api/meta":  func(q url.Values) (any, int, error) { return live.Meta(), 200, nil },
+	"/api/sessions": func(q url.Values) (any, int, error) {
 		if info, err := os.Stat(config.Sessions); err != nil || !info.IsDir() {
 			return []sessions.Info{}, 200, nil
 		}
 		return sessions.List(), 200, nil
 	},
 	"/api/session":   sessionRoute,
-	"/api/gh":        func(q Q) (any, int, error) { return github.State(), 200, nil },
-	"/api/gh/prs":    func(q Q) (any, int, error) { return ok(github.Prs(defaultStr(q["state"], "open"))) },
-	"/api/gh/issues": func(q Q) (any, int, error) { return ok(github.Issues(defaultStr(q["state"], "open"))) },
-	"/api/gh/pr":     func(q Q) (any, int, error) { return ok(github.Pr(q["n"])) },
-	"/api/gh/issue":  func(q Q) (any, int, error) { return ok(github.Issue(q["n"])) },
-	"/api/gh/log":    func(q Q) (any, int, error) { return ok(github.Log(q["url"])) },
+	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(), 200, nil },
+	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(cmp.Or(q.Get("state"), "open"))) },
+	"/api/gh/issues": func(q url.Values) (any, int, error) { return ok(github.Issues(cmp.Or(q.Get("state"), "open"))) },
+	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
+	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
+	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
 }
 
 var agentIDRe = regexp.MustCompile(`^[\w-]{1,100}$`)
 
-func sessionRoute(q Q) (any, int, error) {
-	sid := q["id"]
+func sessionRoute(q url.Values) (any, int, error) {
+	sid := q.Get("id")
 	if !config.UUIDRe.MatchString(sid) {
 		return map[string]any{"error": "bad session id"}, 404, nil
 	}
-	agent := q["agent"]
+	agent := q.Get("agent")
 	if agent != "" && !agentIDRe.MatchString(agent) {
 		return map[string]any{"error": "bad agent id"}, 404, nil
 	}
 	if _, err := os.Stat(filepath.Join(config.Sessions, sid+".jsonl")); err == nil {
 		return sessions.Load(sid, agent), 200, nil
 	}
-	// the CLI writes it once the first message is queued; until then the page reads the live process instead
+	// the CLI writes it once the first message is queued; until then the page reads the live process instead.
+	// A 404 like any missing session, but `missing` tells the page this one is expected to appear.
 	return map[string]any{"error": "This session's transcript isn't written yet.", "missing": true}, 404, nil
 }
 
@@ -155,29 +145,23 @@ func mapErr(err error) (int, map[string]any) {
 	return 404, map[string]any{"error": err.Error()}
 }
 
-func singleValues(v url.Values) Q {
-	q := Q{}
-	for k, vs := range v {
-		if len(vs) > 0 {
-			q[k] = vs[0]
-		}
-	}
-	return q
-}
-
 func doGET(w http.ResponseWriter, r *http.Request) {
 	if !config.Hosts[r.Host] { // DNS rebinding would otherwise expose your files
 		http.Error(w, "", 403)
 		return
 	}
 	if !netAuthorized(w, r) {
-		http.Error(w, "", 403)
 		return
 	}
 	path := r.URL.Path
-	q := singleValues(r.URL.Query())
+	// another site's <img>/<link> can still send a GET here, and some of these start git or gh
+	if strings.HasPrefix(path, "/api/") && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		http.Error(w, "", 403)
+		return
+	}
+	q := r.URL.Query()
 	if path == "/api/events" {
-		streamEvents(w, r, q)
+		streamEvents(w, r)
 		return
 	}
 	if strings.HasPrefix(path, "/mcp/") {
@@ -185,20 +169,11 @@ func doGET(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !strings.HasPrefix(path, "/api/") {
-		static(w, path)
+		static(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/api/images/") && images.HashRe.MatchString(path[len("/api/images/"):]) {
-		data, err := os.ReadFile(filepath.Join(images.Store_, path[len("/api/images/"):]))
-		if err != nil {
-			http.Error(w, "", 404)
-			return
-		}
-		kind := images.Type(data)
-		if kind == "" {
-			kind = "application/octet-stream"
-		}
-		sendBytes(w, data, kind, "private, max-age=31536000, immutable")
+	if key, isImage := strings.CutPrefix(path, "/api/images/"); isImage && images.HashRe.MatchString(key) {
+		serveImage(w, r, key)
 		return
 	}
 	route, found := getRoutes[path]
@@ -213,61 +188,78 @@ func doGET(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, body, status)
 }
 
-func static(w http.ResponseWriter, reqPath string) {
-	info, err := os.Stat(config.Dist)
-	if err != nil || !info.IsDir() {
-		// no disk build (e.g. a standalone release binary run outside its source tree): fall back to the copy
-		// embedded at release-build time, if any
-		if webassets.Available() {
-			serveEmbedded(w, reqPath)
-			return
-		}
-		http.Error(w, "UI not built: run `npm install && npm run build` in web/", 503)
+func serveImage(w http.ResponseWriter, r *http.Request, key string) {
+	data, err := os.ReadFile(filepath.Join(images.Store_, key))
+	if err != nil {
+		http.Error(w, "", 404)
 		return
 	}
-	rel := strings.TrimPrefix(reqPath, "/")
+	w.Header().Set("Content-Type", cmp.Or(images.Type(data), "application/octet-stream"))
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable") // named by its hash: never changes
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
+}
+
+var errNoUI = errors.New("UI not built: run `npm install && npm run build` in web/")
+
+func static(w http.ResponseWriter, r *http.Request) {
+	rel := strings.TrimPrefix(r.URL.Path, "/")
 	if rel == "" {
 		rel = "index.html"
+	}
+	data, mod, err := readAsset(rel)
+	if errors.Is(err, errNoUI) {
+		http.Error(w, err.Error(), 503)
+		return
+	}
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+	h := w.Header()
+	switch {
+	case strings.HasPrefix(rel, "assets/"): // Vite names these by content hash
+		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	case rel == "index.html": // always revalidated, so a rebuild's new asset names are picked up
+		h.Set("Cache-Control", "no-cache")
+	}
+	h.Set("Content-Type", cmp.Or(mime.TypeByExtension(filepath.Ext(rel)), "application/octet-stream"))
+	if compressible[filepath.Ext(rel)] {
+		h.Add("Vary", "Accept-Encoding")
+		// ponytail: compressed on every miss, and "gzip;q=0" counts as yes; the immutable cache makes misses rare
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			var buf bytes.Buffer
+			zw := gzip.NewWriter(&buf)
+			zw.Write(data)
+			zw.Close()
+			data = buf.Bytes()
+			h.Set("Content-Encoding", "gzip")
+		}
+	}
+	http.ServeContent(w, r, rel, mod, bytes.NewReader(data))
+}
+
+var compressible = map[string]bool{".js": true, ".css": true, ".json": true, ".html": true, ".svg": true, ".map": true}
+
+// readAsset reads a built UI file from web/dist, or else from the copy embedded at release-build time (a
+// standalone binary run outside its source tree). embed.FS rejects traversal itself; the disk path is checked here.
+func readAsset(rel string) ([]byte, time.Time, error) {
+	if info, err := os.Stat(config.Dist); err != nil || !info.IsDir() {
+		if !webassets.Available() {
+			return nil, time.Time{}, errNoUI
+		}
+		data, err := webassets.Dist.ReadFile(path.Join("dist", rel))
+		return data, time.Time{}, err
 	}
 	f := filepath.Clean(filepath.Join(config.Dist, rel))
 	if f != config.Dist && !strings.HasPrefix(f, config.Dist+string(filepath.Separator)) {
-		http.Error(w, "", 404)
-		return
+		return nil, time.Time{}, os.ErrNotExist
 	}
 	fi, err := os.Stat(f)
-	if err != nil || fi.IsDir() {
-		http.Error(w, "", 404)
-		return
+	if err != nil || !fi.Mode().IsRegular() {
+		return nil, time.Time{}, os.ErrNotExist
 	}
 	data, err := os.ReadFile(f)
-	if err != nil {
-		http.Error(w, "", 404)
-		return
-	}
-	kind := mime.TypeByExtension(filepath.Ext(f))
-	if kind == "" {
-		kind = "application/octet-stream"
-	}
-	sendBytes(w, data, kind, "")
-}
-
-// serveEmbedded mirrors static()'s disk serving, from the copy embedded in the binary (embed.FS's own path
-// validation rejects traversal, so no manual containment check is needed here as there is for the disk path).
-func serveEmbedded(w http.ResponseWriter, reqPath string) {
-	rel := strings.TrimPrefix(reqPath, "/")
-	if rel == "" {
-		rel = "index.html"
-	}
-	data, err := webassets.Dist.ReadFile(path.Join("dist", rel))
-	if err != nil {
-		http.Error(w, "", 404)
-		return
-	}
-	kind := mime.TypeByExtension(filepath.Ext(rel))
-	if kind == "" {
-		kind = "application/octet-stream"
-	}
-	sendBytes(w, data, kind, "")
+	return data, fi.ModTime(), err
 }
 
 // maxBody caps a POST body (a pasted image, base64, is the biggest thing the page sends).
@@ -289,7 +281,11 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !netAuthorized(w, r) {
-		http.Error(w, "", 403)
+		return
+	}
+	// a <form> that got through rendered markdown posts from our own Origin, but can only send form or text bodies
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+		http.Error(w, "", http.StatusUnsupportedMediaType)
 		return
 	}
 	raw, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))

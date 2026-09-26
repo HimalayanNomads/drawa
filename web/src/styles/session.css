@@ -11,7 +11,7 @@
 .card[data-state=asking] .dot{background:var(--run);animation:pulse .7s ease-in-out infinite alternate}
 .card[data-state=done] .dot{background:var(--add)}
 /* context meter in the tab: fills as the conversation uses up the context window */
-.ctx{flex:none;position:relative;cursor:pointer;height:18px;min-width:40px;margin-right:4px;padding:0 6px;border:1px solid var(--line);border-radius:2px;font:600 10.5px/16px var(--mono);color:var(--muted);overflow:hidden;
+.ctx{flex:none;position:relative;cursor:pointer;height:18px;min-width:40px;margin-right:4px;padding:0 6px;border:1px solid var(--line);border-radius:var(--r-tag);font:600 10.5px/16px var(--mono);color:var(--muted);overflow:hidden;
   background:linear-gradient(90deg,color-mix(in oklab,var(--c,var(--muted)) 22%,transparent) var(--p),transparent var(--p))}
 .ctx[data-level=mid]{--c:var(--run);color:var(--run)}.ctx[data-level=high]{--c:var(--danger);color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
 .ctx:hover{border-color:var(--line-2);color:var(--ink)}
@@ -59,7 +59,7 @@
 .taskrow>summary b{color:var(--accent)}
 
 /* "/" and "@" menu, opening upward from the composer */
-.cmds{position:absolute;left:10px;right:10px;bottom:calc(100% - 4px);z-index:3;max-height:280px;overflow:auto;padding:4px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
+.cmds{position:absolute;left:10px;right:10px;bottom:calc(100% - 4px);z-index:var(--z-over);max-height:280px;overflow:auto;padding:4px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
 .cmd{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:6px 10px;border-radius:var(--r-ctl);text-align:left}
 .cmd b{font:500 12.5px var(--mono);color:var(--ink)}
 .cmd span{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
@@ -86,7 +86,7 @@
 .empty p{margin:0 0 14px;color:var(--muted);font-size:13px}
 .empty ul{margin:0 0 16px;padding:0;list-style:none;color:var(--ink-2);font-size:13px}
 .empty li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
-.empty li i{flex:none;width:10px;height:10px;margin-top:5px;border-radius:2px}
+.empty li i{flex:none;width:10px;height:10px;margin-top:5px;border-radius:var(--r-tag)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 
 /* ---------- the conversation ---------- */
@@ -157,7 +157,7 @@ summary .jump:hover{background:var(--sel)}
 /* permission prompt: compact, neutral surface, amber only as a signal */
 .ask.perm{margin:8px 0;padding:10px 12px;border-color:color-mix(in oklab,var(--run) 50%,var(--line));background:var(--rail)}
 .ask.perm .top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.ask.perm .need{padding:1px 7px;border-radius:2px;font-size:11px;font-weight:600;color:var(--run);background:color-mix(in oklab,var(--run) 15%,transparent)}
+.ask.perm .need{padding:1px 7px;border-radius:var(--r-tag);font-size:11px;font-weight:600;color:var(--run);background:color-mix(in oklab,var(--run) 15%,transparent)}
 .ask.perm .top b{font:600 12.5px var(--mono);color:var(--ink)}
 .ask.perm code{display:block;margin:0;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto;color:var(--ink)}
 .ask.perm p{font-size:12px;color:var(--muted)}

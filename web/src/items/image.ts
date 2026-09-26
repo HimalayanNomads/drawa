@@ -6,7 +6,7 @@
 import { make, ping, toast, typing, uuid } from '../lib/dom'
 import { openZoom } from '../lib/zoom'
 import { post } from '../lib/api'
-import { persist } from '../lib/store'
+import { persist, each } from '../lib/store'
 import { getBlob, putBlob, dropBlob, base64 } from '../lib/blobs'
 import { items, rect, savedRect, spotBeside, toWorld, changed, freeSpot, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
@@ -30,6 +30,13 @@ function fit(w: number, h: number) {
   return { w: Math.max(200, Math.round(w * k)), h: Math.max(120, Math.round(h * k) + TAB) }
 }
 
+/** Pictures that failed while the server was away, reloaded (once each) when it's back. */
+const retry = new Map<HTMLImageElement, string>()
+onReconnect(() => {
+  for (const [img, url] of retry) img.src = url + '?r=' + Date.now()
+  retry.clear()
+})
+
 function imageWindow(o: Saved) {
   const img = make('img', 'inode-img')
   img.alt = o.title
@@ -51,17 +58,16 @@ function imageWindow(o: Saved) {
   const gone = () => body.replaceChildren(make('p', 'none', "This picture isn't stored anymore (it was kept in another browser, or its data was cleared)."))
   if (o.src) {
     const url = '/api/images/' + o.src
-    let retried = false
     // missing (404): gone for good. Anything else (server down, restarting): try again once it's back
     img.onerror = () => fetch(url).then(r => r.status === 404, () => false).then(missing => {
       if (missing) return gone()
       img.alt = `${o.title} (couldn't load; retrying when the server is back)`
-      if (!retried) { retried = true; onReconnect(() => { img.src = url + '?r=' + Date.now() }) }
+      retry.set(img, url)
     })
     img.src = url
   }
-  else getBlob(o.id).then(async b => {
-    if (!b) return gone()
+  else getBlob(o.id).catch(() => undefined).then(async b => {
+    if (!b) return gone() // not in this browser, or IndexedDB couldn't be read
     img.src = URL.createObjectURL(b)
     const key = await upload(await base64(b)) // an older picture: give it to the server so every browser has it
     if (key) { el.dataset.src = key; dropBlob(o.id).catch(() => {}); changed() }
@@ -114,7 +120,7 @@ creatable('image', {
 })
 persist('images',
   () => items('image').map((el): Saved => ({ id: el.dataset.id!, title: winTitle(el), rect: savedRect(el), src: el.dataset.src })),
-  (list: Saved[]) => list.forEach(imageWindow))
+  (list: Saved[]) => each(list, imageWindow))
 referable('image', {
   icon: '▣',
   content: async (el, label) => {

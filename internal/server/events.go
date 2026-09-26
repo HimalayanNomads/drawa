@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,19 +22,30 @@ type heldStream struct {
 }
 
 // tag wraps a raw buffered line with its card id, by splicing `"_c":"<cid>",` right after the line's opening `{`.
+// A line that isn't a non-empty object (live's classify prevents those) still goes out, as an empty error line: the
+// page counts every line it gets, so dropping one here would put its position out of step.
 func tag(cid, line string) string {
-	if len(line) < 2 || line[1] == '}' {
-		return ""
+	if !strings.HasPrefix(line, "{") || strings.HasPrefix(strings.TrimSpace(line[1:]), "}") {
+		line = `{"type":"error","text":""}` + "\n"
 	}
 	return `{"_c":"` + cid + `",` + line[1:]
 }
+
+// resent marks a line that isn't one of the buffer's (an ask sent again, a gap marker) with "_r":1, so the page
+// doesn't count it toward its position.
+func resent(line string) string { return `{"_r":1,` + line[1:] }
+
+// gapLine tells the page lines between its position and `to` (the next line's index) were dropped from the
+// buffer: the transcript has them.
+func gapLine(to int) string { return `{"type":"_gap","to":` + strconv.Itoa(to) + "}\n" }
 
 // streamEvents is a page's one stream of all its cards' output, as NDJSON lines tagged with the card ("_c").
 // `c` = cid:from:gen,... (from = the card's next line, -1 = only new ones; gen = the process that offset belongs
 // to). A card whose process starts later, or restarts, is read from its first line. `page` names the page for
 // canvas tool calls.
-func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
-	page := q["page"]
+func streamEvents(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	page := q.Get("page")
 	if !pageRe.MatchString(page) {
 		http.Error(w, "", 400)
 		return
@@ -43,7 +55,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 		gen   string
 	}
 	subs := map[string]sub{}
-	if c := q["c"]; c != "" {
+	if c := q.Get("c"); c != "" {
 		for _, part := range strings.Split(c, ",") {
 			fields := strings.SplitN(part, ":", 3)
 			for len(fields) < 3 {
@@ -63,6 +75,15 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 	w.WriteHeader(200)
 	rc := http.NewResponseController(w)
 
+	cids := make([]string, 0, len(subs)) // a fixed order, so a card's lines always come out in one sequence
+	for cid := range subs {
+		cids = append(cids, cid)
+	}
+	slices.Sort(cids)
+	lvs := make([]*live.Live, len(cids))
+	keepAlive := time.NewTicker(15 * time.Second)
+	defer keepAlive.Stop()
+
 	absent := map[string]bool{}
 	heldMap := map[string]*heldStream{}
 	defer func() {
@@ -75,10 +96,13 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 	for {
 		seenCh := live.Changed.Wait()
 		var out []string
-		for cid, s := range subs {
-			live.Mu.Lock()
-			lv := live.Registry[cid]
-			live.Mu.Unlock()
+		live.Mu.Lock() // once per wakeup, not per card
+		for i, cid := range cids {
+			lvs[i] = live.Registry[cid]
+		}
+		live.Mu.Unlock()
+		for i, cid := range cids {
+			s, lv := subs[cid], lvs[i]
 			h := heldMap[cid]
 			if lv == nil && h == nil && !absent[cid] {
 				absent[cid] = true                                     // no process yet: when one starts, all of its output is new to this page
@@ -104,6 +128,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 					n = snap.Base
 				}
 				missed := start < snap.Base // its approval requests may have been dropped (or never read)
+				gap := start >= 0 && start < snap.Base
 				if h != nil {
 					h.lv.Detach(page)
 				}
@@ -112,14 +137,21 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 				heldMap[cid] = h
 				b, _ := json.Marshal(map[string]any{"type": "attach", "from": n, "gen": lv.Gen, "reader": page, "busy": snap.Busy})
 				out = append(out, tag(cid, string(b)+"\n"))
+				if gap {
+					out = append(out, tag(cid, resent(gapLine(n))))
+				}
 				if missed && n != 0 {
 					for _, a := range snap.Asks {
-						out = append(out, tag(cid, a))
+						out = append(out, tag(cid, resent(a)))
 					}
 				}
 			}
 			if h != nil {
+				// ponytail: an unchanged card costs one lock and a compare here (its end index is its change count)
 				chunk, newPos := h.lv.LinesFrom(h.pos)
+				if from := newPos - len(chunk); from > h.pos { // the buffer was trimmed past what this page read
+					out = append(out, tag(cid, resent(gapLine(from))))
+				}
 				h.pos = newPos
 				for _, line := range chunk {
 					out = append(out, tag(cid, line))
@@ -129,7 +161,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, q Q) {
 		if len(out) == 0 {
 			select {
 			case <-seenCh: // something changed since we captured this snapshot: loop again to pick it up
-			case <-time.After(15 * time.Second):
+			case <-keepAlive.C:
 				out = []string{"\n"} // keep-alive
 			case <-ctx.Done():
 				return

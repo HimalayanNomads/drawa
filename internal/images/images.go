@@ -67,14 +67,24 @@ func Store(data []byte) (string, error) {
 	if _, err := os.Stat(f); err == nil {
 		return key, nil
 	}
-	if err := os.MkdirAll(Store_, 0o755); err != nil {
+	if err := os.MkdirAll(Store_, 0o700); err != nil { // pictures you pasted: yours only
 		return "", err
 	}
-	tmp := f + ".part"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	// a store made before this was 0755
+	os.Chmod(Store_, 0o700)
+	tmp, err := os.CreateTemp(Store_, key+".*.part") // 0600; its own name, so two saves of one picture can't collide
+	if err != nil {
 		return "", err
 	}
-	return key, os.Rename(tmp, f) // never a half-written picture
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", err
+	}
+	return key, os.Rename(tmp.Name(), f) // never a half-written picture
 }
 
 // Save stores an image the page sends (base64) -> its key.

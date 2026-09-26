@@ -8,7 +8,7 @@ import { items, rect, spotBeside, changed, shortId, type Rect } from './canvas'
 import { link } from './graph'
 import { readItem } from './refs'
 import { snapshot } from './snapshot'
-import { textsOn, inkOn, shapesOn } from './ink'
+import { textsOn, inkOn, shapesOn } from './inksel'
 import { addLink, userLinks } from './links'
 import type { Session } from '../session/session'
 
@@ -36,12 +36,16 @@ export async function canvasCall(S: Session, m: { id: string; tool: string; args
 }
 
 const short = (el: HTMLElement) => shortId(el.dataset.id ?? '')
-/** The item Claude means: its exact id first (readable ids like "git" are prefixes of others), then a UUID prefix. */
+/** The item Claude means: its exact id first (readable ids like "git" are prefixes of others), then a UUID prefix,
+ *  only when just one item has it: a guess could change the wrong item. */
 function find(id: unknown): HTMLElement {
   const want = String(id ?? '').trim(), all = items()
-  const el = want && (all.find(e => e.dataset.id === want) ?? all.find(e => e.dataset.id?.startsWith(want)))
-  if (!el) throw new Error(`No canvas item with id "${want}". Call canvas_list for the current ids.`)
-  return el
+  const exact = want && all.find(e => e.dataset.id === want)
+  if (exact) return exact
+  const some = want ? all.filter(e => e.dataset.id?.startsWith(want)) : []
+  if (some.length > 1) throw new Error(`Id "${want}" matches ${some.length} items: ${some.slice(0, 10).map(e => e.dataset.id).join(', ')}. Use a longer id.`)
+  if (!some.length) throw new Error(`No canvas item with id "${want}". Call canvas_list for the current ids.`)
+  return some[0]
 }
 
 type Block = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }

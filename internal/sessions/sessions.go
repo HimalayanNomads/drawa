@@ -25,8 +25,10 @@ import (
 )
 
 const ClipLen = 20_000 // the page shows at most this much of one tool output
+const clipNote = "\n… (truncated)"
 
-func truncate(s string, n int) string {
+// truncate cuts s to n characters, adding note if it was cut.
+func truncate(s string, n int, note string) string {
 	i := 0 // byte offset of the n-th character: no []rune copy of every big output
 	for ; n > 0 && i < len(s); n-- {
 		_, size := utf8.DecodeRuneInString(s[i:])
@@ -35,13 +37,13 @@ func truncate(s string, n int) string {
 	if i >= len(s) {
 		return s
 	}
-	return s[:i] + "\n… (truncated)"
+	return s[:i] + note
 }
 
 // clipped cuts v to ClipLen characters if it's a longer string.
 func clipped(v any) any {
 	if s, ok := v.(string); ok {
-		return truncate(s, ClipLen)
+		return truncate(s, ClipLen, clipNote)
 	}
 	return v
 }
@@ -146,7 +148,7 @@ func Clip(content any) {
 		}
 		switch c := b["content"].(type) {
 		case string:
-			b["content"] = truncate(c, ClipLen)
+			b["content"] = truncate(c, ClipLen, clipNote)
 		case []any:
 			out := make([]any, 0, len(c))
 			for _, p := range c {
@@ -214,18 +216,10 @@ func firstPrompt(path string) string {
 		if json.Unmarshal(d.Message.Content, &c) != nil || strings.HasPrefix(c, "<") {
 			return true
 		}
-		prompt = truncatePlain(c, 120)
+		prompt = truncate(c, 120, "")
 		return false
 	})
 	return prompt
-}
-
-func truncatePlain(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
 }
 
 var promptCache = struct {
@@ -428,7 +422,7 @@ func Load(sid, agent string) []map[string]any {
 	defer f.Close()
 	for _, d := range decodeAll(f) {
 		t, content := d.Type, d.Message.Content
-		if (t != "user" && t != "assistant") || d.IsSidechain || d.IsMeta {
+		if (t != "user" && t != "assistant") || d.IsSidechain {
 			continue
 		}
 		for id := range finishedAgents(content) {
@@ -436,6 +430,9 @@ func Load(sid, agent string) []map[string]any {
 		}
 		Clip(content)
 		m := map[string]any{"role": t, "content": content}
+		if d.IsMeta {
+			m["isMeta"] = true // text the CLI added (a skill's instructions): the page folds it, as it does live
+		}
 		if t == "assistant" && d.Message.Usage != nil {
 			m["usage"] = d.Message.Usage // for the context meter
 		}

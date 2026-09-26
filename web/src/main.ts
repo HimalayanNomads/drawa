@@ -10,6 +10,9 @@ import { enhance } from './lib/select'
 import { onReconnect } from './lib/connection'
 import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, view as camera } from './canvas/canvas'
 import { redraw } from './canvas/graph'
+import { anyFull } from './canvas/fullview'
+import './canvas/nav' // pan, wheel, minimap, zoom buttons
+import './canvas/shapes' // moving and resizing drawn shapes in Select mode
 import { setDrawing, drawing, useTool, toolKey } from './canvas/ink'
 import { setMode } from './canvas/mode'
 import { selected } from './canvas/select' // also Ctrl/Cmd+A, Delete, arrow-key nudges
@@ -76,15 +79,15 @@ addEventListener('keydown', e => {
   // window (its arrows scroll it) or a window is in full view; + / - zoom around the middle
   const pan = PAN[e.key]
   if (pan) {
-    if (e.defaultPrevented || document.querySelector('.fullview > .item') || [e.target, lastDown].some(t => t instanceof Element && t.closest('.item, dialog'))) return
+    if (e.defaultPrevented || anyFull() || [e.target, lastDown].some(t => t instanceof Element && t.closest('.item, dialog'))) return
     e.preventDefault()
     const step = e.shiftKey ? 400 : 80
     camera.x -= pan[0] * step
     camera.y -= pan[1] * step
-    return apply(true)
+    return apply(!e.repeat) // a held key moves at once: a glide per repeat would lag behind
   }
   // not on the number row: Shift+0 types "=" on some layouts, "-" is Digit6 on AZERTY
-  const zoom = !c.startsWith('Digit') && !document.querySelector('.fullview > .item') && ZOOM[e.key]
+  const zoom = !c.startsWith('Digit') && !anyFull() && ZOOM[e.key]
   if (zoom) return zoomAt(camera.k * zoom, undefined, undefined, true)
   // Excalidraw's keys where we have the tool; the number row by its physical key (Shift+1 types "!")
   if (e.shiftKey) {

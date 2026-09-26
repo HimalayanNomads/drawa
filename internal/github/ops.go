@@ -67,13 +67,13 @@ func Op(body map[string]any) map[string]any {
 		}
 		return map[string]any{"ok": true, "out": strings.TrimSpace(out)}
 	case "draft":
-		base := strings.TrimSpace(str(body["base"]))
+		base := strings.TrimSpace(s(body["base"]))
 		if base == "" {
 			base = "main"
 		}
 		return Draft(base)
 	case "create":
-		title, base := strings.TrimSpace(str(body["title"])), strings.TrimSpace(str(body["base"]))
+		title, base := strings.TrimSpace(s(body["title"])), strings.TrimSpace(s(body["base"]))
 		if title == "" || base == "" {
 			return map[string]any{"ok": false, "out": "A pull request needs a title and a base branch."}
 		}
@@ -91,7 +91,7 @@ func Op(body map[string]any) map[string]any {
 		if truthy(body["draft"]) {
 			args = append(args, "--draft")
 		}
-		created, err := Gh(120*time.Second, str(body["body"]), args...)
+		created, err := Gh(120*time.Second, s(body["body"]), args...)
 		if err != nil {
 			return map[string]any{"ok": false, "out": err.Error()}
 		}
@@ -101,7 +101,7 @@ func Op(body map[string]any) map[string]any {
 		if s(body["kind"]) == "pr" {
 			kind = "pr"
 		}
-		text := strings.TrimSpace(str(body["body"]))
+		text := strings.TrimSpace(s(body["body"]))
 		if text == "" {
 			return map[string]any{"ok": false, "out": "Write a comment first."}
 		}
@@ -117,14 +117,3 @@ func Op(body map[string]any) map[string]any {
 	}
 	return map[string]any{"ok": false, "out": "unknown op " + op}
 }
-
-func str(v any) string {
-	if v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
-}
-func truthy(v any) bool { b, _ := v.(bool); return b }

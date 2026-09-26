@@ -6,10 +6,10 @@ import { addItem, place, front, draggable, resizable, changed, type Rect } from 
 import { redraw, forget } from './graph'
 import { toggleDock, toggleFloat, syncPin } from './dock'
 import { toggleFull, syncFull } from './fullview'
-import { refIcon, refOf } from './refs'
+import { refIcon, refOf, winTitle } from './refs'
 import { tipText } from '../lib/tooltip'
 
-export interface WindowOpts {
+interface WindowOpts {
   kind: string // data-kind: minimap color, saved layout, references
   cls: string // the window's own class, for its content styles
   title: string
@@ -19,8 +19,7 @@ export interface WindowOpts {
   actions?: HTMLElement[] // buttons at the tab's end (the collapse button goes before them)
   onChange?: () => void // after it moves, resizes or collapses (default: re-route the edges)
 }
-/** A window's title as shown on its tab ('' for items without one). */
-export const winTitle = (el: Element) => el.querySelector('.win-h .t')?.textContent ?? ''
+export { winTitle } // its home is refs.ts
 /** What to call any canvas item: its window title, else its reference label, else its title attribute. */
 export const titleOf = (el: HTMLElement) => (winTitle(el) || refOf(el)?.label || tipText(el)).trim()
 /** Open a collapsed window. */
@@ -51,7 +50,7 @@ export function removeButton(label: string, also?: (el: HTMLElement) => void, cl
   return b
 }
 
-export interface Win { el: HTMLElement; head: HTMLElement; title: HTMLElement; body: HTMLElement }
+interface Win { el: HTMLElement; head: HTMLElement; title: HTMLElement; body: HTMLElement }
 
 export function makeWindow(o: WindowOpts): Win {
   const el = make('div', 'win ' + o.cls), head = make('header', 'win-h'), title = make('span', 't', o.title), body = make('div', 'win-b')

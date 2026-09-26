@@ -47,3 +47,42 @@ func TestInside(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenedCatchesSwappedLink(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	old := Root
+	t.Cleanup(func() { Root = old })
+	Root = filepath.Join(base, "root")
+	os.MkdirAll(Root, 0o755)
+	os.WriteFile(filepath.Join(base, "secret"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(Root, "ok"), []byte("x"), 0o600)
+	p, err := Inside("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Symlink(filepath.Join(base, "secret"), p) // swapped in after Inside approved the path
+	f, _ := os.Open(p)
+	defer f.Close()
+	if Opened(f, p) == nil {
+		t.Error("Opened accepted a file outside Root")
+	}
+	g, _ := os.Open(filepath.Join(Root, "ok"))
+	defer g.Close()
+	if err := Opened(g, filepath.Join(Root, "ok")); err != nil {
+		t.Errorf("Opened refused a file inside Root: %v", err)
+	}
+}
+
+func TestNetTokenSurvivesRestart(t *testing.T) {
+	oldNet := Net
+	t.Cleanup(func() { Net = oldNet; os.Unsetenv(netTokenEnv) })
+	Net = true
+	os.Unsetenv(netTokenEnv)
+	a := netToken()
+	if len(a) < 22 || os.Getenv(netTokenEnv) != a {
+		t.Fatalf("token %q not long enough or not kept in the environment", a)
+	}
+	if b := netToken(); b != a {
+		t.Errorf("re-exec'd process got a new token %q, want %q", b, a)
+	}
+}

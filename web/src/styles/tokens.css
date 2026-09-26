@@ -16,9 +16,11 @@
   --syn-key:var(--c-purple);--syn-str:var(--c-green);--syn-num:var(--c-orange);--syn-fn:var(--c-blue);--syn-com:var(--c-muted);
   --add:var(--c-green);--add-bg:color-mix(in oklab,var(--c-green) 15%,var(--c-bg));
   --del:var(--c-red);--del-bg:color-mix(in oklab,var(--c-red) 13%,var(--c-bg));
-  --warn:var(--c-orange);--warn-bg:color-mix(in oklab,var(--c-yellow) 14%,var(--c-bg));--danger:var(--c-red);
+  --warn:var(--c-orange);--warn-bg:color-mix(in oklab,var(--c-yellow) 14%,var(--c-bg));--danger:var(--c-red);--on-danger:var(--c-bg);
+  --backdrop:color-mix(in oklab,var(--c-text) 42%,transparent); /* behind modal dialogs */
   --shadow:0 1px 2px oklch(0.2 0.02 255 / 0.06),0 8px 28px oklch(0.2 0.02 255 / 0.1);
   --shadow-lift:0 2px 4px oklch(0.2 0.02 255 / 0.08),0 18px 48px oklch(0.2 0.02 255 / 0.18);
+  --shadow-sm:0 1px 2px oklch(0.2 0.02 255 / 0.1); /* a control raised off its track (segmented tabs) */
   --sans:"Inter Variable",system-ui,sans-serif;--mono:"JetBrains Mono Variable",ui-monospace,SFMono-Regular,Menlo,monospace;
   --ease:cubic-bezier(.22,1,.36,1);
 
@@ -26,6 +28,7 @@
   --r-tab:10px; /* a window tab's top corners, and the shoulder where it meets the body */
   --r-box:3px;  /* surfaces: window bodies, panels, toolbar, dialogs, menus, callouts */
   --r-ctl:4px;  /* controls: buttons, inputs, list rows */
+  --r-tag:2px;  /* small labels inside text: inline code, badges, swatches */
   --tab-h:34px;
 
   /* what each kind of canvas item is colored by (tab glyph, focus line, minimap, reference chips) */
@@ -33,11 +36,21 @@
 
   /* z scale: canvas items stack inside #world's own context; these are the overlays above it */
   --z-float:20;--z-panel:30;--z-menu:40;
+  /* local stack, inside a window or panel: a backing layer, sticky headers, a popup or button over the content */
+  --z-under:-1;--z-sticky:1;--z-over:2;
   color-scheme:light;
 }
 /* dark: <html data-theme=dark> (lib/theme.ts); colors come from the dark scheme, only depth changes here */
 :root[data-theme=dark]{
   --shadow:0 1px 2px oklch(0 0 0 / 0.3),0 10px 32px oklch(0 0 0 / 0.35);
   --shadow-lift:0 2px 6px oklch(0 0 0 / 0.35),0 22px 56px oklch(0 0 0 / 0.5);
+  --shadow-sm:0 1px 2px oklch(0 0 0 / 0.3);
+  --backdrop:color-mix(in oklab,var(--c-canvas) 72%,transparent); /* dark text would lighten the page: dim with the canvas instead */
   color-scheme:dark;
+}
+/* canvas engine (canvas.css, window.css, panels.css): the rest of the local stack, and hairline corners on tiny marks */
+:root{
+  --z-ink:3;  /* a window's own ink, over its content */
+  --z-grip:4; /* resize grips, over everything in a window */
+  --r-hair:1px; /* marks a few px across: resize handles, minimap boxes */
 }
