@@ -59,6 +59,10 @@ persist('view', () => ({ ...camera }), v => { Object.assign(camera, v) }, 0)
 // Inspector: drag its left edge to widen it.
 edgeGrip(inspector, 360)
 
+const PAN: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+const ZOOM: Record<string, number> = { '+': 1.25, '=': 1.25, '-': 1 / 1.25 }
+let lastDown: EventTarget | null = null
+addEventListener('pointerdown', e => { lastDown = e.target }, true)
 // Single-key shortcuts, only when not typing.
 addEventListener('keydown', e => {
   if (e.key === 'Escape') {
@@ -68,6 +72,20 @@ addEventListener('keydown', e => {
   }
   if (e.ctrlKey || e.metaKey || e.altKey || !shortcutOk(e)) return
   const k = e.key.toLowerCase(), c = e.code
+  // arrows pan, unless something else took them (select.ts nudging a selection, a menu) or the last click was in a
+  // window (its arrows scroll it) or a window is in full view; + / - zoom around the middle
+  const pan = PAN[e.key]
+  if (pan) {
+    if (e.defaultPrevented || document.querySelector('.fullview > .item') || [e.target, lastDown].some(t => t instanceof Element && t.closest('.item, dialog'))) return
+    e.preventDefault()
+    const step = e.shiftKey ? 400 : 80
+    camera.x -= pan[0] * step
+    camera.y -= pan[1] * step
+    return apply(true)
+  }
+  // not on the number row: Shift+0 types "=" on some layouts, "-" is Digit6 on AZERTY
+  const zoom = !c.startsWith('Digit') && !document.querySelector('.fullview > .item') && ZOOM[e.key]
+  if (zoom) return zoomAt(camera.k * zoom, undefined, undefined, true)
   // Excalidraw's keys where we have the tool; the number row by its physical key (Shift+1 types "!")
   if (e.shiftKey) {
     if (c === 'Digit1') fit()
