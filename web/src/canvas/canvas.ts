@@ -289,8 +289,12 @@ export function spotBeside(el: HTMLElement | null | undefined, w: number, h: num
 export const toWorld = (cx: number, cy: number) => ({ x: (cx - view.x) / view.k, y: (cy - view.y) / view.k })
 export const viewCenter = () => ({ x: (innerWidth / 2 - view.x) / view.k, y: (innerHeight / 2 - view.y) / view.k })
 
+/** Bring `el` to the middle of the screen. The zoom stays, unless the window would be too small to read (under
+ *  50%) or wouldn't fit: then it zooms to fit the window, never past 100%. */
 export function centerOn(el: HTMLElement, glide = true) {
   const r = rect(el)
+  const fits = Math.min((innerWidth - 32) / r.w, (innerHeight - 96) / r.h)
+  if (view.k < 0.5 || view.k > fits) view.k = clamp(Math.min(1, fits))
   view.x = innerWidth / 2 - (r.x + r.w / 2) * view.k
   view.y = innerHeight / 2 - (r.y + r.h / 2) * view.k
   apply(glide)

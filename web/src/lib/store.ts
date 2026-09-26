@@ -34,8 +34,11 @@ let timer = 0, full = false
 export const saveSoon = (viewOnly = false) => {
   full ||= !viewOnly
   clearTimeout(timer)
-  timer = setTimeout(() => { const f = full; full = false; save(f ? undefined : ['view']) }, 400)
+  timer = setTimeout(flush, 400)
 }
+function flush() { timer = 0; const f = full; full = false; save(f ? undefined : ['view']) }
+// a reload or close inside the 400ms would drop the last pan/zoom (or move)
+addEventListener('pagehide', () => { if (timer) { clearTimeout(timer); flush() } })
 
 /** Load every slice that was saved, phase by phase (a slice's loader may be async: the next one waits for it). */
 export async function restore() {

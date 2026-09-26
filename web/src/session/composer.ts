@@ -2,7 +2,7 @@
 // and the chips for canvas items attached to the next message (typed with @ or dropped on the box).
 import { make, ICON, ping } from '../lib/dom'
 import { api, post, q as enc } from '../lib/api'
-import { centerOn, onDrop } from '../canvas/canvas'
+import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, type Session } from './session'
@@ -194,7 +194,7 @@ export function chip(r: Ref, remove?: () => void) {
   c.dataset.kind = r.kind
   label.type = 'button'
   label.title = `Show on canvas: ${r.label}`
-  label.onclick = () => (r.el.isConnected ? centerOn(r.el) : r.el.click())
+  label.onclick = () => (!r.el.isConnected ? r.el.click() : onCanvas(r.el) ? centerOn(r.el) : r.el.scrollIntoView({ block: 'nearest' }))
   c.append(label)
   if (remove) {
     const x = make('button', 'x', '×')

@@ -4,7 +4,7 @@
 import { make, ICON, iconButton, project, ping, uuid } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon } from '../lib/store'
-import { front, savedRect, nextColumn, centerOn, fit, byIds, view as camera, type Rect, onCanvas } from '../canvas/canvas'
+import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
 import { makeWindow, expand } from '../canvas/window'
 import { dropSession, redraw, link, itemLinks } from '../canvas/graph'
 import { clearInk } from '../canvas/ink'
@@ -95,7 +95,7 @@ persist('cards',
     loadSessions()
     const f = cards.find(S => S.sid === all.focus)
     if (f) focus(f)
-    if (!all.view || innerWidth < 760) fit(false)
+    if (!all.view) fit(false)
   })
 persist('focus', () => cur?.sid ?? undefined)
 // drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
@@ -201,7 +201,6 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   focus(S)
   renderCard(S)
   if (!opts.rect) {
-    if (innerWidth < 520) camera.k = Math.min(camera.k, (innerWidth - 24) / r.w) // phones: the whole card fits on screen
     centerOn(card)
     S.ta.focus({ preventScroll: true })
   }
