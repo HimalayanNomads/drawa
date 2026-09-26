@@ -1,6 +1,6 @@
 // The live connection to a card's Claude process: send messages, and read its output stream (re-attaching
 // after network drops or a reload) until the process exits.
-import { make, ui } from '../lib/dom'
+import { make, ui, button } from '../lib/dom'
 import { post } from '../lib/api'
 import { quiet } from '../canvas/graph'
 import { toContent, type Ref } from '../canvas/refs'
@@ -57,6 +57,36 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
 const page = crypto.randomUUID().replace(/-/g, '').slice(0, 16) // names this page for canvas tool calls
 let conn: AbortController | null = null, subscribed = '', soon = 0
 
+// One stream per server across tabs, too: every open tab's stream holds one of the browser's ~6 connections to this
+// host for good, so a few forgotten tabs (drawa opens one per start) starve every other request, pings included.
+// The tab holding this lock streams; the others say so, and take over when it closes or on "Use here".
+let active = !navigator.locks, waiting = false // no Web Locks (very old browser): stream as before
+const elsewhere = make('p', 'float toast elsewhere')
+elsewhere.hidden = true
+elsewhere.setAttribute('role', 'status')
+elsewhere.append(make('span', '', 'Drawa is open in another tab.'), button('Use here', '', () => claim(true)))
+document.body.append(elsewhere)
+
+function claim(steal = false) {
+  if (active || (waiting && !steal)) return
+  if (!steal) { waiting = true; setTimeout(() => { if (!active) elsewhere.hidden = false }, 500) }
+  navigator.locks.request('drawa:events', { steal }, () => {
+    if (!steal) waiting = false
+    active = true
+    elsewhere.hidden = true
+    listen()
+    return new Promise<never>(() => {}) // held until the tab closes, or another tab takes it
+  }).catch(() => { // another tab took over: stop reading, and queue to get it back when that tab closes
+    active = false
+    conn?.abort()
+    conn = null
+    subscribed = ''
+    elsewhere.hidden = false
+    claim()
+  })
+}
+if (!active) claim()
+
 /** Make sure this card's output is being read (it's a no-op when the stream already covers it). */
 export function attach(_S?: Session) {
   clearTimeout(soon)
@@ -64,6 +94,7 @@ export function attach(_S?: Session) {
 }
 
 function listen() {
+  if (!active) return
   // re-open when cards come or go, or when a card not attached yet got a different start (a restore sets it after the
   // card exists: e.g. line 0 for one whose transcript isn't written yet)
   const want = cards.map(S => (S.gen ? S.cid : `${S.cid}:${S.n}`)).sort().join()
