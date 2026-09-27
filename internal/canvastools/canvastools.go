@@ -2,6 +2,19 @@
 // the canvas), and the small MCP tool-error shape used whenever a canvas call can't be carried out.
 package canvastools
 
+// Instructions go out in the MCP initialize answer. Claude Code puts them in the system prompt even while the tools
+// themselves are deferred behind ToolSearch, so this is where the agent learns the canvas exists without being told.
+const Instructions = "This session runs inside Drawa: the user is looking at a visual canvas where your session is one card " +
+	"among notes, docs, diagrams, sketches, images and code windows. Use the canvas_* tools (load them with ToolSearch if deferred).\n" +
+	"- When something is easier to see than to read (architecture, flows, state machines, before/after, UI screenshots, " +
+	"comparisons), put it on the canvas when the user wants to see it, and offer to otherwise. Don't only describe it.\n" +
+	"- Screenshots you take (e.g. of an app in a headless browser) go on the canvas with canvas_create kind image.\n" +
+	"- Diagrams become kind diagram (Mermaid); long write-ups, plans and summaries become kind doc; short callouts become notes.\n" +
+	"- When the user says \"this\", \"here\", \"what I drew\" or mentions the canvas, run canvas_list and canvas_read first: " +
+	"pen drawings only show up in pictures.\n" +
+	"- Change an existing item with canvas_update rather than adding a duplicate; show how items relate with canvas_link.\n" +
+	"- Keep ordinary short answers in the chat."
+
 // Tools is CANVAS_TOOLS: the tool definitions served over MCP, and returned by tools/list.
 var Tools = []map[string]any{
 	{
@@ -30,8 +43,8 @@ var Tools = []map[string]any{
 	{
 		"name": "canvas_create",
 		"description": "Put something on the user's canvas, beside your session card (or beside another item). Use it when the user " +
-			"asks to put, draw, pin or show something on the canvas, or when a diagram would genuinely help; not for normal " +
-			"answers. Kinds: note (short text shown large on the canvas, like a sticky note), doc (a Markdown window: " +
+			"asks to see, put, draw, pin or show something, or when a diagram, screenshot or write-up is clearer on the " +
+			"canvas than in chat; keep short answers in chat. Kinds: note (short text shown large on the canvas, like a sticky note), doc (a Markdown window: " +
 			"headings, lists, tables, code blocks, ```mermaid diagrams and > [!NOTE] callouts render; for write-ups, plans, " +
 			"summaries you want to leave on the canvas), diagram (Mermaid source; " +
 			"drawn, and the user can edit it), snippet (a small window of code, text or command output), image (a PNG, JPEG, " +

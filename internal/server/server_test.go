@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"drawa/internal/canvastools"
 	"drawa/internal/live"
 )
 
@@ -63,7 +64,7 @@ func TestMcpRoundTrip(t *testing.T) {
 	var initResp map[string]any
 	json.Unmarshal(body, &initResp)
 	result := initResp["result"].(map[string]any)
-	if result["serverInfo"].(map[string]any)["name"] != "drawa-canvas" {
+	if result["serverInfo"].(map[string]any)["name"] != "drawa-canvas" || result["instructions"] != canvastools.Instructions {
 		t.Fatalf("unexpected initialize result: %s", body)
 	}
 

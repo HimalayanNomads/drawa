@@ -67,6 +67,7 @@ func handleMCP(w http.ResponseWriter, r *http.Request, cid, token string) {
 			"protocolVersion": pv,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "drawa-canvas", "version": "1"},
+			"instructions":    canvastools.Instructions,
 		}
 	case "ping":
 		result = map[string]any{}
