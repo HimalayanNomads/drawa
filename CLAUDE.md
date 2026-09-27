@@ -17,7 +17,7 @@ web/src/
   lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the update-available dialog), theme, tooltip
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
-  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window)
+  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window), group (a frame holding windows; + groupgeom.ts, its geometry)
   panels/      side panels: file tree + inspector, diffs
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
@@ -42,6 +42,8 @@ The app scales through these registration points. A new feature should plug into
 | Post-process rendered Markdown (diagrams, anything drawn from a code block) | `onRendered(fn)` | `lib/markdown.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/select.ts` |
+| Moves along when another item is dragged (a selection, a group's windows) | `moveWith(fn)` (`fn(el)` returns what comes with `el`; `movesWith(el)` follows every answer through; items with `data-locked` stay put) | `canvas/canvas.ts` |
+| A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
@@ -61,6 +63,7 @@ Rules for these registries:
 - **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`drawa:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
 - **Restore phases:** 0 is settings and positions, 1 is items, 2 is things that attach to items (ink). A loader may be async; the next one waits for it.
 - **Item state goes in `data-state`,** not in ad-hoc classes (`busy`, `edit`, `approved`...). The minimap and CSS both key off `data-kind` + `data-state`.
+- **Two canvas-wide attributes** belong to no kind, so they sit beside `data-state`: `data-hidden-in` (inside a collapsed group: use `hidden(el)` from `canvas.ts`, which placement, arrows, Ctrl+K and the selection skip) and `data-locked` (stays put: `movesWith()` and selection nudges leave it).
 
 ## Code conventions
 

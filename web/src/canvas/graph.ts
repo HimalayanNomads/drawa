@@ -4,7 +4,7 @@
 // you open it from the file tree. The windows themselves are canvas/sessionwins.ts's; this module draws the arrows.
 import { make, ping, clip } from '../lib/dom'
 import { persist, each } from '../lib/store'
-import { world, onCanvas, liveRect, view, onChange, place, rect, changed, items, byIds } from './canvas'
+import { world, onCanvas, liveRect, view, onChange, place, rect, changed, items, byIds, hidden } from './canvas'
 import { info, paint, fileList, addRow, order, termNode, dropWindows, refreshInspector, type FileInfo } from './sessionwins'
 import type { Session } from '../session/session'
 import type { Change } from '../panels/diff'
@@ -78,6 +78,7 @@ function measure(e: Edge): () => void {
   // full view covers the canvas: its arrows would only draw over it. Pinned windows keep theirs.
   // (and arrows to windows gathered under their collapsed session: they sit right there)
   const hide = e.S.card.classList.contains('full') || e.target.classList.contains('full') || !!e.target.dataset.home
+    || hidden(e.S.card) || hidden(e.target) // inside a collapsed group
   if (hide) return () => { e.path.style.display = e.label.style.display = 'none' }
   const a = liveRect(e.S.card), b = liveRect(e.target)
   const s = onCanvas(e.target) ? 1 : 1 / view.k // a pinned window isn't scaled with the canvas: its offsets are screen px

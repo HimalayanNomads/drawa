@@ -3,7 +3,7 @@
 // bar by the selection) removes them, each through its own remove path. Only items laid out on the canvas take part:
 // pinned, floating and full-view windows don't.
 import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
-import { stage, placed, onCanvas, rect, place, toWorld, view, onChange, setGroup, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
+import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
 import { drawing, remove, type Stroke } from './ink'
 import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
@@ -23,6 +23,12 @@ export const removable = (kind: string, fn: ((el: HTMLElement) => void) | null, 
 /** The item's own × (every kind's close/remove button carries .closebtn). */
 const closeButton = (el: HTMLElement) => el.querySelector<HTMLButtonElement>(':scope > .win-h .closebtn, :scope > .closebtn')
 const canRemove = (el: HTMLElement) => removers.has(el.dataset.kind!) || !!closeButton(el)
+/** Remove one item the way a selection delete does, without asking (items/group.ts deletes a group's windows). */
+export function removeItem(el: HTMLElement) {
+  set(el, false)
+  const fn = removers.get(el.dataset.kind!)
+  if (fn) fn(el); else closeButton(el)?.click()
+}
 
 // drawings on the canvas itself (shapes, text, pen strokes) join the selection too; ink on a window moves with it
 const inkSel = new Set<Stroke>()
@@ -40,11 +46,13 @@ export function selectInk(s: Stroke, add = false) {
 const watchers: (() => void)[] = []
 /** Called whenever the selection changes (canvas/shapes.ts frames a single selected shape with its handles). */
 export const onSelect = (f: () => void) => watchers.push(f)
-/** Move everything selected together, windows and drawings, by a total offset in canvas units; `end()` when done. */
+/** Move everything selected together, windows and drawings, by a total offset in canvas units; `end()` when done.
+ *  Whatever moves with a selected item comes too (a group's windows). */
 export function selectionMover(): Mover {
-  const els = [...sel], starts = els.map(rect), ink = strokeMover([...inkSel])
+  const els = [...new Set([...sel].filter(el => !el.dataset.locked).flatMap(movesWith))], starts = els.map(rect), ink = strokeMover([...inkSel])
   const move = (dx: number, dy: number) => { els.forEach((el, i) => place(el, starts[i].x + dx, starts[i].y + dy)); ink(dx, dy); if (els.length) redraw() }
-  return Object.assign(move, { end: () => { ink.end(); changed() } })
+  // a move like a drag's: 'moved' on each, so what reacts to drags (groups pushing each other aside) reacts to this too
+  return Object.assign(move, { end: () => { ink.end(); changed(); els.forEach(el => el.dispatchEvent(new CustomEvent('moved', { bubbles: true }))) } })
 }
 /** Select every item laid out on the canvas (Ctrl/Cmd+A). */
 function selectAll() { for (const el of placed()) set(el, true); for (const s of canvasStrokes()) setInk(s, true); sync() }
@@ -52,9 +60,9 @@ function set(el: HTMLElement, on: boolean) {
   if (on) sel.add(el); else sel.delete(el)
   el.classList.toggle('selected', on)
 }
-function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
+export function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
 
-setGroup(el => (sel.has(el) ? [...sel] : [el]))
+moveWith(el => (sel.has(el) ? [...sel] : []))
 setMoveAlong(el => (sel.has(el) && inkSel.size ? strokeMover([...inkSel]) : null))
 
 /* ---------- the bar by the selection: how many, delete, clear ---------- */
@@ -62,21 +70,49 @@ const count = make('span', 'n')
 const bar = document.body.appendChild(make('div', 'selbar float'))
 bar.setAttribute('role', 'toolbar')
 bar.setAttribute('aria-label', 'Selected items')
-bar.append(count, button('Delete', '', () => { removeSelected() }), iconButton(ICON.x, 'Clear selection (Esc)', clearSelection))
+const del = button('Delete', '', () => { removeSelected() })
+bar.append(count, del, iconButton(ICON.x, 'Clear selection (Esc)', clearSelection))
 bar.hidden = true
+const actions: { b: HTMLButtonElement; when: (els: HTMLElement[]) => boolean }[] = []
+let shownFor = '' // the selection the actions were last shown for
+/** A button on the bar by the selection, before Delete (items/group.ts: Group, Ungroup). `when`: shown only for
+ *  selections it applies to. */
+export function selectionAction(label: string, tip: string, fn: () => void, when: (els: HTMLElement[]) => boolean = () => true) {
+  const b = button(label, '', fn)
+  b.title = tip
+  bar.insertBefore(b, del)
+  actions.push({ b, when })
+}
+
+// the box round a selection of two or more (like a drawing app's group selection): screen px, so its line stays
+// crisp at any zoom; moved with the selection bar on every change
+const selbox = stage.appendChild(make('div', 'selbox'))
+selbox.hidden = true
 
 function sync() {
-  for (const el of [...sel]) if (!el.isConnected || !onCanvas(el)) set(el, false) // removed, pinned or in full view
+  for (const el of [...sel]) if (!el.isConnected || !onCanvas(el) || hidden(el)) set(el, false) // removed, pinned, in full view, in a collapsed group
   for (const s of [...inkSel]) if (!s.el?.isConnected) setInk(s, false) // erased or undone
   watchers.forEach(f => f())
   const n = sel.size + inkSel.size
   bar.hidden = !n
+  selbox.hidden = n < 2
   if (!n) return
   count.textContent = `${n} selected`
+  const key = [...sel].map(el => el.dataset.id).join()
+  if (key !== shownFor) { shownFor = key; for (const a of actions) a.b.hidden = !a.when([...sel]) } // not on every pan frame
   // above the selection's top-left (on screen), kept on screen; a drawing on a window is measured where it shows
-  const screen = (r: Rect) => ({ x: r.x * view.k + view.x, y: r.y * view.k + view.y })
-  const ps = [...[...sel].map(el => screen(rect(el))), ...[...inkSel].map(s => (s.host ? s.el!.getBoundingClientRect() : screen(strokeRect(s))))]
-  keepOnScreen(bar, Math.min(...ps.map(p => p.x)), Math.min(...ps.map(p => p.y)) - bar.offsetHeight - 10, 64) // not over the toolbar
+  const screen = (r: Rect) => ({ x: r.x * view.k + view.x, y: r.y * view.k + view.y, w: r.w * view.k, h: r.h * view.k })
+  const rs = [...[...sel].map(el => screen(rect(el))), ...[...inkSel].map(s => {
+    if (!s.host) return screen(strokeRect(s))
+    const b = s.el!.getBoundingClientRect()
+    return { x: b.left, y: b.top, w: b.width, h: b.height }
+  })]
+  const x0 = Math.min(...rs.map(r => r.x)), y0 = Math.min(...rs.map(r => r.y))
+  if (n > 1) {
+    const x1 = Math.max(...rs.map(r => r.x + r.w)), y1 = Math.max(...rs.map(r => r.y + r.h)), m = 6
+    selbox.style.cssText = `left:${x0 - m}px;top:${y0 - m}px;width:${x1 - x0 + 2 * m}px;height:${y1 - y0 + 2 * m}px`
+  }
+  keepOnScreen(bar, x0, y0 - bar.offsetHeight - 10, 64) // not over the toolbar
 }
 onChange(sync)
 
@@ -95,11 +131,7 @@ async function removeSelected() {
   const left = kept ? `${plural(kept)} can't be removed this way and stay${kept === 1 ? 's' : ''}.` : ''
   if (!await confirmBox(`Delete ${plural(gone.length + ink.length)}?`, `${said} ${left}`.trim() || 'They are removed from the canvas.', 'Delete')) return
   drop()
-  for (const el of gone) {
-    set(el, false)
-    const fn = removers.get(el.dataset.kind!)
-    if (fn) fn(el); else closeButton(el)?.click()
-  }
+  for (const el of gone) removeItem(el)
   sync()
   changed()
 }

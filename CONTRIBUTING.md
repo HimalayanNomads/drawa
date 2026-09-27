@@ -99,6 +99,7 @@ sequenceDiagram
 
 ```sh
 (cd web && npm run build)   # tsc + Vite build, must pass with no new errors
+(cd web && for f in src/*/*.check.ts; do npx --yes tsx "$f"; done)   # pure-logic checks, e.g. the window-group geometry
 go vet ./... && go test ./...
 ```
 

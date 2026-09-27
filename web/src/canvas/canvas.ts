@@ -74,8 +74,12 @@ export function addItem<T extends HTMLElement>(el: T, kind: string): T {
 /** Every canvas item, including windows pinned to the sidebar (they still belong to the canvas). */
 export const items = (kind?: string) => holders.flatMap(h => [...h.children]).filter((el): el is HTMLElement =>
   el.classList.contains('item') && (!kind || (el as HTMLElement).dataset.kind === kind))
-/** Only what's laid out on the canvas itself: placement, fit and the minimap ignore pinned windows. */
-export const placed = () => [...world.children].filter((el): el is HTMLElement => el.classList.contains('item'))
+/** Only what's laid out on the canvas itself: placement, fit and the minimap ignore pinned windows, and windows
+ *  hidden inside a collapsed group (data-hidden-in, items/group.ts). */
+export const placed = () => [...world.children].filter((el): el is HTMLElement => el.classList.contains('item') && !hidden(el as HTMLElement))
+/** Inside a collapsed group (items/group.ts sets data-hidden-in): out of sight, so placement, arrows, Ctrl+K and the
+ *  selection leave it alone. */
+export const hidden = (el: HTMLElement) => !!el.dataset.hiddenIn
 /** Canvas items by their data-id: one pass, for restoring many saved references at once. */
 export const byIds = () => new Map(items().map(el => [el.dataset.id!, el]))
 /** An id as Claude sees it: UUIDs cut to 8 characters, readable ids (git, f:path, l:card…) kept whole. */
@@ -108,7 +112,9 @@ export const savedRect = (el: HTMLElement): Rect => {
 }
 
 let z = 10 // stacking inside #world only
-export const front = (el: HTMLElement) => { el.style.zIndex = String(++z) }
+export const front = (el: HTMLElement) => { if (el.style.zIndex !== String(z)) el.style.zIndex = String(++z) }
+// a press anywhere on an item (not only its tab) brings it to the front: overlapping windows swap as you click them
+world.addEventListener('pointerdown', e => { const el = (e.target as Element).closest<HTMLElement>('#world > .item'); if (el) front(el) }, true)
 
 /** Asked while an item is dragged (final=false, to highlight a target) and when it's released (final=true).
  *  Return true if the pointer is over something that takes the item: on release it then snaps back to where it was. */
@@ -116,9 +122,17 @@ type DropHandler = (el: HTMLElement, x: number, y: number, final: boolean) => bo
 let dropHandler: DropHandler | undefined
 export const onDrop = (f: DropHandler) => { dropHandler = f }
 
-/** What moves when `el` is dragged: itself, or the whole selection it's part of (set by canvas/select.ts). */
-let groupOf = (el: HTMLElement) => [el]
-export const setGroup = (f: (el: HTMLElement) => HTMLElement[]) => { groupOf = f }
+/** What else moves when an item is dragged. Each registered function answers for one item: canvas/select.ts (the
+ *  selection it's in), items/group.ts (a group's windows). */
+const withs: ((el: HTMLElement) => HTMLElement[])[] = []
+export const moveWith = (f: (el: HTMLElement) => HTMLElement[]) => { withs.push(f) }
+/** `el` and everything that moves with it, followed through: a selected group brings its windows along. */
+export function movesWith(el: HTMLElement): HTMLElement[] {
+  const all = new Set([el])
+  // a Set's loop also visits what's added; a locked item (data-locked: a pinned group) stays put
+  for (const x of all) for (const f of withs) for (const y of f(x)) if (!y.dataset.locked) all.add(y)
+  return [...all]
+}
 /** Moves things by a total offset in canvas units while a drag runs; `end()` settles them when it's over. */
 export type Mover = ((dx: number, dy: number) => void) & { end: () => void }
 /** Anything else that moves with `el`'s group (selected drawings): called when a drag starts, returns a mover or null. */
@@ -132,7 +146,8 @@ export function draggable(el: HTMLElement, handle: HTMLElement, onMove: () => vo
     e.stopPropagation()
     front(el)
     const sx = e.clientX, sy = e.clientY, o = rect(el)
-    const group = groupOf(el).filter(g => g !== el && onCanvas(g)), starts = group.map(rect), along = moveAlong(el)
+    // (off the canvas too: a pinned window's canvas spot, what it comes back to, moves with its group)
+    const group = movesWith(el).filter(g => g !== el), starts = group.map(rect), along = moveAlong(el)
     const alone = !group.length && !along // a group isn't dropped onto a card
     let moved = false, done = false
     // the pointer is captured only once it really drags: capturing on press would re-target a double-click to the

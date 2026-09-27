@@ -1,7 +1,7 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
 // title and content, Enter flies to it, brings it to the front and expands it if it was collapsed.
 import { $, make, ping, reducedMotion } from '../lib/dom'
-import { items, centerOn, front, onCanvas } from './canvas'
+import { items, centerOn, front, onCanvas, hidden } from './canvas'
 import { refIcon, kindName } from './refs'
 import { titleOf, expand, focusInput } from './window'
 
@@ -33,7 +33,8 @@ let hits: Hit[] = [], sel = 0, index: Entry[] = []
 /** Read every window's title and text once, when the finder opens: typing then only filters this. */
 function build() {
   // most recently brought to the front first: that's the order you used them in
-  index = items().sort((a, b) => (Number(b.style.zIndex) || 0) - (Number(a.style.zIndex) || 0)).map(el => {
+  index = items().filter(el => !hidden(el)).sort( // a collapsed group's windows: find the group instead
+    (a, b) => (Number(b.style.zIndex) || 0) - (Number(a.style.zIndex) || 0)).map(el => {
     const title = titleOf(el) || kindName(el.dataset.kind ?? ''), body = textOf(el)
     return { el, title, t: title.toLowerCase(), kind: el.dataset.kind ?? '', body, b: body.toLowerCase() }
   })

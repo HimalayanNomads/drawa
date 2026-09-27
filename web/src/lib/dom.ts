@@ -13,6 +13,7 @@ export function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string
 const svg = (d: string) => `<svg viewBox="0 0 16 16">${d}</svg>`
 export const ICON = {
   x: svg('<path d="M4 4l8 8M12 4l-8 8"/>'),
+  ungroup: svg('<path d="M2.5 2.5h5v5h-5zM8.5 8.5h5v5h-5z"/>'), // two boxes apart
   plus: svg('<path d="M8 3v10M3 8h10"/>'),
   up: svg('<path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/>'),
   stop: svg('<rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" stroke="none"/>'),

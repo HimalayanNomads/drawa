@@ -3,7 +3,7 @@
 // them in canvas_list and can draw them too (canvas_link).
 import { make, ICON, iconButton, EDITABLE, closestAt, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, track, type Rect } from './canvas'
+import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, track, hidden, type Rect } from './canvas'
 
 const NS = 'http://www.w3.org/2000/svg'
 // its own layer, big enough to contain every arrow: pointer hits only count inside an SVG's box (session arrows'
@@ -38,7 +38,7 @@ function shape(k: ReturnType<typeof curve>) {
 
 /** Measure first (layout reads), then `write` (DOM writes): so a batch of arrows lays out once, not per arrow. */
 function measure(l: Link) {
-  const hide = l.from.classList.contains('full') || l.to.classList.contains('full')
+  const hide = l.from.classList.contains('full') || l.to.classList.contains('full') || hidden(l.from) || hidden(l.to)
   const k = hide ? null : shape(curve(liveRect(l.from), liveRect(l.to)))
   return () => write(l, k)
 }
