@@ -143,7 +143,8 @@ export function reviewPlan(S: Session, req: string, toolId: string, markdown?: s
     return null
   }
   let p: Plan | null | undefined = current.get(S)
-  if (!p || p.done) p = showPlan(S, toolId, markdown ?? '')
+  // a new call is a new version, even if its request comes before the streamed call ends (that one has no text)
+  if (!p || p.done || (toolId && !p.ids.includes(toolId))) p = showPlan(S, toolId, markdown ?? '')
   if (!p) return null
   // the streamed tool call may not carry the plan text (the CLI adds it when asking): use the request's copy
   else if (markdown && markdown !== p.md) render(p, markdown)
