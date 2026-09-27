@@ -27,7 +27,7 @@ export function composer(S: Session, body: HTMLElement) {
   stopBtn.setAttribute('aria-label', 'Stop')
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
-  sendBtn.title = 'Send (Enter)'
+  sendBtn.title = 'Send (Ctrl+Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
   const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
   const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
@@ -188,7 +188,9 @@ function commandMenu(S: Session, form: HTMLFormElement) {
       if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pick(sel); return }
       if (e.key === 'Escape') { menu.hidden = true; return }
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit() }
+    // Enter is a plain new line; Ctrl/Cmd+Enter sends; Esc leaves the box so single-key shortcuts work again
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); form.requestSubmit() }
+    else if (e.key === 'Escape') S.ta.blur()
   })
 }
 

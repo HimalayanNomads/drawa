@@ -66,7 +66,13 @@ drawa .   # opens the current folder; Ctrl+C to stop
 
 ## Updating
 
-drawa checks GitHub for a newer release in the background and offers to install it (downloads it, verifies its checksum, and restarts) — accept, put it off, or skip that version. You can also re-run the install script (it always fetches the latest release) or repeat the manual steps with a fresh download; either just overwrites the old binary.
+```sh
+drawa --update
+```
+
+This installs the latest release over the binary you ran, with the same checksum check as the install script (`drawa --version` shows which one you have). While drawa is open, it also asks when a new release is out: **Install and restart** updates it, **Not now** asks again in a day, and **Skip this version** waits for the next release. Installing from the page stops sessions that are still working, so it tells you first when there are any.
+
+Re-running the install script or repeating the manual steps works too. Either one overwrites the old binary. A build from source doesn't update itself: `git pull` and rebuild.
 
 ## Uninstalling
 

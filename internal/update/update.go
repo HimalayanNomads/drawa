@@ -1,5 +1,7 @@
-// Package update checks GitHub Releases for a newer drawa and, if asked, installs it in place. It mirrors
-// install.sh's own recipe (same repo, same asset names, same checksum file) so the two paths never disagree.
+// Package update checks GitHub Releases for a newer drawa and installs it in place: `drawa --update` in a
+// terminal, or the page's update dialog (POST /api/update, which then restarts the server on the new binary). It
+// mirrors install.sh's recipe (same repo, asset names and checksum file) so the two paths never disagree. Only
+// release binaries update themselves: a source build reports config.Version "dev" and is updated with git.
 package update
 
 import (
@@ -20,15 +22,31 @@ import (
 	"syscall"
 	"time"
 
+	"drawa/internal/config"
 	"drawa/internal/live"
 )
 
-// Version is "dev" for a plain `go build`; the release workflow overrides it with the release tag via
-// -ldflags -X, so only release binaries ever see an update as available.
-var Version = "dev"
-
 const repo = "probablysamir/drawa" // matches install.sh's $repo
 const ttl = 6 * time.Hour
+
+var (
+	checkClient    = &http.Client{Timeout: 5 * time.Second}
+	downloadClient = &http.Client{Timeout: 5 * time.Minute} // a release archive is ~10MB; never hang forever
+)
+
+// exe is this binary's path, read before an update replaces the file.
+var exe = executable()
+
+func executable() string {
+	p, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
+}
 
 type Info struct {
 	Current   string `json:"current"`
@@ -37,63 +55,35 @@ type Info struct {
 	Available bool   `json:"available"`
 }
 
-var cache = struct {
+var cache struct {
 	sync.Mutex
 	val     Info
 	checked time.Time
-	loading bool
-}{}
-
-// Check returns the last-known answer, kicking off a background refresh if it's stale (or missing). The very
-// first call after boot blocks (nothing cached yet); every call after that returns immediately.
-func Check() (Info, error) {
-	if Version == "dev" { // no meaningful "current version" to compare, so never nag a source checkout
-		return Info{Current: Version}, nil
-	}
-	cache.Lock()
-	fresh := time.Since(cache.checked) < ttl
-	loading := cache.loading
-	val := cache.val
-	if !fresh && !loading {
-		cache.loading = true
-	}
-	cache.Unlock()
-
-	if fresh {
-		return val, nil
-	}
-	if loading {
-		if val.Latest == "" { // first call ever: nothing to return yet, so wait for it
-			return refresh()
-		}
-		return val, nil
-	}
-	return refresh()
 }
 
-func refresh() (Info, error) {
-	latest, url, err := latestTag()
+// Check is what the page and `drawa --update` ask: GitHub is asked at most every 6 hours; a failed check is
+// retried on the next call (they're rare: the page asks every few hours and when you come back to the tab).
+func Check() (Info, error) {
+	if config.Version == "dev" { // no meaningful "current version" to compare, so never nag a source checkout
+		return Info{Current: config.Version}, nil
+	}
 	cache.Lock()
 	defer cache.Unlock()
-	cache.loading = false
+	if time.Since(cache.checked) < ttl {
+		return cache.val, nil
+	}
+	latest, url, err := resolveTag("https://github.com/" + repo + "/releases/latest")
 	if err != nil {
-		return cache.val, err
+		return Info{Current: config.Version}, err
 	}
 	cache.checked = time.Now()
-	cache.val = Info{Current: Version, Latest: latest, URL: url, Available: newer(latest, Version)}
+	cache.val = Info{Current: config.Version, Latest: latest, URL: url, Available: newer(latest, config.Version)}
 	return cache.val, nil
 }
 
-// latestTag reads releases/latest's redirect target (install.sh:48's trick): no API call, so no rate limit
-// or auth needed for a public repo.
-func latestTag() (tag, url string, err error) {
-	return resolveTag("https://github.com/" + repo + "/releases/latest")
-}
-
+// resolveTag reads releases/latest's redirect target (install.sh's trick): no API call, so no rate limit or auth.
 func resolveTag(latestURL string) (tag, url string, err error) {
-	client := &http.Client{Timeout: 5 * time.Second}
-	req, _ := http.NewRequest(http.MethodHead, latestURL, nil)
-	resp, err := client.Do(req)
+	resp, err := checkClient.Head(latestURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -120,17 +110,35 @@ func newer(a, b string) bool {
 func parts(v string) [3]int {
 	var out [3]int
 	for i, s := range strings.SplitN(strings.TrimPrefix(v, "v"), ".", 3) {
-		if i >= 3 {
-			break
-		}
 		out[i], _ = strconv.Atoi(s)
 	}
 	return out
 }
 
+// CLI is `drawa --update`.
+func CLI() error {
+	if config.Version == "dev" {
+		return errors.New("this drawa was built from source: update it with git pull and a rebuild")
+	}
+	info, err := Check()
+	if err != nil {
+		return fmt.Errorf("couldn't check GitHub for a newer release: %w", err)
+	}
+	if !info.Available {
+		fmt.Printf("drawa %s is up to date.\n", config.Version)
+		return nil
+	}
+	fmt.Printf("Updating drawa %s → %s\n", config.Version, info.Latest)
+	if err := Install(); err != nil {
+		return err
+	}
+	fmt.Printf("Installed %s at %s\n", info.Latest, exe)
+	return nil
+}
+
 // Install downloads the release matching this machine, verifies its checksum and replaces the running binary
-// on disk. It never kills a session or restarts the process — call Restart for that, after responding to
-// whoever asked for the install (the process image is gone the instant that happens).
+// on disk. It never kills a session or restarts the process: call Restart for that, after answering whoever
+// asked for the install.
 func Install() error {
 	info, err := Check()
 	if err != nil {
@@ -138,6 +146,9 @@ func Install() error {
 	}
 	if !info.Available {
 		return errors.New("no update available")
+	}
+	if exe == "" {
+		return errors.New("can't tell where this drawa is installed")
 	}
 	asset := fmt.Sprintf("drawa-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	base := "https://github.com/" + repo + "/releases/download/" + info.Latest
@@ -167,7 +178,7 @@ func Install() error {
 }
 
 func download(url, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := downloadClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -191,8 +202,8 @@ func verify(archivePath, asset, sumsPath string) error {
 	}
 	var want string
 	for _, line := range strings.Split(string(sums), "\n") {
-		if _, name, ok := strings.Cut(line, "  "); ok && name == asset {
-			want, _, _ = strings.Cut(line, " ")
+		if sum, name, ok := strings.Cut(line, "  "); ok && name == asset {
+			want = sum
 			break
 		}
 	}
@@ -253,20 +264,12 @@ func extractBinary(archivePath, dir string) (string, error) {
 }
 
 // replaceSelf swaps the new binary over the running one: a temp file in the same directory (same filesystem,
-// so the rename is atomic) then os.Rename, which unlinks the old file's name without needing to write into a
-// currently-executing one.
+// so the rename is atomic), then os.Rename, which replaces the name without writing into the running file.
 func replaceSelf(newBinary string) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return err
-	}
 	staged := exe + ".new"
 	if err := copyFile(newBinary, staged); err != nil {
-		return err
+		os.Remove(staged)
+		return fmt.Errorf("can't write to %s: %w", filepath.Dir(exe), err)
 	}
 	if err := os.Chmod(staged, 0o755); err != nil {
 		os.Remove(staged)
@@ -289,18 +292,17 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
-// Restart kills every live session (exec would orphan them) and re-execs into the binary Install already put
-// in place. Only call this after a caller has been told installation succeeded: nothing after this line runs.
+// Restart replaces this server with the freshly installed binary, the same way main.go's rebuild-on-change does.
+// Sessions are killed first (exec would orphan them); the page resumes each one on its next message.
 func Restart() {
 	live.KillAll()
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	syscall.Exec(exe, os.Args, os.Environ())
+	err := syscall.Exec(exe, append([]string{exe}, os.Args[1:]...), os.Environ())
+	fmt.Println("restart after update failed:", err)
 }

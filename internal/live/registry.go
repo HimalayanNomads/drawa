@@ -97,6 +97,21 @@ func Reap() {
 	}
 }
 
+// Working counts the cards a restart would cut off mid-work (see Live.working).
+func Working() int {
+	Mu.Lock()
+	defer Mu.Unlock()
+	n := 0
+	for _, l := range Registry {
+		l.mu.Lock()
+		if !l.exited && l.working() {
+			n++
+		}
+		l.mu.Unlock()
+	}
+	return n
+}
+
 // KillAll kills every card's process group (and Meta's), and waits up to 2s in all for them to exit, so they're
 // reaped before this server exits or execs itself.
 func KillAll() {

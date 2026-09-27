@@ -8,6 +8,8 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 .prompt h2{margin:0 0 6px;font-size:16px;font-weight:600}
 .prompt p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
 .prompt .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+#update p a{color:var(--accent)}
+#update p code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font:12.5px var(--mono)}
 
 #zoom{width:94vw;height:90vh;max-width:none;max-height:none;overflow:hidden}
 #zoom[open],#sketcher[open]{display:flex;flex-direction:column}

@@ -83,6 +83,10 @@ func ok(body any, err error) (any, int, error) {
 
 var getRoutes = map[string]routeFunc{
 	"/api/info": func(q url.Values) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
+	"/api/version": func(q url.Values) (any, int, error) {
+		info, _ := update.Check() // offline: no newer release to offer, which is the right answer
+		return info, 200, nil
+	},
 	"/api/tree": func(q url.Values) (any, int, error) { return ok(filesx.Tree(q.Get("path"))) },
 	"/api/file": func(q url.Values) (any, int, error) {
 		p, err := need(q, "path")
@@ -114,7 +118,6 @@ var getRoutes = map[string]routeFunc{
 	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
 	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
 	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
-	"/api/update":    func(q url.Values) (any, int, error) { return ok(update.Check()) },
 }
 
 var agentIDRe = regexp.MustCompile(`^[\w-]{1,100}$`)
@@ -306,13 +309,8 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 	case "/api/gh":
 		sendJSON(w, github.Op(body), 200)
 		return
-	case "/api/update/install":
-		if err := update.Install(); err != nil {
-			sendJSON(w, map[string]any{"ok": false, "error": err.Error()}, 502)
-			return
-		}
-		sendJSON(w, map[string]any{"ok": true}, 200)
-		go func() { time.Sleep(300 * time.Millisecond); update.Restart() }() // let this response flush before the process image goes away
+	case "/api/update":
+		updateNow(w, truthy(body["force"]))
 		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)
@@ -330,4 +328,25 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handleCardOp(w, r, cid, body)
+}
+
+// updateNow installs the latest release, answers, then restarts on it. Unless forced, it first says how many cards
+// are working, since the restart stops them.
+func updateNow(w http.ResponseWriter, force bool) {
+	if n := live.Working(); n > 0 && !force {
+		sendJSON(w, map[string]any{"working": n}, 200)
+		return
+	}
+	if err := update.Install(); err != nil {
+		sendJSON(w, map[string]any{"error": err.Error()}, 502)
+		return
+	}
+	sendJSON(w, map[string]any{"ok": true}, 200)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond) // let the answer reach the page first
+		update.Restart()
+	}()
 }

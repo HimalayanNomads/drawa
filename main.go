@@ -1,6 +1,8 @@
 // Browser UI for Claude Code.
 //
 //	drawa [--net] [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
+//	drawa --update                   installs the latest release over this binary
+//	drawa --version
 //
 // --net also listens on the machine's network address, so another device on the same network can open it;
 // without it the server only answers on localhost. Builds web/ on first run (needs npm); after UI changes run
@@ -18,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +28,7 @@ import (
 	"drawa/internal/config"
 	"drawa/internal/live"
 	"drawa/internal/server"
+	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
 
@@ -178,9 +182,19 @@ func openBrowser(url string) {
 }
 
 func main() {
+	if slices.Contains(os.Args[1:], "--version") {
+		fmt.Println("drawa", config.Version)
+		return
+	}
+	if slices.Contains(os.Args[1:], "--update") { // before preflight: updating doesn't need claude
+		if err := update.CLI(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Print(banner)
 	preflight()
-
 	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil && !webassets.Available() {
 		// first run from a fresh clone: build the UI so there is one command to learn. A standalone release
 		// binary skips this: its UI is embedded, and config.Repo (baked in at its own build time) names a path
@@ -195,7 +209,6 @@ func main() {
 		}
 	}
 	go restartOnChange()
-
 	go func() { // each claude runs in its own process group, so Ctrl+C in this terminal no longer reaches it
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
@@ -203,14 +216,11 @@ func main() {
 		live.KillAll()
 		os.Exit(130)
 	}()
-
 	go live.Reap()
-
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
 	fmt.Printf("Opening drawa UI for %s\n\n", config.Root)
 	fmt.Printf("  - Local:   %s\n", url)
 	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
-
 	if config.Net {
 		for _, ip := range config.LocalIPs() {
 			fmt.Printf("  - Network: http://%s:%d/?token=%s\n", ip, config.Port, config.NetToken)
@@ -220,12 +230,10 @@ func main() {
 	} else {
 		fmt.Println()
 	}
-
 	if os.Getenv("DRAWA_OPENED") == "" { // set before exec, so self-restarts don't open another tab
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)
 	}
-
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

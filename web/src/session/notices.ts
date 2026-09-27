@@ -30,11 +30,14 @@ const HANDOFF = /^Another Claude session sent a message[^\n]*:\s*<agent-message 
 const reports = new WeakMap<Element, string>()
 
 /** An agent's message to this session, usually its final report in the harness's hand-back frame: shown as the report
- *  itself under who sent it. Returns false when `text` isn't one. `live`: arriving now, so it opens. */
-export function handoff(S: Session, text: string, live: boolean) {
+ *  itself under who sent it. Returns false when `text` isn't one. `live`: arriving now, so it opens. `meta`: the CLI
+ *  flagged it isMeta; without that (the live echo of a queued hand-back has no flag) only one of our agents counts,
+ *  so a typed look-alike stays a plain bubble. */
+export function handoff(S: Session, text: string, live: boolean, meta = true) {
   const h = HANDOFF.exec(text)
   if (!h) return false
   const [, from, inner] = h, title = agentTitle(from), body = report(inner)
+  if (!meta && !title) return false
   const d = put(S, fold('handoff', title ? `Report from the "${title}" agent` : `Message from agent ${from.slice(0, 8)}`))
   d.dataset.kind = 'agent' // colored like the agent's window, chip and Ctrl+K row
   d.querySelector('summary b')!.setAttribute('data-glyph', refIcon('agent'))

@@ -7,11 +7,14 @@ import (
 )
 
 func TestNewer(t *testing.T) {
-	cases := []struct{ a, b string; want bool }{
+	cases := []struct {
+		a, b string
+		want bool
+	}{
 		{"v0.2.0", "v0.1.0", true},
 		{"v0.1.0", "v0.2.0", false},
 		{"v0.1.0", "v0.1.0", false},
-		{"v0.10.0", "v0.9.0", true},  // component-wise, not lexicographic
+		{"v0.10.0", "v0.9.0", true}, // component-wise, not lexicographic
 		{"v1.0.0", "v0.99.99", true},
 		{"v1.2.3", "dev", true}, // any real tag beats the dev sentinel
 	}
