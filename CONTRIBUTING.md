@@ -2,12 +2,47 @@
 
 Thanks for helping out. This page covers running Drawa from source and finding your way around the code. [`CLAUDE.md`](CLAUDE.md) holds the rules the codebase follows (where things go, the registries, styling and performance rules). Read it before a non-trivial change, whether you write the code yourself or an agent does.
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Ways to contribute
+
+You can contribute in several ways:
+
+- [Reporting bugs](#reporting-bugs)
+- [Suggesting features](#suggesting-features)
+- [Suggesting enhancements and improvements](#suggesting-enhancements-and-improvements)
+- Writing or improving documentation (`README.md`, `INSTALL.md` and this file)
+- Submitting bug fixes or enhancements (see [Making a change](#making-a-change))
+
+Looking for a place to start? Try issues labeled [`good first issue`](https://github.com/probablysamir/drawa/labels/good%20first%20issue) or [`help wanted`](https://github.com/probablysamir/drawa/labels/help%20wanted). Comment on an issue before you start so two people don't work on the same thing.
+
+Security problems don't go in public issues. See [`SECURITY.md`](SECURITY.md).
+
+## Reporting bugs
+
+Search open and closed issues first. If nobody has reported it yet, open one with the [Bug report](https://github.com/probablysamir/drawa/issues/new?template=bug_report.yml) template. It asks for:
+
+- What you did, what you expected, and what happened instead.
+- Your OS, browser, Drawa version (`drawa --version`, or the commit if you run from source) and `claude --version`.
+- Any errors from the browser console and from the terminal running Drawa.
+- A screenshot or recording, if the bug is visible. Blur out project paths and code you can't share.
+
+## Suggesting features
+
+A feature is something Drawa can't do yet. Open an issue with the [Feature request](https://github.com/probablysamir/drawa/issues/new?template=feature_request.yml) template. Describe the problem before the solution: what you were trying to do and what got in the way. [`PRODUCT.md`](PRODUCT.md) explains what Drawa is trying to be, and a proposal that fits it is easier to accept. Wait for a maintainer to agree on the direction before you start a large change.
+
+## Suggesting enhancements and improvements
+
+An enhancement makes something Drawa already does better: faster, clearer, easier to reach or more accessible. Open an issue with the [Enhancement](https://github.com/probablysamir/drawa/issues/new?template=enhancement.yml) template. Name the part of Drawa, describe how it behaves now and how it should behave, and add a screenshot if the change is visible.
+
 ## Development setup
 
-You need Go 1.22+, Node 20+ and [Claude Code](https://claude.com/claude-code) on `PATH`.
+You need Go 1.22+, Node 20.19+ (or 22.12+) and [Claude Code](https://claude.com/claude-code) on `PATH`.
+
+Work on your own fork (see [Making a change](#making-a-change)): only maintainers can push to this repository.
 
 ```sh
-git clone https://github.com/probablysamir/drawa.git
+git clone https://github.com/<your-username>/drawa.git
 cd drawa/web && npm install && npm run build
 cd .. && go run . /path/to/project
 ```
@@ -22,26 +57,94 @@ cd web && DRAWA_ROOT=/path/to/project npm run dev
 
 Open http://localhost:5173. This also builds and starts the Go server, unless one is already running on port 8765. It starts it with `DRAWA_DEV=1`, which makes the server trust the Vite dev origin (port 5173); without it the server refuses requests from that page. If you run the Go server yourself for dev, set `DRAWA_DEV=1` too.
 
+## Making a change
+
+Contributors don't push to `probablysamir/drawa` directly. Every change goes through a fork and a pull request:
+
+```mermaid
+sequenceDiagram
+  participant U as probablysamir/drawa
+  participant F as your fork
+  participant L as your machine
+  U->>F: 1. Fork on GitHub
+  F->>L: 2. git clone
+  L->>L: 3. git checkout -b fix/short-name
+  L->>F: 4. git push -u origin fix/short-name
+  F->>U: 5. Open a pull request
+  U-->>L: 6. git fetch upstream, to stay in sync
+```
+
+1. Fork the repository on GitHub ("Fork" at the top right), clone your fork, and add this repository as `upstream`:
+
+   ```sh
+   git clone https://github.com/<your-username>/drawa.git
+   cd drawa
+   git remote add upstream https://github.com/probablysamir/drawa.git
+   ```
+
+   Then create a branch from an up-to-date `main`, one branch per change:
+
+   ```sh
+   git fetch upstream
+   git checkout -b fix/short-name upstream/main   # or feat/, docs/
+   ```
+
+   Push the branch to your fork (`git push -u origin fix/short-name`) and open the pull request from there. Never work on your fork's `main`. When `main` moves on while you work, merge it in with `git fetch upstream && git merge upstream/main`.
+2. Keep one change per pull request. A bug fix doesn't need to bring a refactor along.
+3. Follow [`CLAUDE.md`](CLAUDE.md). A new feature plugs into the existing registries (`persist()`, `referable()`, `creatable()`...) instead of adding special cases. Go code uses the standard library only, and the frontend gets no new dependency for something a few lines can do.
+4. Update the docs in the same pull request when you change behavior, a shortcut or a setting (`README.md`), or add a folder or a registry (`CLAUDE.md`).
+5. Write commit messages as a short sentence in the imperative that says what changes, the way the history does: `Git window: say git isn't installed instead of offering git init`.
+
 ## Before you open a pull request
 
 ```sh
-cd web && npm run build   # tsc + Vite build, must pass with no new errors
+(cd web && npm run build)   # tsc + Vite build, must pass with no new errors
 go vet ./... && go test ./...
 ```
 
-For anything visible, check it in both the light and dark themes, at phone width (390px), and after a page reload (the layout restores from saved state). See "Before you finish any change" in [`CLAUDE.md`](CLAUDE.md).
+For anything visible, check it in both the light and dark themes, at phone width (390px), and after a page reload (the layout restores from saved state). See ["Before you finish any change"](CLAUDE.md#before-you-finish-any-change) in `CLAUDE.md`.
 
-## Layout
+## Opening the pull request
 
-- `main.go`: the entry point (the self-restart loop, `main()`); it doesn't parse arguments, `internal/config` does. `internal/` holds one package per responsibility (`go test ./...` covers GitHub check merging, session/transcript loading, the canvas MCP endpoint and the multiplexed event stream): `config/` (the project folder and flags, port, paths, allowed hosts and origins, `Inside()`), `procx/` (running `git`/`gh`/`claude` subprocesses), `gitx/`, `github/` (`github.go` + `detail.go` + `ops.go`: state/lists, single PR/issue reads, write operations), `filesx/` (the file tree and `@` search), `images/`, `sessions/` (transcript loading, `Clip`/`Trimmed`), `canvastools/` (the `Tools` schema Claude sees), `live/` (`live.go` + `meta.go`: the `Live` type, one long-running `claude` process per card; `registry.go`: `Start`, the optional `DRAWA_MAX_LIVE` cap, reaping idle processes, `KillAll` before a restart; `broadcast.go`: `Changed`, the one wakeup signal), `update/` (`drawa --update` and the page's update dialog: the latest release tag from GitHub, downloading and checksum-verifying it, swapping it in, restarting on the new binary), `webassets/` (the built UI embedded for standalone release binaries, empty in a normal checkout), and `server/` (`handler.go` routing, `events.go` the `/api/events` stream, `mcp.go` the canvas MCP server, `shell.go` the `!` shell command, `cardops.go` send/respond/mode/canvas/interrupt/close, `netauth.go` the `--net` token check and lockout). Serves `web/dist` (falling back to `webassets` when it's absent) and the file/session/git/GitHub API.
-- `web/src/`, by feature:
-  - `main.ts`: boot, toolbar, shortcuts.
-  - `lib/`: `api.ts` (server calls), `store.ts` (saved layout: each feature `persist()`s its own slice; loaders restore lists with `each()`, so one bad entry doesn't stop the rest), `dom.ts` (element and button helpers, `reducedMotion()`), `markdown.ts` (rendering; `onRendered()` lets a feature post-process rendered Markdown, as diagrams do), `select.ts` (custom dropdowns), `fonts.ts`, `blobs.ts` (IndexedDB for binary data such as canvas images), `zoom.ts` (the zoom/pan dialog for diagrams and pictures), `connection.ts` (server reachability, `onReconnect()`), `update.ts` (the "update available" dialog), `theme.ts` (light/dark and color schemes), `tooltip.ts` (app-styled tooltips from `title`).
-  - `canvas/`: `canvas.ts` (the view, items, dragging, placing new windows, `track()`, `bulk()`), `window.ts` (the shared folder-tab window: drag, collapse, resize), `graph.ts` (edges between a session and its windows), `sessionwins.ts` (each session's Files and commands windows, files pinned from the tree; `setInspector()` is how the file panel plugs in), `nav.ts` (panning, zooming, the minimap and zoom buttons), `ink.ts` (draw mode), `inksel.ts` (which strokes are in an area or under the pointer; moving strokes with the selection), `inkrows.ts` (ink that follows chat rows), `shapes.ts` (rectangle, ellipse, diamond and line; moving and resizing drawn shapes and text), `shapegeom.ts` (the shapes' pure geometry), `refs.ts` (what can be @-referenced: each kind registers with `referable()`), `tools.ts` (Claude's canvas tools: list, read, create, update and link items, served over MCP by the Go server), `links.ts` (arrows you or Claude draw between items), `snapshot.ts` (a picture of a window with its ink, for Claude), `find.ts` (Ctrl+K window search), `dock.ts` (pin to the sidebar, or stick to the screen), `fullview.ts` (a window filling the screen), `select.ts` (selecting several items: drag on empty canvas in Select mode, or double-tap and drag / Shift+drag in either mode, Shift/Ctrl+click a tab; drag them together, arrow keys nudge, Delete removes them), `mode.ts` (Select and Hand modes; Space held is a temporary hand).
-  - `session/`: `session.ts` (cards), `composer.ts` (message box, / and @ menu, reference chips), `stream.ts` (rendering Claude's output), `asks.ts` (permission prompts, questions), `live.ts` (send, stream connection), `history.ts`, `recall.ts` (Up/Down through sent messages), `images.ts` (pasted or dropped images), `uploads.ts` (dropped text files), `mode.ts` (per-card permission mode), `notify.ts` (tab-title count and system notifications), `shell.ts` (`!` shell commands), `tasks.ts` (Claude's task checklist).
-  - `items/`: `notes.ts`, `doc.ts` (the Scratchpad: a Markdown window rendered with code blocks, Mermaid and callouts, double-click or the pencil to edit; S or the toolbar, or Claude's canvas_create kind "doc"), `sketch.ts` (Whiteboard: an Excalidraw window; no longer created, existing ones still load), `diagram.ts` (Mermaid + zoom), `plan.ts` (plan review) with `plandiff.ts` (what changed since the last version, marked by word, list item or block), `snippet.ts` (plus `pinmarks.ts`: pinned text stays highlighted where it came from; click it to jump to the snippet), `git.ts`, `image.ts` (pictures: paste or drop them on the canvas, or Claude puts a screenshot there), `agent.ts` (a window per sub-agent: its work as it happens, a box to message it through its session; it leaves the canvas when the agent finishes, and the card's Agent row reopens it), `github.ts` (pull requests and issues through the `gh` CLI; Shift+G) with `gh.ts` (their data, and sending a PR, its failing checks, its reviews or an issue to Claude).
-  - `panels/`: `files.ts` (tree, inspector), `diff.ts`.
-  - `styles/`: `index.css` imports `tokens.css` (colors, radius and z scales) then one file per area.
-- A new kind of canvas item is one file in `items/`: build it with `makeWindow()` (or `addItem()` for a bare node), then call `persist()` to save it and `referable()` if messages can reference it.
-- `PRODUCT.md`: design direction.
-- `CLAUDE.md`: the rules for changing the code.
+Fill in the pull request template:
+
+- Link the issue it resolves (`Closes #12`).
+- Describe what changed and why, and what you tested. List anything you couldn't test (another OS, say).
+- For visible changes, add before/after screenshots in light and dark themes.
+- Keep the pull request as a draft until it's ready for review. Answer review comments with new commits rather than a force-push, so reviewers can see what changed.
+
+Maintainers cut releases. A merged pull request ships in the next one.
+
+## Architecture
+
+```mermaid
+flowchart TB
+  user["You, in a browser"]
+
+  subgraph web["Frontend · web/src"]
+    direction LR
+    ui["Session cards and windows"] --> engine["Canvas engine"] --> client["Server client"]
+  end
+
+  subgraph go["Backend · main.go + internal/"]
+    direction LR
+    api["HTTP API and event stream"] --> procs["Session manager"]
+    api --> repo["Git, GitHub and files"]
+    api --> mcp["Canvas tools MCP endpoint"]
+  end
+
+  subgraph tools["Local tools"]
+    direction LR
+    claude["Claude Code CLI"] ~~~ gitgh["git and gh"]
+  end
+
+  user --> web
+  web -- "JSON API · one event stream" --> go
+  go <-- "stream-json · MCP · subprocesses" --> tools
+```
+
+Arrows inside the frontend show which way imports go. The rules for where code goes are in [`CLAUDE.md`](CLAUDE.md).
+
+## License
+
+Drawa is licensed under the [GNU Affero General Public License v3.0](LICENSE). By opening a pull request, you agree that your contribution is licensed under the same terms.

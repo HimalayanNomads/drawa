@@ -1,6 +1,6 @@
 # Guidelines for agents working on Drawa
 
-Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, `CONTRIBUTING.md` for the code layout, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
+Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` run `claude` processes and serve a JSON API. `web/` is a Vite + TypeScript frontend with no framework: plain DOM modules. Read `README.md` for how to run it, `CONTRIBUTING.md` for the development setup and an architecture overview, and `PRODUCT.md` for the design brief. This file covers how to change the code without making it harder to change next time.
 
 ## Before you finish any change
 
@@ -111,7 +111,7 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 
 ## Server (`main.go`, `internal/`)
 
-`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`). Everything it does lives in `internal/`, one file (or small file group) per responsibility — see `CONTRIBUTING.md`'s Layout section for the full list. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
+`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`). Everything it does lives in `internal/`, one file (or small file group) per responsibility. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
 
 - Stdlib only (`net/http`). No third-party Go modules — `go.mod` should stay dependency-free the same way the old `server.py` was.
 - **Security checks are not optional:**
@@ -130,4 +130,4 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 ## When a request is vague
 
 - Prefer the smallest change that fits these rules. When a request needs a new abstraction, add it as a registry in the lower layer, and move the existing cases onto it in the same change, so the codebase never has two ways of doing one thing.
-- Update `CONTRIBUTING.md`'s layout section and this file whenever you add a folder, a registry, or a rule.
+- Update this file whenever you add a folder, a registry, or a rule, and the architecture diagram in `CONTRIBUTING.md` if the big picture changes.

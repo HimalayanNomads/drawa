@@ -1,0 +1,39 @@
+name: Enhancement
+description: Improve something Drawa already does.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: For something Drawa can't do at all yet, use the Feature request template instead.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Drawa this is about.
+      placeholder: Session cards, file tree, Git window, minimap...
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: How it works now, and what's wrong with it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed improvement
+      description: How it should work instead.
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or mockups
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself.

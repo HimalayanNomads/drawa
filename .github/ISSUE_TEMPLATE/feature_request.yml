@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest something Drawa can't do yet.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: "For something new Drawa can't do yet. To improve something it already does, use the Enhancement template. [PRODUCT.md](https://github.com/probablysamir/drawa/blob/main/PRODUCT.md) explains what Drawa is trying to be; proposals that fit it are easier to accept."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What were you trying to do, and what got in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How you'd like it to work.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other approaches or workarounds you've considered.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself.

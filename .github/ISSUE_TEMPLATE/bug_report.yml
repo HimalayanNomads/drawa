@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Drawa doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please search open and closed issues first. Blur out project paths and code you can't share in screenshots and logs.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project with `drawa ~/project`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Drawa version
+      description: Output of `drawa --version`. A source build prints `dev`; give the commit instead (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`.
+  - type: input
+    id: env
+    attributes:
+      label: OS and browser
+      description: macOS or Linux (Windows isn't supported yet).
+      placeholder: macOS 15, Chrome 140
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors and logs
+      description: From the browser console and the terminal running Drawa.
+      render: text
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or recording
