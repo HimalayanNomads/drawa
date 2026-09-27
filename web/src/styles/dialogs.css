@@ -4,10 +4,10 @@ dialog[open]{animation:enter .2s var(--ease)}
 dialog::backdrop{background:var(--backdrop)}
 dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--line)}
 
-#confirm{width:min(420px,calc(100vw - 32px));padding:20px 20px 16px}
-#confirm h2{margin:0 0 6px;font-size:16px;font-weight:600}
-#confirm p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
-#confirm .row{display:flex;justify-content:flex-end;gap:8px}
+.prompt{width:min(420px,calc(100vw - 32px));padding:20px 20px 16px}
+.prompt h2{margin:0 0 6px;font-size:16px;font-weight:600}
+.prompt p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
+.prompt .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
 
 #zoom{width:94vw;height:90vh;max-width:none;max-height:none;overflow:hidden}
 #zoom[open],#sketcher[open]{display:flex;flex-direction:column}

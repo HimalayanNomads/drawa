@@ -28,6 +28,7 @@ import (
 	"drawa/internal/images"
 	"drawa/internal/live"
 	"drawa/internal/sessions"
+	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
 
@@ -113,6 +114,7 @@ var getRoutes = map[string]routeFunc{
 	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
 	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
 	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
+	"/api/update":    func(q url.Values) (any, int, error) { return ok(update.Check()) },
 }
 
 var agentIDRe = regexp.MustCompile(`^[\w-]{1,100}$`)
@@ -303,6 +305,14 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/api/gh":
 		sendJSON(w, github.Op(body), 200)
+		return
+	case "/api/update/install":
+		if err := update.Install(); err != nil {
+			sendJSON(w, map[string]any{"ok": false, "error": err.Error()}, 502)
+			return
+		}
+		sendJSON(w, map[string]any{"ok": true}, 200)
+		go func() { time.Sleep(300 * time.Millisecond); update.Restart() }() // let this response flush before the process image goes away
 		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)

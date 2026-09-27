@@ -66,7 +66,7 @@ drawa .   # opens the current folder; Ctrl+C to stop
 
 ## Updating
 
-Re-run the install script (it always fetches the latest release), or repeat the manual steps with a fresh download — either just overwrites the old binary.
+drawa checks GitHub for a newer release in the background and offers to install it (downloads it, verifies its checksum, and restarts) — accept, put it off, or skip that version. You can also re-run the install script (it always fetches the latest release) or repeat the manual steps with a fresh download; either just overwrites the old binary.
 
 ## Uninstalling
 

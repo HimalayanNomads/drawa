@@ -3,6 +3,7 @@
 import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
 import './lib/tooltip' // the app's own tooltips for every title="…"
+import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
 import { $, project, shortcutOk } from './lib/dom'
 import { persist, restore, saveSoon } from './lib/store'
