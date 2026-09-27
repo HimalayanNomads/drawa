@@ -11,7 +11,6 @@ const SKIP = 'drawa:update:skip', SNOOZE = 'drawa:update-snooze', DAY = 864e5, E
 const d = $<HTMLDialogElement>('#update')
 const title = d.querySelector('h2')!, text = d.querySelector('p')!
 const [from, to] = [d.querySelector('.ver i')!, d.querySelector('.ver b')!]
-const notes = d.querySelector<HTMLAnchorElement>('.ver a')!
 const [, later, go] = d.querySelectorAll<HTMLButtonElement>('.row button')
 let info: Info, busy = false
 
@@ -87,7 +86,6 @@ function show(i: Info) {
   go.textContent = 'Update'
   from.textContent = i.current
   to.textContent = i.latest
-  notes.href = i.url
   say()
   d.returnValue = ''
   d.showModal()
