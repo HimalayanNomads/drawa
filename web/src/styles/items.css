@@ -114,6 +114,16 @@
 .pnode-b h1{font-size:19px}.pnode-b h2{font-size:16px;margin-top:1.3em}.pnode-b h3{font-size:14.5px}
 .pblk{border-radius:var(--r-tag);transition:background .15s}
 .pblk:hover{background:color-mix(in oklab,var(--accent) 6%,transparent)}
+/* a revision: what changed since the previous version (removed blocks are left out of feedback snapshots) */
+.pnew{box-shadow:inset 3px 0 0 var(--add);background:var(--add-bg)}
+.pnew:not(ul,ol),.pgone:not(ul,ol){padding-left:10px}
+.pgone{box-shadow:inset 3px 0 0 var(--del);background:var(--del-bg);color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in oklab,var(--del) 60%,transparent)}
+.pnode-b ins{background:var(--add-bg);text-decoration:none;box-shadow:inset 0 -1px 0 var(--add)}
+.pnode-b del.pdel{margin-right:.25em;background:var(--del-bg);color:var(--muted);text-decoration-color:color-mix(in oklab,var(--del) 60%,transparent)}
+.pchanges{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-6px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}
+.pnode-b[data-changes=off] :is(.pgone,.pdel){display:none}
+.pnode-b[data-changes=off] :is(ins,.pnew){background:none;box-shadow:none}
+.pnode-b[data-changes=off] .pnew:not(ul,ol){padding-left:0}
 .padd{position:absolute;right:8px;z-index:var(--z-over);width:24px;height:24px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow)}
 .padd:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink));color:var(--on-accent)}
 .pedit{margin:6px 0 12px;padding:8px;border:1px solid var(--accent);border-radius:var(--r-box);background:var(--bg)}

@@ -6,6 +6,7 @@ import { post } from '../lib/api'
 import { imageBlock } from '../lib/blobs'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
+import { markChanges } from './plandiff'
 import { rect, savedRect, freeSpot, changed, centerOn } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { link, savedPos, forget } from '../canvas/graph'
@@ -29,6 +30,7 @@ interface Plan {
   version: number
   comments: Comment[]
   md: string
+  prev: string // the previous version's text, which this one is marked against
   req?: string // open approval request, if Claude is waiting on us
   done: boolean
 }
@@ -63,7 +65,7 @@ function create(S: Session, key: string): Plan {
   general.placeholder = 'General feedback (optional). Hover a paragraph and click + to comment on it.'
   general.setAttribute('aria-label', 'General feedback')
   body.dataset.ink = 'p:' + key // drawing over the plan belongs to (and scrolls with) its text
-  const p: Plan = { S, key, ids: [], el, body, general, state, buttons: [], version: 0, comments: [], md: '', done: false }
+  const p: Plan = { S, key, ids: [], el, body, general, state, buttons: [], version: 0, comments: [], md: '', prev: '', done: false }
   p.buttons = [
     button('Send feedback', '', () => feedback(p)),
     button('Reject', 'reject', () => reject(p)),
@@ -97,6 +99,7 @@ export function showPlan(S: Session, toolId: string, markdown: string): Plan | n
   if (p && !p.done && p.ids.includes(toolId)) { if (markdown.trim() && markdown !== p.md) render(p, markdown); return p }
   if (!p || p.done) { p = create(S, toolId); current.set(S, p) }
   p.version++
+  p.prev = p.md
   p.done = false
   p.ids.push(toolId)
   render(p, markdown)
@@ -112,9 +115,24 @@ function render(p: Plan, markdown: string) {
   p.general.value = ''
   const overlay = p.body.querySelector(':scope > svg.ink-local') // keep the ink layer across re-renders
   p.body.innerHTML = markdown.trim() ? md(markdown) : '<p class="none">Waiting for the plan text…</p>'
+  if (p.prev && markdown.trim()) changes(p)
   if (overlay) p.body.append(overlay)
   enhance(p.body)
-  for (const [i, blk] of [...p.body.children].filter(c => !c.matches('svg.ink-local')).entries()) { (blk as HTMLElement).dataset.i = String(i); blk.classList.add('pblk') }
+  for (const [i, blk] of [...p.body.children].filter(c => !c.matches('svg.ink-local, .pgone, .pchanges')).entries()) { (blk as HTMLElement).dataset.i = String(i); blk.classList.add('pblk') }
+}
+
+/** A revision: a line on top says how much changed since the version before, with a switch to hide the marks. */
+function changes(p: Plan) {
+  const n = markChanges(p.body, p.prev), line = make('div', 'pchanges')
+  const parts = [n.added && `${n.added} added`, n.edited && `${n.edited} edited`, n.removed && `${n.removed} removed`].filter(Boolean)
+  line.append(make('span', '', `Since v${p.version - 1}: ${parts.join(' · ') || 'no changes'}`))
+  const hide = button('Hide changes', '', () => {
+    const off = p.body.dataset.changes !== 'off'
+    p.body.dataset.changes = off ? 'off' : 'on'
+    hide.textContent = off ? 'Show changes' : 'Hide changes'
+  })
+  if (parts.length) line.append(hide)
+  p.body.prepend(line)
 }
 
 /** Claude is waiting for approval of the plan. */
@@ -175,7 +193,7 @@ function editor(p: Plan, blk: HTMLElement) {
   ok.onclick = () => {
     const text = ta.value.trim()
     if (!text) return ta.focus()
-    const excerpt = (blk.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)
+    const excerpt = plain(blk).replace(/\s+/g, ' ').trim().slice(0, 140)
     const note = make('div', 'pnote')
     const c: Comment = { excerpt, text, el: note }
     note.append(make('span', '', text), iconButton(ICON.x, 'Remove comment', () => { note.remove(); p.comments.splice(p.comments.indexOf(c), 1); countComments(p) }))
@@ -184,6 +202,12 @@ function editor(p: Plan, blk: HTMLElement) {
     p.comments.push(c)
     countComments(p)
   }
+}
+/** A block's current text, without the words marked as removed. */
+function plain(blk: HTMLElement) {
+  const c = blk.cloneNode(true) as HTMLElement
+  c.querySelectorAll('del, .pgone').forEach(d => d.remove())
+  return c.textContent ?? ''
 }
 /** New notes go after the block's existing notes, so they read in order. */
 function lastNoteAfter(p: Plan, blk: HTMLElement) {
@@ -253,7 +277,7 @@ async function feedback(p: Plan) {
   const lines = p.comments.map((c, i) => `${i + 1}. On "${c.excerpt}": ${c.text}`)
   const general = p.general.value.trim()
   if (general) lines.push(`General: ${general}`)
-  const image = await snapshot(p.el, { skip: ['pnode-f', 'padd'] }) // the plan as drawn on, without its buttons
+  const image = await snapshot(p.el, { skip: ['pnode-f', 'padd', 'pgone', 'pdel', 'pchanges'] }) // the plan as drawn on, without its buttons
   if (!lines.length && !image) { p.general.focus(); p.general.placeholder = 'Nothing to send yet: comment on a paragraph (+), write feedback here, or use Draw on plan'; return }
   const message = ['The user reviewed your plan and wants changes:', '', ...lines,
     ...(image ? ['', 'They also drew on the plan: the annotated image follows in their next message.'] : []),
