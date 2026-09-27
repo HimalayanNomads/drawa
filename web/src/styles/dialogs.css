@@ -8,8 +8,22 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 .prompt h2{margin:0 0 6px;font-size:16px;font-weight:600}
 .prompt p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
 .prompt .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
-#update p a{color:var(--accent)}
-#update p code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font:12.5px var(--mono)}
+/* the update dialog (lib/update.ts): smaller and quieter than a confirm, the app barely dimmed behind it */
+#update{width:min(360px,calc(100vw - 32px));padding:16px 16px 12px}
+#update::backdrop{background:color-mix(in oklab,var(--bg) 35%,transparent)}
+#update h2{margin:0 0 4px;font-size:14px}
+#update .ver{display:flex;align-items:center;gap:8px;margin:2px 0 14px;font:12.5px var(--mono);color:var(--ink-2)}
+#update .ver i{font-style:normal;color:var(--muted)}
+#update .ver b{font-weight:600;color:var(--ink)}
+#update .ver a{margin-left:auto;font-family:var(--sans);color:var(--accent)}
+#update p{margin:-6px 0 14px;font-size:12.5px}
+#update p code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font:12px var(--mono)}
+#update .row{align-items:center;gap:6px}
+#update .skip{margin-right:auto;color:var(--muted);font-size:12px}
+#update .skip:hover{color:var(--ink)}
+#update .btn{height:28px;padding:0 10px;font-size:12.5px}
+#update[data-state=restart] :is(.ver,.skip){display:none}
+#update[data-state=restart] p{margin-top:2px}
 
 #zoom{width:94vw;height:90vh;max-width:none;max-height:none;overflow:hidden}
 #zoom[open],#sketcher[open]{display:flex;flex-direction:column}

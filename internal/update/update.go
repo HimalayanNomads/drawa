@@ -53,12 +53,14 @@ type Info struct {
 	Latest    string `json:"latest"`
 	URL       string `json:"url"`
 	Available bool   `json:"available"`
+	Installed string `json:"installed,omitempty"` // on disk, waiting for a restart ("Restart later")
 }
 
 var cache struct {
 	sync.Mutex
-	val     Info
-	checked time.Time
+	latest, url string
+	checked     time.Time
+	installed   string
 }
 
 // Check is what the page and `drawa --update` ask: GitHub is asked at most every 6 hours; a failed check is
@@ -69,16 +71,23 @@ func Check() (Info, error) {
 	}
 	cache.Lock()
 	defer cache.Unlock()
-	if time.Since(cache.checked) < ttl {
-		return cache.val, nil
+	if time.Since(cache.checked) >= ttl {
+		latest, url, err := resolveTag("https://github.com/" + repo + "/releases/latest")
+		if err != nil {
+			return Info{Current: config.Version, Installed: cache.installed}, err
+		}
+		cache.latest, cache.url, cache.checked = latest, url, time.Now()
 	}
-	latest, url, err := resolveTag("https://github.com/" + repo + "/releases/latest")
-	if err != nil {
-		return Info{Current: config.Version}, err
-	}
-	cache.checked = time.Now()
-	cache.val = Info{Current: config.Version, Latest: latest, URL: url, Available: newer(latest, config.Version)}
-	return cache.val, nil
+	// once installed, only a still newer release is worth offering again
+	avail := newer(cache.latest, config.Version) && cache.latest != cache.installed
+	return Info{Current: config.Version, Latest: cache.latest, URL: cache.url, Available: avail, Installed: cache.installed}, nil
+}
+
+// Pending reports whether an installed update is waiting for a restart.
+func Pending() bool {
+	cache.Lock()
+	defer cache.Unlock()
+	return cache.installed != ""
 }
 
 // resolveTag reads releases/latest's redirect target (install.sh's trick): no API call, so no rate limit or auth.
@@ -174,7 +183,13 @@ func Install() error {
 	if err != nil {
 		return err
 	}
-	return replaceSelf(bin)
+	if err := replaceSelf(bin); err != nil {
+		return err
+	}
+	cache.Lock()
+	cache.installed = info.Latest
+	cache.Unlock()
+	return nil
 }
 
 func download(url, dest string) error {
