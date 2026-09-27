@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/probablysamir/drawa/main/install.sh
 
 This downloads the right [release binary](https://github.com/probablysamir/drawa/releases/latest) for your OS and architecture and installs it to `~/.local/bin/drawa`. You don't need Go or Node.
 
-For manual downloads, custom install locations, updating and uninstalling, see [INSTALL.md](INSTALL.md).
+Update later with `drawa --update`. For manual downloads, custom install locations and uninstalling, see [INSTALL.md](INSTALL.md).
 
 <details>
 <summary><b>Build from source</b></summary>

@@ -54,6 +54,18 @@
 #conn[data-state=down] i{background:var(--danger);animation:pulse .8s ease-in-out infinite alternate}
 #conn[data-state=back]{color:var(--add)}
 #conn[data-state=back] i{background:var(--add)}
+/* a newer release is out (lib/update.ts): one quiet line in #conn's spot (they rarely coincide: a restart is back before #conn's second missed ping) */
+.update{left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;height:34px;padding:0 4px 0 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;white-space:nowrap;animation:enter .2s var(--ease)}
+.update[hidden]{display:none}
+.update>span{color:var(--ink-2)}
+.update b{font-weight:600;color:var(--ink)}
+.update code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);color:var(--ink);font:11.5px var(--mono)}
+.upd-go{color:var(--accent);font-weight:500}
+.upd-go:hover{text-decoration:underline}
+.upd-sep{width:1px;height:16px;background:var(--line)}
+.update .icon{width:24px;height:24px}
+.update[data-state=busy]{padding-right:12px}
+.update[data-state=failed]>span{color:var(--danger)}
 
 /* find a window (Ctrl+K): a command-palette box, top center */
 .finder{position:fixed;left:50%;top:72px;z-index:var(--z-menu);transform:translateX(-50%);display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 100px));background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden;animation:enter .15s var(--ease)}

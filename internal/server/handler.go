@@ -28,6 +28,7 @@ import (
 	"drawa/internal/images"
 	"drawa/internal/live"
 	"drawa/internal/sessions"
+	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
 
@@ -82,6 +83,9 @@ func ok(body any, err error) (any, int, error) {
 
 var getRoutes = map[string]routeFunc{
 	"/api/info": func(q url.Values) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
+	"/api/version": func(q url.Values) (any, int, error) {
+		return map[string]any{"current": config.Version, "latest": update.Latest()}, 200, nil
+	},
 	"/api/tree": func(q url.Values) (any, int, error) { return ok(filesx.Tree(q.Get("path"))) },
 	"/api/file": func(q url.Values) (any, int, error) {
 		p, err := need(q, "path")
@@ -304,6 +308,9 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 	case "/api/gh":
 		sendJSON(w, github.Op(body), 200)
 		return
+	case "/api/update":
+		updateNow(w, truthy(body["force"]))
+		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)
 		if err != nil {
@@ -320,4 +327,25 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handleCardOp(w, r, cid, body)
+}
+
+// updateNow installs the latest release, answers, then restarts on it. Unless forced, it first says how many cards
+// are working, since the restart stops them.
+func updateNow(w http.ResponseWriter, force bool) {
+	if n := live.Working(); n > 0 && !force {
+		sendJSON(w, map[string]any{"working": n}, 200)
+		return
+	}
+	if err := update.Run(); err != nil {
+		sendJSON(w, map[string]any{"error": err.Error()}, 500)
+		return
+	}
+	sendJSON(w, map[string]any{"ok": true}, 200)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond) // let the answer reach the page first
+		update.Restart()
+	}()
 }

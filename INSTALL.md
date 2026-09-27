@@ -66,7 +66,13 @@ drawa .   # opens the current folder; Ctrl+C to stop
 
 ## Updating
 
-Re-run the install script (it always fetches the latest release), or repeat the manual steps with a fresh download — either just overwrites the old binary.
+```sh
+drawa --update
+```
+
+This installs the latest release over the binary you ran, with the same checksum check as the install script (`drawa --version` shows which one you have). While drawa is open, a small notice at the bottom of the page also tells you when a new release is out: **Update** installs it and restarts drawa, and × hides it for a day. Updating from the page stops sessions that are still working, so it asks first when there are any.
+
+Re-running the install script or repeating the manual steps works too. Either one overwrites the old binary. A build from source doesn't update itself: `git pull` and rebuild.
 
 ## Uninstalling
 

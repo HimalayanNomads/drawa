@@ -14,7 +14,7 @@ Drawa is a browser canvas around the Claude Code CLI. `main.go` + `internal/` ru
 ```
 web/src/
   main.ts      boot, toolbar, keyboard shortcuts; imports features (importing a feature registers it)
-  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), theme, tooltip
+  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the new-release notice), theme, tooltip
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
   items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window)

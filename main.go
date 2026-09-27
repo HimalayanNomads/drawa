@@ -1,6 +1,8 @@
 // Browser UI for Claude Code.
 //
 //	drawa [--net] [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
+//	drawa --update                   installs the latest release over this binary
+//	drawa --version
 //
 // --net also listens on the machine's network address, so another device on the same network can open it;
 // without it the server only answers on localhost. Builds web/ on first run (needs npm); after UI changes run
@@ -18,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +28,7 @@ import (
 	"drawa/internal/config"
 	"drawa/internal/live"
 	"drawa/internal/server"
+	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
 
@@ -178,6 +182,17 @@ func openBrowser(url string) {
 }
 
 func main() {
+	if slices.Contains(os.Args[1:], "--version") {
+		fmt.Println("drawa", config.Version)
+		return
+	}
+	if slices.Contains(os.Args[1:], "--update") { // before preflight: updating doesn't need claude
+		if err := update.CLI(); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Print(banner)
 	preflight()
 	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil && !webassets.Available() {

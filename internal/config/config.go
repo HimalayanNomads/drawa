@@ -18,6 +18,10 @@ import (
 
 const defaultPort = 8765
 
+// Version is the release tag, stamped in by the release build (-ldflags -X); "dev" for a source build, which never
+// offers updates.
+var Version = "dev"
+
 // Port is 8765 unless DRAWA_PORT overrides it (e.g. two projects open at once, or 8765 is already taken).
 var Port = port()
 
