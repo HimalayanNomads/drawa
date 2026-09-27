@@ -3,6 +3,7 @@
 import { project } from '../lib/dom'
 import { centerOn } from '../canvas/canvas'
 import { focus, type Session } from './session'
+import { who } from '../lib/agents'
 
 let unread = 0
 const away = () => document.hidden || !document.hasFocus()
@@ -24,7 +25,7 @@ export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
   unread++
   title()
   if (!('Notification' in window) || Notification.permission !== 'granted') return
-  const head = why === 'done' ? 'Claude finished' : why === 'plan' ? 'Plan ready for review' : 'Claude needs your approval'
+  const head = why === 'done' ? `${who(S.backend)} finished` : why === 'plan' ? 'Plan ready for review' : `${who(S.backend)} needs your approval`
   const n = new Notification(head, { body: S.title, tag: S.cid + why, silent: why === 'done' })
   n.onclick = () => { window.focus(); focus(S); centerOn(S.card); n.close() }
 }

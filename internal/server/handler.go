@@ -15,9 +15,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -103,14 +105,10 @@ var getRoutes = map[string]routeFunc{
 		}
 		return ok(gitx.GitDiff(p, q.Get("staged") == "1"))
 	},
-	"/api/files": func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
-	"/api/meta":  func(q url.Values) (any, int, error) { return live.Meta(), 200, nil },
-	"/api/sessions": func(q url.Values) (any, int, error) {
-		if info, err := os.Stat(config.Sessions); err != nil || !info.IsDir() {
-			return []sessions.Info{}, 200, nil
-		}
-		return sessions.List(), 200, nil
-	},
+	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
+	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
+	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
+	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
 	"/api/session":   sessionRoute,
 	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(), 200, nil },
 	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(cmp.Or(q.Get("state"), "open"))) },
@@ -122,20 +120,57 @@ var getRoutes = map[string]routeFunc{
 
 var agentIDRe = regexp.MustCompile(`^[\w-]{1,100}$`)
 
+// agents describes the registered backends for the page's menus: which are installed, their modes, and whether
+// they can write commit messages (Write with).
+func agents() []map[string]any {
+	out := []map[string]any{}
+	for _, name := range live.Names() {
+		k, _ := live.Lookup(name)
+		_, err := exec.LookPath(k.Bin)
+		modes := []string{}
+		for m := range k.Modes {
+			modes = append(modes, m)
+		}
+		sort.Strings(modes)
+		out = append(out, map[string]any{"name": name, "title": k.Title, "installed": err == nil, "install": k.Install,
+			"modes": modes, "canWrite": k.OneShot != nil})
+	}
+	return out
+}
+
+// allSessions is every backend's history list, newest first, each entry tagged with its backend.
+// ponytail: each list is its newest 50, and so is the merged one; paginate if needed.
+func allSessions() []sessions.Info {
+	out := []sessions.Info{}
+	for _, name := range live.Names() {
+		k, _ := live.Lookup(name)
+		if k.History == nil {
+			continue
+		}
+		for _, s := range k.History.List() {
+			s.Backend = name
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
+	return out[:min(len(out), 50)]
+}
+
+// sessionRoute is one saved session (?id=, ?backend=, optionally one sub-agent's ?agent=).
 func sessionRoute(q url.Values) (any, int, error) {
+	k, known := live.Lookup(q.Get("backend"))
 	sid := q.Get("id")
-	if !config.UUIDRe.MatchString(sid) {
+	if !known || k.History == nil || !k.SidOK(sid) {
 		return map[string]any{"error": "bad session id"}, 404, nil
 	}
 	agent := q.Get("agent")
 	if agent != "" && !agentIDRe.MatchString(agent) {
 		return map[string]any{"error": "bad agent id"}, 404, nil
 	}
-	if _, err := os.Stat(filepath.Join(config.Sessions, sid+".jsonl")); err == nil {
-		return sessions.Load(sid, agent), 200, nil
+	if msgs, ok := k.History.Load(sid, agent); ok {
+		return msgs, 200, nil
 	}
-	// the CLI writes it once the first message is queued; until then the page reads the live process instead.
-	// A 404 like any missing session, but `missing` tells the page this one is expected to appear.
+	// a 404 like any missing session, but `missing` tells the page this one is expected to appear
 	return map[string]any{"error": "This session's transcript isn't written yet.", "missing": true}, 404, nil
 }
 

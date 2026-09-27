@@ -7,6 +7,7 @@ import { change } from '../panels/diff'
 import { notify } from './notify'
 import { put, renderCard, type Session } from './session'
 import { describe, type Msg } from './stream'
+import { who } from '../lib/agents'
 
 /** Claude wants to use a tool that needs your OK (or presents a plan, see plan.ts). */
 export function approval(S: Session, m: Msg) {
@@ -118,7 +119,7 @@ export function expireAsks(S: Session) {
   for (const box of S.log.querySelectorAll<HTMLElement>('.ask:not(.done)')) {
     box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(x => (x.disabled = true))
     box.querySelector(':scope > .err')?.remove()
-    box.querySelector(':scope > .row')?.replaceChildren(make('span', 'answered', 'Expired: Claude stopped before this was answered'))
+    box.querySelector(':scope > .row')?.replaceChildren(make('span', 'answered', `Expired: ${who(S.backend)} stopped before this was answered`))
     box.classList.add('done')
   }
   plansExpired(S)

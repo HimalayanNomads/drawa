@@ -2,8 +2,9 @@ import { defineConfig } from 'vite'
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
-// The Go server owns the API and runs Claude; Vite only serves the UI in dev.
-const api = { target: 'http://127.0.0.1:8765', changeOrigin: true }
+// The Go server owns the API and runs the agents; Vite only serves the UI in dev. DRAWA_PORT moves both (a second
+// checkout next to a running drawa).
+const api = { target: `http://127.0.0.1:${process.env.DRAWA_PORT || 8765}`, changeOrigin: true }
 
 export default defineConfig({
   build: { target: 'es2022', chunkSizeWarningLimit: 1000 }, // big chunks are Mermaid's, loaded only when a diagram appears

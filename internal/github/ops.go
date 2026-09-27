@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"drawa/internal/gitx"
-	"drawa/internal/procx"
+	"drawa/internal/live"
 )
 
 // branchRe matches a branch name, never something git or gh would read as an option (no leading -).
@@ -19,8 +19,9 @@ func BranchArg(b string) (string, error) {
 	return b, nil
 }
 
-// Draft writes a pull request title and description for this branch against base, via a one-off Claude call.
-func Draft(base string) map[string]any {
+// Draft writes a pull request title and description for this branch against base, via a one-off call to the named
+// agent backend ("": the first installed one).
+func Draft(base, backend string) map[string]any {
 	base, err := BranchArg(base)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
@@ -43,7 +44,7 @@ func Draft(base string) map[string]any {
 	if len(text) > 100_000 {
 		text = text[:100_000]
 	}
-	ok, out := procx.Haiku(prompt, text)
+	ok, out := live.Write(backend, prompt, text)
 	if !ok {
 		return map[string]any{"error": out}
 	}
@@ -71,7 +72,7 @@ func Op(body map[string]any) map[string]any {
 		if base == "" {
 			base = "main"
 		}
-		return Draft(base)
+		return Draft(base, s(body["backend"]))
 	case "create":
 		title, base := strings.TrimSpace(s(body["title"])), strings.TrimSpace(s(body["base"]))
 		if title == "" || base == "" {

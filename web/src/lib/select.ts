@@ -125,7 +125,7 @@ export function enhance(select: HTMLSelectElement): void {
 
   function choose(i: number) {
     close(true)
-    if (i < 0 || i === select.selectedIndex) return
+    if (i < 0 || (i === select.selectedIndex && !('repick' in select.dataset))) return // data-repick: a menu of actions, where the same pick acts again
     select.selectedIndex = i
     // Same events a native pick fires, so existing onchange handlers run.
     select.dispatchEvent(new Event('input', { bubbles: true }))

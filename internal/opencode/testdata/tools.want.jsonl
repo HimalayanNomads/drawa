@@ -1,0 +1,33 @@
+{"type":"user","message":{"role":"user","content":"Read note.txt, then run `ls -la` using the bash tool, then run `echo second` using the bash tool. Report briefly."},"uuid":"msg_0e1d53749001o9gFXn0PQ0Z5vd"}
+{"type":"system","subtype":"init","session_id":"ses_f1e2ac8c8ffeWOr7tEq1Mdbm6D","model":"opencode/big-pickle"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d53757001uD6ljoPxqCkQ4b","model":"opencode/big-pickle","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll read the file"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" and run both commands."}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_4komtke4uijl_1","name":"Read","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"/tmp/ocspike/note.txt\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"call_function_4komtke4uijl_2","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"ls -la\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":2}}
+{"type":"stream_event","event":{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"call_function_4komtke4uijl_3","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"echo second\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":3}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_4komtke4uijl_1","content":"\u003cpath\u003e/tmp/ocspike/note.txt\u003c/path\u003e\n\u003ctype\u003efile\u003c/type\u003e\n\u003ccontent\u003e\n1: hello world\n\n(End of file - total 1 lines)\n\u003c/content\u003e","is_error":false}]}}
+{"type":"control_request","request_id":"per_0e1d53d55001rccjA0X9HKtWFB","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls -la"},"tool_use_id":"call_function_4komtke4uijl_2","permission_suggestions":[{"type":"opencode","always":["ls *"]}]}}
+{"type":"control_request","request_id":"per_0e1d53d57001gcMbbhc4iQ8dix","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"echo second"},"tool_use_id":"call_function_4komtke4uijl_3","permission_suggestions":[{"type":"opencode","always":["echo *"]}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_4komtke4uijl_3","content":"The user rejected permission to use this specific tool call with the following feedback: no thanks","is_error":true}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_4komtke4uijl_2","content":"total 4\ndrwxr-xr-x  3 samir samir   80 Sep 27 13:31 .\ndrwxrwxrwt 33 root  root  1100 Sep 27 13:32 ..\ndrwxr-xr-x  7 samir samir  260 Sep 27 13:31 .git\n-rw-r--r--  1 samir samir   12 Sep 27 13:31 note.txt\n","is_error":false}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d53de2001aWr7flQd41xmep","model":"opencode/big-pickle","usage":{"input_tokens":37,"cache_read_input_tokens":10766,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The second bash"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" call was rejected by the user. I should report briefly what happened."}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"- `note.txt` contains one line: `hello world`\n- `ls -la` shows `.git/` and `note.txt` (12 bytes) in `/"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"tmp/ocspike`\n- `echo second` was not run — you declined permission for it"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1e2ac8c8ffeWOr7tEq1Mdbm6D","num_turns":2,"duration_ms":3345,"total_cost_usd":0,"usage":{"input_tokens":185,"output_tokens":54,"cache_read_input_tokens":10888,"cache_creation_input_tokens":0}}

@@ -18,7 +18,7 @@ addEventListener('focusin', e => { if ((e.target as Element).matches?.('.card te
 export async function tree(path = '', ul: HTMLElement = $('#tree')) {
   let items: TreeItem[]
   try { items = await api<TreeItem[]>('tree?path=' + q(path)) } catch (e) { return ul.replaceChildren(make('li', 'none', (e as Error).message)) }
-  if (!path && !items.length) return ul.replaceChildren(make('li', 'none', 'This folder is empty. Files Claude creates will show up here.'))
+  if (!path && !items.length) return ul.replaceChildren(make('li', 'none', 'This folder is empty. Files your sessions create will show up here.'))
   ul.replaceChildren(...items.map(it => {
     if (it.more != null) return make('li', 'more', `${it.more.toLocaleString()} more`)
     const p = path ? `${path}/${it.name}` : it.name, li = make('li'), b = make('button', it.dir ? 'dir' : 'file')
@@ -57,7 +57,7 @@ export function openInspector(path: string, tab?: 'changes' | 'viewer', focus?: 
   inspector.hidden = false
   $('#ipath').replaceChildren(pathEl('', path))
   $('#nchg').textContent = changes.length ? String(changes.length) : ''
-  $('#changes').replaceChildren(...(changes.length ? changes : [make('p', 'none', 'Claude has not changed this file in any open session.')]))
+  $('#changes').replaceChildren(...(changes.length ? changes : [make('p', 'none', 'No open session has changed this file.')]))
   const which = tab ?? (fresh ? (changes.length ? 'changes' : 'viewer') : $('#viewer').hidden ? 'changes' : 'viewer')
   showTab(which)
   if (which === 'viewer' || fresh) view(path)

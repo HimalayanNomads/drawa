@@ -19,7 +19,8 @@ import { reportOf } from './notices'
 import { attach } from './live'
 import { setMode, lastMode } from './mode'
 import { setModel, setEffort, renderInfo, seedInfo } from './gen'
-import { loadSessions, resume } from './history'
+import { loadSessions, resume, sessionPath } from './history'
+import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
 export interface Block {
@@ -28,7 +29,8 @@ export interface Block {
 }
 export interface Session {
   cid: string // this card's live process on the server
-  sid: string | null // Claude's session id (transcript), known after the first reply
+  sid: string | null // the agent's session id (transcript), known after the first reply
+  backend: string // which agent runs this card (lib/agents.ts); fixed for its life, the transcript can't move
   title: string
   reportedModel: string // the model Claude's process actually reports running (for the tab; set from its own output)
   model: string // the model picked in this card's message bar for its next message ('' = Claude's own default)
@@ -93,14 +95,14 @@ export const meta: {
 /* ---------- saved with the canvas: open cards (by transcript id) and which one had focus ---------- */
 // A card still waiting for its first reply has no transcript id yet: it's saved by its process (cid) alone and, after a
 // reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0).
-type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string; model?: string; effort?: string }
+type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string; model?: string; effort?: string; backend?: string } // no backend: claude
 persist('cards',
-  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, ...savedRect(S.card) })),
+  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend === 'claude' ? undefined : S.backend, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
     // every transcript is fetched at once; they're replayed in order as they arrive
     if (!Array.isArray(list)) throw new Error('not a list')
     const got = new Map(list.filter(c => c?.id).map(c => {
-      const p = api('session?id=' + c.id)
+      const p = api(sessionPath(c.id!, c.backend))
       p.catch(() => {}) // handled when its card is replayed
       return [c.id!, p] as const
     }))
@@ -108,7 +110,7 @@ persist('cards',
     for (const c of list) try {
       if (!c.id) {
         if (!c.cid) continue
-        const S = newSession({ rect: c, cid: c.cid })
+        const S = newSession({ rect: c, cid: c.cid, backend: c.backend ?? 'claude' })
         S.title = c.title
         S.n = 0
         setMode(S, c.mode ?? 'default', false)
@@ -120,7 +122,7 @@ persist('cards',
       }
       const p = got.get(c.id)
       got.delete(c.id) // replayed cards let go of their transcript: a long restore doesn't hold every one till the end
-      await resume({ ...c, id: c.id }, c, { got: p, quiet: true })
+      await resume({ ...c, id: c.id, backend: c.backend ?? 'claude' }, c, { got: p, quiet: true })
       // layouts saved before modes were per card carry one global mode (all.mode)
       const S = cards.find(s => s.sid === c.id)
       if (S) {
@@ -147,14 +149,14 @@ referable('session', {
     const S = cards.find(s => s.card === el)
     const lines = [...(S?.log.children ?? [])].flatMap(r => {
       if (r.matches('.me')) return [`User: ${r.textContent?.trim()}`]
-      if (r.matches('.md')) return [`Claude: ${r.textContent?.trim()}`]
+      if (r.matches('.md')) return [`${who(S!.backend)}: ${r.textContent?.trim()}`]
       if (r.matches('.handoff')) return [`(${r.querySelector('summary b')?.textContent}:)\n${reportOf(r) ?? ''}`]
-      if (r.matches('details.tool')) return [`(Claude used ${r.querySelector('summary b')?.textContent ?? 'a tool'} ${r.querySelector('summary .arg')?.textContent ?? ''})`.replace(/ \)$/, ')')]
+      if (r.matches('details.tool')) return [`(${who(S!.backend)} used ${r.querySelector('summary b')?.textContent ?? 'a tool'} ${r.querySelector('summary .arg')?.textContent ?? ''})`.replace(/ \)$/, ')')]
       return []
     })
     let text = lines.join('\n\n')
     if (text.length > 30_000) text = '…(earlier part left out)\n\n' + text.slice(-30_000) // ponytail: the recent end is what matters most
-    return { text: `Another Claude session on my canvas, "${label}"${S?.sid ? ` (session ${S.sid})` : ''}:\n\n${text || '(nothing yet)'}` }
+    return { text: `Another ${S ? who(S.backend) : 'agent'} session on my canvas, "${label}"${S?.sid ? ` (session ${S.sid})` : ''}:\n\n${text || '(nothing yet)'}` }
   },
 })
 // arrows to canvas items a card's Claude made or edited: after the cards and the items are back
@@ -174,9 +176,10 @@ persist('itemLinks', () => [...itemLinks(), ...unplaced], (list: ItemLink[]) => 
 /* ---------- the card ---------- */
 function emptyState(S: Session) {
   const e = make('div', 'empty'), ul = make('ul'), chips = make('div', 'chips')
-  e.append(make('h2', '', 'New session'), make('p', '', `Claude works in ${project.root}`))
+  const name = who(S.backend)
+  e.append(make('h2', '', 'New session'), make('p', '', `${name} works in ${project.root}`))
   const tips: [string, string][] = [
-    ['--edit', 'Files Claude reads or changes are listed in a Files window beside this card, changed files first.'],
+    ['--edit', `Files ${name} reads or changes are listed in a Files window beside this card, changed files first.`],
     ['--run', 'Commands it runs collect in a commands window below the card (click its tab to see the output).'],
     ['--write', 'Type / for skills and commands, @ to reference scratchpads, diagrams, plans, notes or files (or drop them on the message box).'],
     ['--read', 'Read only by default. Change it per session in the message bar (Allow edits, Plan only, Allow everything).'],
@@ -197,7 +200,7 @@ function emptyState(S: Session) {
   return e
 }
 
-export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
+export function newSession(opts: { rect?: Rect; cid?: string; backend?: string } = {}) {
   const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
   const close = iconButton(ICON.x, 'Close session', () => closeSession(S), 'closebtn')
   const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [close] })
@@ -222,9 +225,10 @@ export function newSession(opts: { rect?: Rect; cid?: string } = {}) {
   body.append(log, down)
 
   const S: Session = {
-    cid: opts.cid ?? uuid(), sid: null, title: 'New session', reportedModel: '', model: '', effort: '', toolCount: 0, mcpTotal: 0, mcpConnected: 0, cost: 0, done: false,
+    cid: opts.cid ?? uuid(), sid: null, backend: opts.backend ?? lastAgent(), title: 'New session', reportedModel: '', model: '', effort: '', toolCount: 0, mcpTotal: 0, mcpConnected: 0, cost: 0, done: false,
     card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
+  if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
   composer(S, body) // message box, reference chips, / and @ menu
   seedInfo(S) // tools/MCP/usage from the account-wide meta info, if it's already in by now
   card.dataset.id = S.cid // what canvas tools call this card
@@ -317,14 +321,15 @@ export function renderCard(S: Session) {
   S.card.dataset.state = S.asks.size ? 'asking' : busy ? 'busy' : S.done ? 'done' : 'idle'
   S.card.querySelector('.t')!.textContent = S.title
   const m = S.card.querySelector<HTMLElement>('.win-h .m')!
-  m.textContent = S.reportedModel.replace(/^claude-/, '')
+  const model = S.reportedModel.replace(/^claude-/, '').replace(/^[\w.-]+\//, '') // opencode reports provider/model
+  m.textContent = installed().length > 1 ? [title(S.backend), model].filter(Boolean).join(' · ') : model // which agent, once there's a choice
   const run = runningAgents(S).length, badge = S.card.querySelector<HTMLElement>('.win-h .agents')!
   badge.hidden = !run
   badge.textContent = String(run)
   badge.title = `${run} sub-agent${run === 1 ? '' : 's'} running. Click to show ${run === 1 ? 'its window' : 'the next one'}.`
   badge.setAttribute('aria-label', badge.title)
   // The CLI reports an API-equivalent estimate even on a subscription, where it isn't billed: hover only.
-  m.title = S.cost ? `Estimated API-equivalent cost: $${S.cost.toFixed(2)} (not billed on a Claude subscription)` : ''
+  m.title = !S.cost ? '' : S.backend === 'claude' ? `Estimated API-equivalent cost: $${S.cost.toFixed(2)} (not billed on a Claude subscription)` : `Cost ${who(S.backend)} reports so far: $${S.cost.toFixed(2)}`
   const ctx = S.card.querySelector<HTMLElement>('.win-h .ctx')!, pct = S.ctx.max ? Math.min(100, Math.round((S.ctx.used / S.ctx.max) * 100)) : 0
   ctx.hidden = !S.ctx.used
   ctx.style.setProperty('--p', `${pct}%`)
@@ -334,7 +339,7 @@ export function renderCard(S: Session) {
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
   S.stopBtn.hidden = S.pending === 0
-  S.ta.placeholder = busy ? 'Claude is working. Type to queue a message.' : 'Message Claude: / commands, @ files, ! shell'
+  S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell`
 }
 
 /* ---------- appending to the log ---------- */

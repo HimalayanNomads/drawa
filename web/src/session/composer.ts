@@ -13,6 +13,7 @@ import { runShell } from './shell'
 import { modePicker } from './mode'
 import { modelPicker, effortPicker, infoBadge } from './gen'
 import { recall } from './recall'
+import { who, metaNow } from '../lib/agents'
 import { enhance } from '../lib/select'
 
 /** Build the composer at the bottom of the card's body and hook it to the session. */
@@ -20,24 +21,25 @@ export function composer(S: Session, body: HTMLElement) {
   const chips = make('div', 'refs'), form = make('form', 'compose'), ta = make('textarea')
   const stopBtn = make('button', 'send stop'), sendBtn = make('button', 'send')
   ta.rows = 1
-  ta.setAttribute('aria-label', 'Message Claude')
+  ta.setAttribute('aria-label', `Message ${who(S.backend)}`)
   stopBtn.type = 'button'
   stopBtn.innerHTML = ICON.stop
-  stopBtn.title = 'Stop what Claude is doing'
+  stopBtn.title = `Stop what ${who(S.backend)} is doing`
   stopBtn.setAttribute('aria-label', 'Stop')
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
   sendBtn.title = 'Send (Ctrl+Enter)'
   sendBtn.setAttribute('aria-label', 'Send')
-  const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
+  // effort is Claude Code's (--effort); other agents get only a model picker
+  const modelSel = modelPicker(S), effortSel = S.backend === 'claude' ? effortPicker(S) : null, pick = modePicker(S)
   const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
-  gen.append(modelSel, effortSel, infoBadge(S))
+  gen.append(...[modelSel, effortSel].filter(x => x !== null), infoBadge(S))
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
   dock.append(chips, gen, form)
   body.append(dock)
-  for (const sel of [modelSel, effortSel, pick]) enhance(sel) // the custom dropdowns, once they're in the page
+  for (const sel of [modelSel, effortSel, pick]) if (sel) enhance(sel) // the custom dropdowns, once they're in the page
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 
@@ -158,7 +160,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
       if (!items.length) items = [{ title: at[2] ? 'No matches' : 'Type to search files', sub: 'Project files, and scratchpads, diagrams, plans and notes on the canvas', pick: () => {} }]
     } else {
       const q = S.ta.value.slice(1).toLowerCase()
-      items = !S.ta.value.startsWith('/') || S.ta.value.includes(' ') ? [] : meta.commands
+      items = !S.ta.value.startsWith('/') || S.ta.value.includes(' ') ? [] : (S.backend === 'claude' ? meta.commands : metaNow(S.backend).commands)
         .filter(c => c.name.toLowerCase().includes(q))
         .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)))
         .slice(0, 40)

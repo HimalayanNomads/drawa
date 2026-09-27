@@ -247,9 +247,10 @@ func firstPromptOf(path string, mtime int64) string {
 }
 
 type Info struct {
-	ID    string  `json:"id"`
-	Title string  `json:"title"`
-	Mtime float64 `json:"mtime"`
+	ID      string  `json:"id"`
+	Title   string  `json:"title"`
+	Mtime   float64 `json:"mtime"`
+	Backend string  `json:"backend,omitempty"` // which agent backend it belongs to (set by the server's merged list)
 }
 
 // List returns the newest 50 sessions. ponytail: newest 50, paginate if needed.

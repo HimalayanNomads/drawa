@@ -1,0 +1,26 @@
+{"type":"user","message":{"role":"user","content":"Edit note.txt: replace hello with goodbye. Use the edit tool."},"uuid":"msg_0e1d5577e001IitYZ22iswzpKS"}
+{"type":"system","subtype":"init","session_id":"ses_f1e2aa890ffexyRmZ3PKpSfF32","model":"opencode/big-pickle"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d557970012ERKAKlMmg7KIO","model":"opencode/big-pickle","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll read the file first"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"."}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_noplhiz0hp6e_1","name":"Read","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"/tmp/ocspike/note.txt\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_noplhiz0hp6e_1","content":"\u003cpath\u003e/tmp/ocspike/note.txt\u003c/path\u003e\n\u003ctype\u003efile\u003c/type\u003e\n\u003ccontent\u003e\n1: hello world\n\n(End of file - total 1 lines)\n\u003c/content\u003e","is_error":false}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d55eb3001X2InC2IM2E3Hg1","model":"opencode/big-pickle","usage":{"input_tokens":21,"cache_read_input_tokens":10766,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_function_a6vxsaz8gj0w_1","name":"Edit","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"/tmp/ocspike/note.txt\",\"new_string\":\"goodbye world\",\"old_string\":\"hello world\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"control_request","request_id":"per_0e1d5806900132Kueg4G7l2czo","request":{"subtype":"can_use_tool","tool_name":"Edit","input":{"file_path":"/tmp/ocspike/note.txt","new_string":"goodbye world","old_string":"hello world"},"tool_use_id":"call_function_a6vxsaz8gj0w_1","permission_suggestions":[{"type":"opencode","always":["*"]}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_a6vxsaz8gj0w_1","content":"The user rejected permission to use this specific tool call with the following feedback: Not that file, please.","is_error":true}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d581de0011oGWgfJQYoEI2W","model":"opencode/big-pickle","usage":{"input_tokens":58,"cache_read_input_tokens":10826,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"You rejected"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" the edit and said \"Not that file, please.\" — which file should I edit instead?"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1e2aa890ffexyRmZ3PKpSfF32","num_turns":3,"duration_ms":12519,"total_cost_usd":0,"usage":{"input_tokens":37,"output_tokens":22,"cache_read_input_tokens":10942,"cache_creation_input_tokens":0}}

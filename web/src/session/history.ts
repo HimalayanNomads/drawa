@@ -1,5 +1,6 @@
 // History: Claude Code's saved transcripts for this folder. Opening one puts its card (and its graph) on the canvas.
-import { api, type SavedMessage, type SessionInfo } from '../lib/api'
+import { api, q, type SavedMessage, type SessionInfo } from '../lib/api'
+import { installed, title } from '../lib/agents'
 import { $, make, ago, quietPings, button } from '../lib/dom'
 import { enhanceMarked } from '../lib/markdown'
 import { save } from '../lib/store'
@@ -18,6 +19,7 @@ export async function loadSessions() {
   $('#sessions').replaceChildren(...list.map(s => {
     const b = make('button', 'sess' + (cards.some(t => t.sid === s.id) ? ' open' : '')), d = make('span', 'd')
     d.append(make('span', '', ago(s.mtime)))
+    if (installed().length > 1) d.prepend(make('span', 'agent', title(s.backend ?? 'claude'))) // which agent's, once there's a choice
     b.append(make('span', 't', s.title), d)
     b.title = s.title
     b.onclick = () => resume(s)
@@ -40,14 +42,18 @@ function earlier(log: HTMLElement, older: HTMLElement) {
 
 /** Open a saved session as a card. `at` restores a saved position (on reload) instead of placing a new one.
  *  Restoring many: `o.got` is its transcript, already being fetched, and `o.quiet` leaves saving to the caller. */
-export async function resume(s: { id: string; title: string; cid?: string }, at?: Rect, o: { got?: Promise<unknown>; quiet?: boolean } = {}) {
+/** Where a saved session is read: the agent that ran it keeps it (Claude's transcripts are the default). */
+export const sessionPath = (id: string, backend = 'claude') => 'session?id=' + q(id) + (backend === 'claude' ? '' : '&backend=' + q(backend))
+
+export async function resume(s: { id: string; title: string; cid?: string; backend?: string }, at?: Rect, o: { got?: Promise<unknown>; quiet?: boolean } = {}) {
   const open = cards.find(t => t.sid === s.id)
   if (open) { focus(open); centerOn(open.card); return }
-  const blank = !at && cards.find(t => !t.sid && !t.pending && t.log.querySelector('.empty'))
-  const S = blank || newSession(at ? { rect: at, cid: s.cid } : {})
+  const backend = s.backend ?? 'claude'
+  const blank = !at && cards.find(t => !t.sid && !t.pending && t.backend === backend && t.log.querySelector('.empty'))
+  const S = blank || newSession(at ? { rect: at, cid: s.cid, backend } : { backend })
   S.sid = s.id
   S.title = s.title.slice(0, 48)
-  await fill(S, o.got ?? api('session?id=' + s.id), !!(at && s.cid))
+  await fill(S, o.got ?? api(sessionPath(s.id, backend)), !!(at && s.cid))
   redraw()
   if (!at) centerOn(S.card)
   if (o.quiet) return
@@ -66,7 +72,7 @@ export async function reload(S: Session) {
   clearInk(S.log)
   Object.assign(S, { blocks: {}, tools: {} })
   const asks = [...S.log.querySelectorAll('.ask:not(.done)')] // still waiting on you: not in the transcript
-  await fill(S, api('session?id=' + S.sid), false)
+  await fill(S, api(sessionPath(S.sid, S.backend)), false)
   S.log.append(...asks)
   redraw()
 }

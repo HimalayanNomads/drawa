@@ -33,14 +33,14 @@ func TestDetachFailsPendingCalls(t *testing.T) {
 	}
 }
 
-// startFake runs a shell script in place of `claude`, wired up like New does.
+// startFake runs a shell script in place of `claude`, through the claude backend.
 func startFake(t *testing.T, script string) *Live {
 	t.Helper()
 	saved := claudeArgv
 	savedRoot := config.Root
 	claudeArgv, config.Root = []string{"sh", "-c", script}, t.TempDir()
 	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
-	l, err := New("", "", "", "", "")
+	l, err := New("", "claude", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestExitedWithStdoutHeld(t *testing.T) {
 	if l.Alive() {
 		t.Fatal("card still alive after its process exited")
 	}
-	if l.Write(map[string]any{"type": "user"}) == nil {
+	if l.Send("") == nil {
 		t.Fatal("write to an exited process should fail")
 	}
 }
@@ -133,18 +133,18 @@ func TestClassifyWrapsNonJSON(t *testing.T) {
 // halving for Keep keeps that start too.
 func TestTrimKeepsOpenMsg(t *testing.T) {
 	l := NewForTest("", "g")
-	l.stdin = nopWriter{}
+	l.be = nopBackend{}
 	push := func(s string) { l.Push(l.classify(s) + "\n") }
 	push(`{"type":"a"}`)
 	push(`{"type":"result"}`) // index 1
 	push(`{"type":"b"}`)
-	l.Write(map[string]any{"type": "user"})
+	l.Send("")
 	if s := l.Snapshot(); s.Base != 1 || s.End != 3 {
 		t.Fatalf("after next message: base %d end %d, want 1 3", s.Base, s.End)
 	}
 	push(`{"type":"stream_event","event":{"type":"message_start"}}`) // index 3
 	push(`{"type":"result"}`)                                        // an open message outlives it here
-	l.Write(map[string]any{"type": "user"})
+	l.Send("")
 	if s := l.Snapshot(); s.Base != 3 || *s.OpenMsg != 3 {
 		t.Fatalf("trim passed the open message: base %d", s.Base)
 	}
@@ -157,10 +157,16 @@ func TestTrimKeepsOpenMsg(t *testing.T) {
 	}
 }
 
-type nopWriter struct{}
+// nopBackend takes everything and does nothing.
+type nopBackend struct{}
 
-func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
-func (nopWriter) Close() error                { return nil }
+func (nopBackend) Send(any) error                       { return nil }
+func (nopBackend) Respond(string, string, Answer) error { return nil }
+func (nopBackend) SetMode(string) error                 { return nil }
+func (nopBackend) SetModel(string) error                { return nil }
+func (nopBackend) Interrupt() error                     { return nil }
+func (nopBackend) Close()                               {}
+func (nopBackend) Kill()                                {}
 
 // Over the cap, the least recently used idle card goes; working ones (a turn, an approval, a background agent)
 // and the new one stay. With no cap (the default) nothing goes.
@@ -219,7 +225,7 @@ func TestMCPConfigFile(t *testing.T) {
 	saved, savedRoot := claudeArgv, config.Root
 	claudeArgv, config.Root = []string{"sh", "-c", `stat -c %a "$1"; cat "$1"; echo`}, t.TempDir()
 	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
-	l, err := New("card", "", "", "", "")
+	l, err := New("card", "claude", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +237,48 @@ func TestMCPConfigFile(t *testing.T) {
 		t.Fatalf("config file not passed as expected: %s", all)
 	}
 	<-l.done
-	if _, err := os.Stat(l.mcpCfg); !os.IsNotExist(err) {
+	if _, err := os.Stat(l.be.(*claude).mcpCfg); !os.IsNotExist(err) {
 		t.Fatal("config file left behind")
+	}
+}
+
+// A backend nobody registered can't start a card, and leaves nothing registered.
+func TestStartUnknownBackend(t *testing.T) {
+	if _, err := Start("11111111-1111-1111-1111-111111111111", "nope", "", "", "", ""); err == nil {
+		t.Fatal("started a card with an unknown backend")
+	}
+	Mu.Lock()
+	defer Mu.Unlock()
+	if _, ok := Registry["11111111-1111-1111-1111-111111111111"]; ok {
+		t.Fatal("unknown backend left a card registered")
+	}
+}
+
+// A backend's own cap closes its least recently used idle card, even under the global cap; other backends' cards stay.
+func TestEvictPerBackend(t *testing.T) {
+	Register("test-capped", Kind{MaxLive: 2})
+	Mu.Lock()
+	saved, savedMax := Registry, config.MaxLive
+	Registry, config.MaxLive = map[string]*Live{}, 0
+	t.Cleanup(func() {
+		Mu.Lock()
+		Registry, config.MaxLive = saved, savedMax
+		Mu.Unlock()
+		delete(kinds, "test-capped")
+	})
+	add := func(cid, kind string, ago time.Duration) {
+		l := NewForTest("", "g")
+		l.Kind, l.last = kind, time.Now().Add(-ago)
+		Registry[cid] = l
+	}
+	add("claude-old", "claude", 3*time.Hour)
+	add("a", "test-capped", time.Hour)
+	add("b", "test-capped", 2*time.Hour)
+	add("new", "test-capped", 0)
+	victim := evictLocked("new")
+	_, bStill := Registry["b"]
+	Mu.Unlock()
+	if victim == nil || bStill {
+		t.Fatalf("expected b (the capped backend's oldest idle card) evicted; got %v", victim)
 	}
 }

@@ -5,24 +5,31 @@
 import { make } from '../lib/dom'
 import { saveSoon } from '../lib/store'
 import { cards, meta, type Session } from './session'
+import { meta as agentMeta, metaNow } from '../lib/agents'
 import { send } from './live'
 
-function fillModel(sel: HTMLSelectElement) {
-  const v = sel.value
-  sel.replaceChildren(...meta.models.map(o => {
+// Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
+const modelsOf = (S: Session) => S.backend === 'claude' ? meta.models : metaNow(S.backend).models
+
+function fillModel(S: Session, sel: HTMLSelectElement) {
+  const models = modelsOf(S)
+  if (!models.length) return // not in yet: keep the placeholder (and the card's choice, if restored)
+  sel.replaceChildren(...models.map(o => {
     const opt = make('option', '', o.displayName)
     opt.value = o.value === 'default' ? '' : o.value
     opt.title = o.description
     return opt
   }))
-  sel.value = v
+  sel.value = S.model // the card's choice, restored or picked before the list arrived
 }
 
-/** The model picker for a card's message bar: options come from Claude itself (GET /api/meta, main.ts). */
+/** The model picker for a card's message bar: options come from its agent itself (GET /api/meta). */
 export function modelPicker(S: Session) {
   const sel = make('select', 'modelsel')
   sel.setAttribute('aria-label', 'Model for this session')
-  fillModel(sel)
+  sel.append(Object.assign(make('option', '', 'Default model'), { value: '' }))
+  fillModel(S, sel)
+  if (S.backend !== 'claude') agentMeta(S.backend).then(() => fillModel(S, sel))
   sel.value = S.model
   sel.onchange = () => { S.model = sel.value; saveSoon() }
   S.modelSel = sel
@@ -30,7 +37,7 @@ export function modelPicker(S: Session) {
 }
 
 /** Claude's own model list just arrived (or changed): refill every open card's picker without losing its choice. */
-export function refreshModels() { for (const S of cards) if (S.modelSel) fillModel(S.modelSel) }
+export function refreshModels() { for (const S of cards) if (S.modelSel) fillModel(S, S.modelSel) }
 
 /** Sets a card's model without an onchange round-trip (restoring a saved card). */
 export function setModel(S: Session, model: string) {
@@ -124,7 +131,7 @@ function ring(el: HTMLElement | undefined, pctEl: HTMLElement | undefined, util:
  *  already reported fresher ones. Called for a brand-new card, and again for every open card once /api/meta
  *  answers (it can take a while the first time: it spins up its own throwaway `claude` process). */
 export function seedInfo(S: Session) {
-  if (S.toolCount || meta.tools == null) return
+  if (S.toolCount || meta.tools == null || S.backend !== 'claude') return // Claude Code's account and usage windows
   S.toolCount = meta.tools
   S.mcpTotal = meta.mcpTotal ?? 0
   S.mcpConnected = meta.mcpConnected ?? 0

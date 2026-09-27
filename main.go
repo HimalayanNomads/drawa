@@ -27,6 +27,7 @@ import (
 
 	"drawa/internal/config"
 	"drawa/internal/live"
+	_ "drawa/internal/opencode" // registers the opencode backend
 	"drawa/internal/server"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
@@ -50,9 +51,9 @@ const (
 	reset  = "\033[0m"
 )
 
-// preflight checks the external tools this app shells out to and prints a pass/fail line for each. claude is
-// required (every card is a `claude` process); git and gh are optional (the Git/GitHub windows and their
-// per-call code already degrade gracefully without them), so those only warn.
+// preflight checks the external tools this app shells out to and prints a pass/fail line for each. At least one
+// agent backend's CLI is required (every card is one of their processes); the others, and git and gh, are optional
+// (the Git/GitHub windows and their per-call code already degrade gracefully without them), so those only warn.
 func preflight() {
 	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
 		fmt.Printf("%s isn't a folder.\n", config.Root)
@@ -61,38 +62,54 @@ func preflight() {
 		}
 		os.Exit(1)
 	}
-	checks := []struct {
+	type check struct {
 		cmd, label, help string
-		required         bool
-	}{
-		{"claude", "claude (Claude Code CLI)", "install it: https://claude.com/claude-code", true},
-		{"git", "git", "the Git window and file history won't work", false},
-		{"gh", "gh (GitHub CLI)", "the GitHub window won't work — get it: https://cli.github.com", false},
+		agent            bool
+		warn             func() string
 	}
-	ok, missing := true, false
+	var checks []check
+	for _, name := range live.Names() {
+		k, _ := live.Lookup(name)
+		checks = append(checks, check{k.Bin, k.Label, k.Install, true, k.Warn})
+	}
+	checks = append(checks,
+		check{"git", "git", "the Git window and file history won't work", false, nil},
+		check{"gh", "gh (GitHub CLI)", "the GitHub window won't work — get it: https://cli.github.com", false, nil},
+	)
+	agents, missing := 0, false
 	var lines []string
 	for _, c := range checks {
 		if _, err := exec.LookPath(c.cmd); err != nil {
 			lines = append(lines, fmt.Sprintf("  [x] %s — not found (%s)", c.label, c.help))
-			if c.required {
-				ok = false
-			} else {
-				missing = true
-			}
+			missing = true
+		} else if w := warnOf(c.warn); w != "" {
+			lines = append(lines, fmt.Sprintf("  [!] %s — %s", c.label, w))
+			agents, missing = agents+1, true
 		} else {
 			lines = append(lines, fmt.Sprintf("  [✓] %s", c.label))
+			if c.agent {
+				agents++
+			}
 		}
 	}
+	ok := agents > 0
 	color, symbol := green, "✓"
 	if !ok {
-		color, symbol = red, "✗" // claude missing (or everything missing): can't run at all
+		color, symbol = red, "✗" // no agent CLI at all: can't run
 	} else if missing {
-		color, symbol = yellow, "!" // git and/or gh missing: degraded, but drawa still runs
+		color, symbol = yellow, "!" // git, gh or another backend's CLI missing: degraded, but drawa still runs
 	}
 	fmt.Printf("%s%s%s Prerequisites\n%s\n\n", color, symbol, reset, strings.Join(lines, "\n"))
 	if !ok {
 		os.Exit(1)
 	}
+}
+
+func warnOf(f func() string) string {
+	if f == nil {
+		return ""
+	}
+	return f()
 }
 
 // watchedFiles is every non-test .go source file plus go.mod in the repo (skipping web/ and dot-directories: no reason to walk

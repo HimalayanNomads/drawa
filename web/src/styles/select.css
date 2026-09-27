@@ -31,3 +31,12 @@
 .xsel-item[aria-selected=true] svg{visibility:visible}
 .xsel-item[aria-selected=true] .xsel-desc{color:color-mix(in oklab,var(--accent) 55%,var(--muted))}
 .xsel-menu:focus-visible .xsel-item.active{box-shadow:inset 0 0 0 1px var(--line-2)}
+
+/* a chevron that opens a list of choices (chooser() in lib/agents.ts: New session ▾, Write with ▾), joined to the
+   button before it as a split button */
+.chooser{display:inline-flex}
+.chooser .xsel{padding:0 7px}
+.chooser .xsel-label{display:none}
+.chooser .xsel svg{width:16px;height:16px;color:currentColor} /* the chevron is all the trigger shows: full strength, on any button color */
+:is(.btn,.writewith>.btn):has(+ .chooser){border-top-right-radius:0;border-bottom-right-radius:0}
+.chooser .xsel{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px}

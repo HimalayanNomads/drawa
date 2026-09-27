@@ -3,6 +3,7 @@
 // <bash-input> / <bash-stdout> format, unless you take them out (×).
 import { make, ICON, iconButton, clip } from '../lib/dom'
 import { put, follow, type Session } from './session'
+import { who } from '../lib/agents'
 
 interface Run { cmd: string; out: string; code: number | null; box: HTMLElement }
 const unsent = new WeakMap<Session, Run[]>() // finished runs waiting to go with the next message
@@ -52,11 +53,11 @@ export async function runShell(S: Session, cmd: string) {
   if (!out.textContent) out.textContent = '(no output)'
   // pending for the next message; × keeps it out
   note.textContent = `${run.code == null ? 'stopped' : `exit ${run.code}`} · sent with next message`
-  const drop = iconButton(ICON.x, 'Don’t send this to Claude', () => {
+  const drop = iconButton(ICON.x, `Don’t send this to ${who(S.backend)}`, () => {
     drop.remove()
     const list = unsent.get(S) ?? []
     list.splice(list.indexOf(run), 1)
-    note.textContent = `${run.code == null ? 'stopped' : `exit ${run.code}`} · not sent to Claude`
+    note.textContent = `${run.code == null ? 'stopped' : `exit ${run.code}`} · not sent to ${who(S.backend)}`
     box.classList.add('private')
   }, 'sh-drop')
   head.append(drop)
@@ -69,7 +70,7 @@ export function takeShell(S: Session): string {
   unsent.delete(S)
   for (const r of runs) {
     r.box.querySelector('.sh-drop')?.remove()
-    r.box.querySelector('.sh-note')!.textContent = `${r.code == null ? 'stopped' : `exit ${r.code}`} · sent to Claude`
+    r.box.querySelector('.sh-note')!.textContent = `${r.code == null ? 'stopped' : `exit ${r.code}`} · sent to ${who(S.backend)}`
   }
   return runs.map(r => {
     const o = clip(r.out, SHARE)
@@ -85,7 +86,7 @@ export function replayShell(S: Session, text: string): string {
   while ((m = re.exec(text))) {
     const { box, out, note } = block(S, m[1])
     out.textContent = ((m[2] ?? '') + (m[3] ?? '')) || '(no output)'
-    note.textContent = 'sent to Claude'
+    note.textContent = `sent to ${who(S.backend)}`
     box.classList.add('ok')
     text = text.slice(re.lastIndex)
     re.lastIndex = 0

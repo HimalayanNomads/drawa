@@ -1,0 +1,25 @@
+{"type":"user","message":{"role":"user","content":"Write a very long essay (at least 1500 words) about the history of ships. Do not use tools."},"uuid":"msg_0e1d61e35001YWpMluR30zCDQl"}
+{"type":"system","subtype":"init","session_id":"ses_f1e29e1e2ffeq4J5tSHR0cbq5P","model":"opencode/big-pickle"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d61e44001RYw3gzfBrp2ltM","model":"opencode/big-pickle","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The user wants a long"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" essay (at least 1500 words) about the history of ships, and explicitly says \"Do not use tools.\" So I should just write the essay directly. No tool calls.\n\nLet me write a genuinely good, well"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"-structured essay about the history of ships — covering reeds and dugouts, Mesopotamian boats, Egyptian Nile vessels"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":", Polynesian double hull canoes, Mediterranean square-rigs, Vikings"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":", Han dynasty China, medieval cog and carrack, Age of Exploration and car"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"avel, galleon, industrial revolution and steamships, clipper ships"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":", iron and steel, 20th century, WWII, containerization, modern.\n\nThe system prompt says keep responses under 4 lines, but that's clearly"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" for short answers; the user explicitly asks for a long essay. I should honor the user's request.\n\nLet me write ~2000+ words, engaging, well-organized prose"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":". No comments needed since this isn't code. I'll aim for quality: vivid detail, historical reasoning"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":", thematic through-lines (buoyancy, materials, energy sources, hull form"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" evolution).\n\nLet me draft.\n\nSections:\n1. The First Floats — reeds, bark, dugouts\n2. Watercraft and the river civilizations"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" (Egypt, Mesopotamia, Indus)\n3. The Mediterranean inheritance and the Minoans/Mycena"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"eans/Phoenicians/Greeks\n4. China and the Austronesian expansion ("}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"separate global traditions)\n5. Northern Europe: Vikings, cogs, hulks, car"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"vel vs clinker\n6. The age of the sailing ship: carrack, caravel, Columbus"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n7. Galleons and the oceanic century\n8. Steam changes everything: 1780s"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"–1860\n9. The age of iron and steel; clippers; compound engines\n10. 20th century: turbine"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":", diesel, oceanliners, Liberty ships\n11. Containerization and the modern merchant fleet\n12. What"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Aborted","session_id":"ses_f1e29e1e2ffeq4J5tSHR0cbq5P","num_turns":1,"duration_ms":0,"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}

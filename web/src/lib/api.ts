@@ -1,7 +1,7 @@
 // JSON endpoints served by the Go server.
 
 export interface TreeItem { name: string; dir: boolean; more?: number } // more: a folder's last row, standing for N entries not sent
-export interface SessionInfo { id: string; title: string; mtime: number }
+export interface SessionInfo { id: string; title: string; mtime: number; backend?: string }
 export interface SavedMessage { role: 'user' | 'assistant'; content: string | ContentBlock[] }
 export interface ContentBlock {
   type: string

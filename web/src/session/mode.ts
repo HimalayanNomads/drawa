@@ -3,6 +3,7 @@
 import { make } from '../lib/dom'
 import { post } from '../lib/api'
 import { saveSoon } from '../lib/store'
+import { modesOf } from '../lib/agents'
 import type { Session } from './session'
 
 export const MODES: [string, string, string][] = [
@@ -21,7 +22,8 @@ export const lastMode = () => { try { const m = localStorage.getItem(LAST); retu
 export function modePicker(S: Session) {
   const sel = make('select', 'modesel')
   sel.setAttribute('aria-label', 'Permission mode for this session')
-  sel.append(...MODES.map(([value, label, desc]) => Object.assign(make('option', '', label), { value, title: desc })))
+  const has = modesOf(S.backend) // an agent lists only the modes it supports (OpenCode has no Auto)
+  sel.append(...MODES.filter(([value]) => has?.includes(value) ?? true).map(([value, label, desc]) => Object.assign(make('option', '', label), { value, title: desc })))
   sel.value = S.mode
   sel.dataset.mode = S.mode
   sel.onchange = () => setMode(S, sel.value)
@@ -40,7 +42,7 @@ export function setMode(S: Session, mode: string, tell = true) {
   }
   // not running yet is fine (the next message starts it in this mode); a failed request means it didn't switch
   // remembered for new cards once the server takes it; never Allow everything (a new card shouldn't start unguarded)
-  if (tell) post('mode', { cid: S.cid, mode }).then(() => { if (mode !== 'bypassPermissions') try { localStorage.setItem(LAST, mode) } catch {} }, () => modeRefused(S))
+  if (tell) post('mode', { cid: S.cid, mode, backend: S.backend }).then(() => { if (mode !== 'bypassPermissions') try { localStorage.setItem(LAST, mode) } catch {} }, () => modeRefused(S))
   else S.confirmedMode = mode
   saveSoon()
 }

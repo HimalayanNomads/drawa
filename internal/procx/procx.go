@@ -91,23 +91,3 @@ func (c *capped) Write(p []byte) (int, error) {
 }
 
 func (c *capped) String() string { return c.buf.String() }
-
-// Haiku is a one-off Claude call (commit messages, PR descriptions) -> (ok, its reply or the error).
-func Haiku(prompt, text string) (bool, string) {
-	r, err := RunEnv(120*time.Second, text, nil, "claude", "-p", "--model", "haiku", prompt)
-	if err != nil {
-		return false, err.Error()
-	}
-	if r.Code == 0 {
-		return true, strings.TrimSpace(r.Stdout)
-	}
-	out := r.Stderr
-	if out == "" {
-		out = r.Stdout
-	}
-	out = strings.TrimSpace(out)
-	if len(out) > 500 {
-		out = out[:500]
-	}
-	return false, out
-}

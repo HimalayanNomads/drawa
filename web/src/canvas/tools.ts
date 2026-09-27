@@ -32,7 +32,7 @@ export async function canvasCall(S: Session, m: { id: string; tool: string; args
   catch (e) { result = { content: [{ type: 'text', text: (e as Error).message }], isError: true } }
   // lost, Claude would wait out the server's timeout: try once more, then say which call it was
   const answer = () => post('canvas', { cid: S.cid, id: m.id, result })
-  answer().catch(() => answer()).catch(e => console.error(`canvas tool ${m.tool}: couldn't answer Claude:`, e))
+  answer().catch(() => answer()).catch(e => console.error(`canvas tool ${m.tool}: couldn't answer the agent:`, e))
 }
 
 const short = (el: HTMLElement) => shortId(el.dataset.id ?? '')

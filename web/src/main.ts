@@ -33,11 +33,25 @@ import { cards, cur, newSession, meta, cycleCards } from './session/session'
 import { attach } from './session/live'
 import { refreshModels, seedInfo } from './session/gen'
 import { loadSessions } from './session/history'
+import { agentsReady, installed, lastAgent, setLastAgent, title, blurb, chooser } from './lib/agents'
 
 const drawer = $('#drawer'), inspector = $('#inspector'), drawerBtn = $('#btn-drawer')
 const toggleDrawer = (open = drawer.hidden) => { drawer.hidden = !open; drawerBtn.setAttribute('aria-expanded', String(open)) }
 
 $('#btn-new').onclick = () => newSession()
+
+/** New session ▾: which agent a new card runs. The button itself (and N) starts the last one picked; with only one
+ *  agent installed there's nothing to pick, so no chevron. */
+function newSessionMenu() {
+  const list = installed(), btn = $('#btn-new')
+  if (list.length < 2) return
+  const label = () => { btn.title = `New ${title(lastAgent())} session (N)`; btn.setAttribute('aria-label', btn.title) }
+  const menu = chooser('Agent for a new session', list.map(a => ({ value: a.name, text: a.title, desc: blurb(a.name) })), lastAgent(),
+    v => { setLastAgent(v); label(); newSession({ backend: v }) }, true)
+  menu.classList.add('newagent')
+  btn.after(menu)
+  label()
+}
 $('#btn-scratch').onclick = () => doc({ edit: true })
 $('#btn-git').onclick = () => openGit()
 drawerBtn.onclick = () => toggleDrawer()
@@ -134,6 +148,8 @@ api<typeof meta>('meta').then(m => {
   for (const S of cards) seedInfo(S) // and every card's status line, if its own process hasn't reported yet
 }).catch(() => {})
 
+await agentsReady // which agents there are: cards restore with theirs, and the New session menu lists them
+newSessionMenu()
 await restore()
 apply()
 if (!cards.length) newSession()

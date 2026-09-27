@@ -1,0 +1,19 @@
+{"type":"user","message":{"role":"user","content":"Use the question tool to ask me whether I prefer red or blue (two options). Then tell me what I picked."},"uuid":"msg_0e1d588a9001HJMX1R5ujwTWZl"}
+{"type":"system","subtype":"init","session_id":"ses_f1e2a776affeZU53uwRWv30mqX","model":"opencode/big-pickle"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d588b60014FncSX682lA1P8","model":"opencode/big-pickle","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll ask"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" you now."}}}
+{"type":"control_request","request_id":"que_0e1d58fa30014xajKmzutGfLlR","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Which color do you prefer?","header":"Color choice","options":[{"description":"Pick the color red.","label":"Red"},{"description":"Pick the color blue.","label":"Blue"}],"multiSelect":false}]},"tool_use_id":"call_function_ysi37bqe7yr6_1"}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_ysi37bqe7yr6_1","name":"AskUserQuestion","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"questions\":[{\"header\":\"Color choice\",\"options\":[{\"description\":\"Pick the color red.\",\"label\":\"Red\"},{\"description\":\"Pick the color blue.\",\"label\":\"Blue\"}],\"question\":\"Which color do you prefer?\"}]}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_ysi37bqe7yr6_1","content":"User has answered your questions: \"Which color do you prefer?\"=\"Red\". You can now continue with the user's answers in mind.","is_error":false}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e1d590110012qCjVpEwR5ba28","model":"opencode/big-pickle","usage":{"input_tokens":31,"cache_read_input_tokens":10766,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"You picked **Red**."}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1e2a776affeZU53uwRWv30mqX","num_turns":2,"duration_ms":3502,"total_cost_usd":0,"usage":{"input_tokens":44,"output_tokens":6,"cache_read_input_tokens":10925,"cache_creation_input_tokens":0}}

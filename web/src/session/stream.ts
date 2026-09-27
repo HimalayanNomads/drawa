@@ -19,6 +19,7 @@ import { setMode, modeRefused } from './mode'
 import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
 import { meta, handoff, report } from './notices'
+import { who } from '../lib/agents'
 // what a refused tool call means in each mode, and what to do about it (shown under the turn)
 const REFUSED = 'It was refused. Switch this card to Allow edits, Auto or Allow everything and ask again to let it run.'
 const DENIED_HOW: Record<string, string> = {
@@ -264,7 +265,7 @@ export function on(S: Session, m: Msg) {
     if (call && S.tools[call]) finished(S, call, m.status ?? '', m.summary ?? '', `Agent "${S.tools[call].querySelector('.arg')?.textContent ?? ''}" ${m.status ?? 'finished'}`)
   }
   if (m.type === 'control_response' && m.response?.subtype === 'error') {
-    put(S, make('div', 'err', `Claude refused: ${m.response.error}`))
+    put(S, make('div', 'err', `${who(S.backend)} refused: ${m.response.error}`))
     if (/permission mode/i.test(m.response.error ?? '')) modeRefused(S)
   }
   if (m.type === 'system' && m.subtype === 'init') {
@@ -324,7 +325,7 @@ export function on(S: Session, m: Msg) {
     S.cost += m.total_cost_usd ?? 0
     S.done = !m.is_error
     const foot = put(S, make('p', 'foot', `${((m.duration_ms ?? 0) / 1000).toFixed(1)}s · ${turns} turn${turns === 1 ? '' : 's'}`))
-    foot.title = `Estimated API-equivalent cost: $${(m.total_cost_usd ?? 0).toFixed(4)} (not billed on a Claude subscription)`
+    foot.title = S.backend === 'claude' ? `Estimated API-equivalent cost: $${(m.total_cost_usd ?? 0).toFixed(4)} (not billed on a Claude subscription)` : `Cost ${who(S.backend)} reports for this turn: $${(m.total_cost_usd ?? 0).toFixed(4)}`
     // a turn answers every message Claude picked up so far (queued ones can join a turn mid-way): only unread ones remain
     // local commands (/model, /cost...) finish without echoing the message back: the oldest queued one was it
     if (!S.picked) S.queued.shift()?.classList.remove('queued')

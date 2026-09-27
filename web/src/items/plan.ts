@@ -16,6 +16,7 @@ import { referable } from '../canvas/refs'
 import { renderCard, type Session } from '../session/session'
 import { send } from '../session/live'
 import { setMode } from '../session/mode'
+import { who } from '../lib/agents'
 
 interface Comment { excerpt: string; text: string; el: HTMLElement }
 interface Plan {
@@ -51,7 +52,7 @@ function create(S: Session, key: string): Plan {
   const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
   const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
   const c = rect(S.card)
-  const close = iconButton(ICON.x, 'Remove plan from canvas (rejects it if Claude is still waiting)', () => remove(p), 'closebtn')
+  const close = iconButton(ICON.x, `Remove plan from canvas (rejects it if ${who(S.backend)} is still waiting)`, () => remove(p), 'closebtn')
   const { el, head } = makeWindow({
     kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
     rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
@@ -244,7 +245,7 @@ function respond(p: Plan, req: string, body: object) {
 function unanswered(p: Plan, req?: string) {
   p.req = req
   p.done = false
-  setState(p, 'Could not reach Claude, try again', 'review')
+  setState(p, `Could not reach ${who(p.S.backend)}, try again`, 'review')
 }
 
 /** Take the plan off the canvas (rejecting it first if Claude is still waiting on it). */

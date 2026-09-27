@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"drawa/internal/config"
+	"drawa/internal/live"
 	"drawa/internal/procx"
 )
 
@@ -250,8 +251,9 @@ func gitHead(max int, args ...string) (bool, string) {
 	return r.Code == 0 || r.Truncated, strings.Trim(r.Stdout, "\n")
 }
 
-// GitMessage writes a commit message for the staged changes, via a one-off Claude call.
-func GitMessage() map[string]any {
+// GitMessage writes a commit message for the staged changes, via a one-off call to the named agent backend ("":
+// the first installed one).
+func GitMessage(backend string) map[string]any {
 	ok, diff := Git("diff", "--cached", "--stat", "--patch")
 	if !ok || strings.TrimSpace(diff) == "" {
 		return map[string]any{"error": "Nothing staged to describe."}
@@ -261,7 +263,7 @@ func GitMessage() map[string]any {
 	if len(diff) > 80_000 {
 		diff = diff[:80_000]
 	}
-	ok, out := procx.Haiku(prompt, diff)
+	ok, out := live.Write(backend, prompt, diff)
 	if !ok {
 		return map[string]any{"error": out}
 	}
@@ -320,7 +322,8 @@ func GitOp(body map[string]any) (map[string]any, error) {
 	case "init":
 		ok, out = Git("init")
 	case "message":
-		return GitMessage(), nil
+		backend, _ := body["backend"].(string)
+		return GitMessage(backend), nil
 	default:
 		return map[string]any{"ok": false, "out": "unknown op " + op}, nil
 	}

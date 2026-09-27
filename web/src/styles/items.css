@@ -60,7 +60,7 @@
 .gfoot textarea{width:100%;min-height:44px;max-height:160px;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none}
 .gfoot textarea:focus{border-color:var(--accent)}
 .gfoot .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px}
-.gfoot .btn.ai{margin-right:auto}
+.gfoot .writewith{display:inline-flex;margin-right:auto}
 .gout{margin:6px 0 0;font:11.5px/1.45 var(--mono);color:var(--muted);white-space:pre-wrap;max-height:90px;overflow:auto}
 .gout:empty{display:none}.gout.bad{color:var(--danger)}
 .gempty{padding:28px 20px;text-align:center}.gempty p{margin:0 0 14px;color:var(--muted);font-size:13px}
@@ -241,7 +241,7 @@ button.ghti:hover{text-decoration:underline}
 .ghstrip>.ghnote{padding:2px 4px}
 .ghform{display:grid;gap:8px;margin-top:8px}
 .ghform .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.ghform .btn.ai{margin-right:auto}
+.ghform .writewith{display:inline-flex;margin-right:auto}
 .ghbase,.ghdraft{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .ghform .ghbase input{width:110px;padding:4px 7px;font:12px var(--mono)}
 .ghacts a.btn,.ghcheck-n{text-decoration:none;color:var(--ink)}.ghacts a.btn:hover,.ghcheck-n:hover{text-decoration:underline}

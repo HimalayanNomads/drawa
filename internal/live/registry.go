@@ -12,8 +12,8 @@ const ReapCap = 24 * time.Hour
 
 // Start returns the card's running process, starting one if there is none. Mu is not held while spawning (a
 // fork/exec can be slow): the card is reserved in `starting`, so concurrent sends for it still start only one.
-// Going over config.MaxLive (when set) closes the least recently used idle card.
-func Start(cid, sid, mode, model, effort string) (*Live, error) {
+// Going over config.MaxLive (when set) closes the least recently used idle card. kind names the backend.
+func Start(cid, kind, sid, mode, model, effort string) (*Live, error) {
 	Mu.Lock()
 	for {
 		if l := Registry[cid]; l != nil && l.Alive() {
@@ -32,7 +32,7 @@ func Start(cid, sid, mode, model, effort string) (*Live, error) {
 	starting[cid] = ch
 	Mu.Unlock()
 
-	l, err := New(cid, sid, mode, model, effort)
+	l, err := New(cid, kind, sid, mode, model, effort)
 
 	Mu.Lock()
 	delete(starting, cid)
@@ -49,11 +49,21 @@ func Start(cid, sid, mode, model, effort string) (*Live, error) {
 	return l, err
 }
 
-// evictLocked removes and returns the least recently used idle card (not working, not keep) when a cap is set and
-// more than config.MaxLive are running, else nil. Called with Mu held.
+// evictLocked removes and returns the least recently used idle card (not working, not keep) when more are running
+// than config.MaxLive (if set), or more of keep's backend than its Kind.MaxLive; else nil. Called with Mu held.
 func evictLocked(keep string) *Live {
-	running, lru, lruCid := 0, (*Live)(nil), ""
-	var lruAt time.Time
+	kind := ""
+	if k := Registry[keep]; k != nil {
+		kind = k.Kind
+	}
+	// lru over all cards, and over keep's backend's
+	type pick struct {
+		l   *Live
+		cid string
+		at  time.Time
+	}
+	var all, same pick
+	running, sameRunning := 0, 0
 	for cid, l := range Registry {
 		l.mu.Lock()
 		alive, idle, last := !l.exited, !l.working(), l.last
@@ -62,18 +72,33 @@ func evictLocked(keep string) *Live {
 			continue
 		}
 		running++
-		if cid != keep && idle && (lru == nil || last.Before(lruAt)) {
-			lru, lruCid, lruAt = l, cid, last
+		if l.Kind == kind {
+			sameRunning++
+		}
+		if cid == keep || !idle {
+			continue
+		}
+		if all.l == nil || last.Before(all.at) {
+			all = pick{l, cid, last}
+		}
+		if l.Kind == kind && (same.l == nil || last.Before(same.at)) {
+			same = pick{l, cid, last}
 		}
 	}
-	if config.MaxLive <= 0 || running <= config.MaxLive || lru == nil {
+	victim := pick{}
+	if k, ok := Lookup(kind); ok && k.MaxLive > 0 && sameRunning > k.MaxLive {
+		victim = same
+	} else if config.MaxLive > 0 && running > config.MaxLive {
+		victim = all
+	}
+	if victim.l == nil {
 		return nil
 	}
-	delete(Registry, lruCid)
-	return lru
+	delete(Registry, victim.cid)
+	return victim.l
 }
 
-// Reap closes live Claude processes with no traffic for IdleSecs (the next message resumes them).
+// Reap closes live agent processes with no traffic for IdleSecs (the next message resumes them).
 func Reap() {
 	for {
 		time.Sleep(60 * time.Second)

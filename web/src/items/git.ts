@@ -11,6 +11,7 @@ import { referable } from '../canvas/refs'
 import { unified } from '../panels/diff'
 import { openGitHub, GH_ICON } from './github'
 import { ghPost, tally, dot, stateOf, REVIEW, sendToClaude, type GhState } from './gh'
+import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 
 interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
 interface GitState { repo: boolean; missing?: boolean; error?: string; branch?: string; upstream?: boolean; ahead?: number; behind?: number; files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[] }
@@ -135,12 +136,11 @@ function draw(st: GitState) {
   )
   // commit / push buttons reflect what's possible now
   const row2 = make('div', 'row')
-  const write = button('Write with Claude', 'ai', () => writeMessage(write))
+  const { box: writeBox, b: write } = writeWith(writeMessage, n => `${n} reads the staged diff and drafts a message (you can edit it)`)
   write.disabled = !staged.length
-  write.title = 'Claude reads the staged diff and drafts a message (you can edit it)'
   const commitBtn = button(staged.length ? `Commit ${staged.length} file${staged.length === 1 ? '' : 's'}` : 'Commit', 'primary', commit)
   commitBtn.disabled = !staged.length
-  row2.append(write)
+  row2.append(writeBox)
   if (st.behind) row2.append(button(`Pull ↓${st.behind}`, '', () => op('pull')))
   if (st.ahead || (!st.upstream && st.log?.length)) row2.append(button(st.ahead ? `Push ↑${st.ahead}` : 'Push', '', push))
   row2.append(commitBtn)
@@ -203,7 +203,7 @@ async function op(o: string, paths?: string[]) {
 
 async function commit() {
   const w = win!, message = w.msg.value.trim()
-  if (!message) { w.msg.focus(); return say('Write a commit message first (or let Claude write one).', true) }
+  if (!message) { w.msg.focus(); return say(`Write a commit message first (or let ${who(writer())} write one).`, true) }
   const r = await gitPost({ op: 'commit', message })
   if (r.ok) { w.msg.value = ''; say(r.out?.split('\n')[0] ?? 'Committed.'); ghRefresh() } else say(r.out ?? 'Commit failed', true)
   refresh()
@@ -218,15 +218,27 @@ async function push() {
   refresh()
 }
 
-async function writeMessage(b: HTMLButtonElement) {
+/** "Write with <agent>", and a ▾ to pick which agent writes when more than one installed can (remembered, this
+ *  browser). `tip` says what it reads, given the agent's name. */
+function writeWith(run: (b: HTMLButtonElement, agent: string) => void, tip: (name: string) => string) {
+  const box = make('span', 'writewith'), b = button('', 'ai', () => run(b, writer()))
+  const label = () => { b.textContent = `Write with ${who(writer())}`; b.title = tip(who(writer())) }
+  label()
+  box.append(b)
+  const can = installed().filter(a => a.canWrite)
+  if (can.length > 1) box.append(chooser('Who writes it', can.map(a => ({ value: a.name, text: a.title, desc: blurb(a.name) })), writer(), v => { setWriter(v); label() }))
+  return { box, b }
+}
+
+async function writeMessage(b: HTMLButtonElement, agent: string) {
   b.disabled = true
   const label = b.textContent
   b.textContent = 'Writing…'
-  const r = await gitPost({ op: 'message' })
+  const r = await gitPost({ op: 'message', backend: agent })
   b.textContent = label
   b.disabled = false
   if (r.message) { win!.msg.value = r.message; win!.msg.style.height = 'auto'; win!.msg.style.height = Math.min(160, win!.msg.scrollHeight) + 'px'; say('') }
-  else say(r.error ?? 'Claude could not write a message.', true)
+  else say(r.error ?? `${who(agent)} could not write a message.`, true)
 }
 
 /* ---------- GitHub: the pull request for this branch (through gh), or a form to open one ---------- */
@@ -304,18 +316,18 @@ function buildForm(st: GhState) {
   const baseLbl = make('label', 'ghbase'), draftLbl = make('label', 'ghdraft')
   baseLbl.append('into ', base)
   draftLbl.append(draft, ' Draft')
-  const write = button('Write with Claude', 'ai', async () => {
+  const { box: writeBox } = writeWith(async (write, agent) => {
+    const label = write.textContent
     write.disabled = true
     write.textContent = 'Writing…'
-    const r = await ghPost({ op: 'draft', base: base.value.trim() })
+    const r = await ghPost({ op: 'draft', base: base.value.trim(), backend: agent })
     write.disabled = false
-    write.textContent = 'Write with Claude'
-    if (r.title) { title.value = r.title; body.value = r.body ?? ''; out.textContent = '' } else out.textContent = r.error ?? 'Claude could not write it.'
-  })
-  write.title = 'Claude reads the commits and diff against the base branch and drafts a title and description'
+    write.textContent = label
+    if (r.title) { title.value = r.title; body.value = r.body ?? ''; out.textContent = '' } else out.textContent = r.error ?? `${who(agent)} could not write it.`
+  }, n => `${n} reads the commits and diff against the base branch and drafts a title and description`)
   const create = button('Create pull request', 'primary', () => form.requestSubmit())
   create.type = 'submit'
-  row.append(write, baseLbl, draftLbl, create)
+  row.append(writeBox, baseLbl, draftLbl, create)
   form.append(title, body, row, out)
   form.onsubmit = async e => {
     e.preventDefault()

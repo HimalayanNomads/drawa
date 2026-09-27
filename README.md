@@ -40,10 +40,27 @@ Drawa runs entirely on your machine. It drives the `claude` CLI you already have
 
 | | |
 |---|---|
-| [Claude Code](https://claude.com/claude-code) | **Required.** `claude` must be on `PATH` and logged in. |
+| [Claude Code](https://claude.com/claude-code) | **One agent is required.** `claude` on `PATH` and logged in, for your Claude subscription. |
+| [OpenCode](https://opencode.ai) | Or, instead or as well: `opencode` on `PATH`, for any other provider or its free models. See below. Tested with OpenCode 1.18.32. |
 | `git` | Optional. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | OS | macOS or Linux. Windows isn't supported yet. |
+
+### No Claude subscription? Use OpenCode
+
+[OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more). With it installed, **New session ▾** in the toolbar offers an OpenCode session next to a Claude Code one, and each session card picks its model from OpenCode's list.
+
+1. Install it: `curl -fsSL https://opencode.ai/install | bash` (or see [its docs](https://opencode.ai/docs)).
+2. Connect a provider with `opencode auth login`, or skip that: OpenCode's own free models work without a key.
+3. Start Drawa as usual. Its startup check lists `opencode`, and warns if your version isn't the one Drawa was tested with.
+
+Things to know:
+
+- **Privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
+- **What's the same.** Approvals, questions, the files and commands windows, sub-agents, canvas tools and history work as they do for Claude Code.
+- **What differs.** OpenCode has no Auto mode, and no effort setting. The status line's usage windows are Claude Code's, so OpenCode cards don't show them.
+- **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB), so at most 3 stay running at once; the least recently used idle one closes and resumes on its next message.
+- **Commit messages.** The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
 ## Install
 
@@ -101,7 +118,7 @@ The Network link lets another device on the same network — a laptop, a phone �
 | `DRAWA_PORT` | `8765` | Port to serve on. Set it to run two projects at once. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
 | `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
-| `DRAWA_MAX_LIVE` | unset (no cap) | Most `claude` processes kept running at once (each takes a few hundred MB). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
+| `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB; OpenCode has its own cap of 3). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
 | `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh

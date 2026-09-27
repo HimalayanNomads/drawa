@@ -1,6 +1,9 @@
 /* Floating chrome over the canvas: toolbar, drawing tools, fonts panel, minimap + zoom, hint. */
 .float{position:fixed;z-index:var(--z-float)}
 #bar{top:12px;left:12px;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);overflow-x:auto;scrollbar-width:none;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow)}
+#bar .newagent{margin-left:-8px} /* flush against New session: the bar's gap would split the pair */
+#bar .newagent .xsel{background:var(--accent);border-color:var(--accent);color:var(--on-accent);border-left-color:color-mix(in oklab,var(--on-accent) 35%,var(--accent))}
+#bar .newagent .xsel:hover,#bar .newagent .xsel[aria-expanded=true]{background:color-mix(in oklab,var(--accent) 88%,var(--ink))}
 .brand{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:40px;overflow:hidden;padding:0 6px}
 #bar>:not(.brand){flex:none} /* buttons keep their size; the project name is what gives way */
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}

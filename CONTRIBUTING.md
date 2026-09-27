@@ -128,19 +128,19 @@ flowchart TB
 
   subgraph go["Backend · main.go + internal/"]
     direction LR
-    api["HTTP API and event stream"] --> procs["Session manager"]
+    api["HTTP API and event stream"] --> procs["Session manager · agent backends"]
     api --> repo["Git, GitHub and files"]
     api --> mcp["Canvas tools MCP endpoint"]
   end
 
   subgraph tools["Local tools"]
     direction LR
-    claude["Claude Code CLI"] ~~~ gitgh["git and gh"]
+    claude["Claude Code CLI"] ~~~ oc["OpenCode CLI"] ~~~ gitgh["git and gh"]
   end
 
   user --> web
   web -- "JSON API · one event stream" --> go
-  go <-- "stream-json · MCP · subprocesses" --> tools
+  go <-- "stream-json · HTTP and events · MCP · subprocesses" --> tools
 ```
 
 Arrows inside the frontend show which way imports go. The rules for where code goes are in [`CLAUDE.md`](CLAUDE.md).
