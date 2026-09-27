@@ -41,6 +41,38 @@ stage.addEventListener('wheel', e => {
   applySoon()
 }, { passive: false })
 
+/* ---------- touch: two fingers pan and pinch the canvas anywhere, windows included (on a phone they cover most
+   of it), while one finger keeps scrolling a log, dragging a tab or panning the background. ---------- */
+let press: { id: number; at: EventTarget } | undefined // the first finger's press, to call off what it started
+stage.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return
+  if (e.isPrimary) press = { id: e.pointerId, at: e.target! }
+  else e.stopPropagation() // a second finger is a pinch, not a second drag
+}, true)
+let pinch: { d: number; x: number; y: number } | undefined
+const span = (t: TouchList) => ({ d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 })
+stage.addEventListener('touchmove', e => {
+  if (e.touches.length !== 2) return
+  // not cancelable: a log is already scrolling under the first finger, and it keeps the gesture
+  if (!e.cancelable || (e.target as Element).closest('.fullview, .floats .win, .pinbar')) return
+  e.preventDefault()
+  const s = span(e.touches)
+  if (!pinch) { // the first finger's drag, pan or stroke ends where it is (their handlers all treat a cancel as a stop)
+    if (press) press.at.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: press.id, pointerType: 'touch', isPrimary: true }))
+    press = undefined
+    pinch = s
+    return
+  }
+  view.x += s.x - pinch.x
+  view.y += s.y - pinch.y
+  if (pinch.d > 0) zoomView(view.k * s.d / pinch.d, s.x, s.y)
+  pinch = s
+  applySoon()
+}, { passive: false })
+const lift = (e: TouchEvent) => { if (e.touches.length < 2) pinch = undefined }
+stage.addEventListener('touchend', lift)
+stage.addEventListener('touchcancel', lift)
+
 /* ---------- minimap: one box per item, colored by data-kind (and data-state, e.g. a busy session) ---------- */
 const mm = $('#mm'), minimap = $('#minimap')
 let mmScale = 1, mmOrigin = { x: 0, y: 0 }, mmKey = '', stale = true

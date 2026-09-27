@@ -1,5 +1,5 @@
 /* Page reset and the shared controls (buttons, segmented tabs, counts). */
-*{box-sizing:border-box}
+*{box-sizing:border-box;touch-action:pan-x pan-y} /* no page pinch-zoom (it strands the fixed chrome off-screen): two fingers zoom the canvas instead; rules that need none still win */
 html,body{height:100%;margin:0;overflow:hidden}
 body{background:var(--canvas);color:var(--ink);font:14px/1.5 var(--sans);font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased}
 button,select,textarea{font:inherit;color:inherit}
