@@ -109,7 +109,7 @@ By default Drawa only answers on localhost. Pass `--net` (in any position) and, 
   - Network: http://192.168.1.23:8765/?token=fpKZrzCN
 ```
 
-The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once, then kept in a cookie and dropped from the address), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
+It also prints a QR code of the Network link, so a phone can open it with its camera. The Network link lets another device on the same network — a laptop, a phone — open the same workspace. It only works with its `?token=` (a fresh one each run, checked once, then kept in a cookie and dropped from the address), and an address that guesses wrong 5 times locks out for a few minutes. See [Security](#security).
 
 ## Configuration
 

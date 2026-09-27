@@ -28,6 +28,7 @@ import (
 	"drawa/internal/config"
 	"drawa/internal/live"
 	_ "drawa/internal/opencode" // registers the opencode backend
+	"drawa/internal/qr"
 	"drawa/internal/server"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
@@ -240,7 +241,8 @@ func main() {
 	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
 	if config.Net {
 		for _, ip := range config.LocalIPs() {
-			fmt.Printf("  - Network: http://%s:%d/?token=%s\n", ip, config.Port, config.NetToken)
+			link := fmt.Sprintf("http://%s:%d/?token=%s", ip, config.Port, config.NetToken)
+			fmt.Printf("  - Network: %s\n\n%s", link, qr.Terminal(link))
 		}
 		fmt.Println("\nThat Network link's token lasts until you stop drawa (restarts after code changes keep it), and a browser that opens the link keeps it in a cookie. Anyone who has it can run commands as you, so don't share it beyond people you trust on this network.")
 		addr = fmt.Sprintf(":%d", config.Port) // every interface, not just loopback; config.Hosts still keeps DNS rebinding and outside hosts out
