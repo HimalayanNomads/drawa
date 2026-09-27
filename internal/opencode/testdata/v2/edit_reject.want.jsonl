@@ -1,0 +1,25 @@
+{"type":"user","message":{"role":"user","content":"Run the shell command: echo should-be-rejected"},"uuid":"msg_0e275d58d001QBTLsBUGso03ks"}
+{"type":"system","subtype":"init","session_id":"ses_f1d8a2f8affeDIhI678vtgTa6g","model":"opencode/space-bunny-free"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e275d5a7001PYjo760pi4Nwd7","model":"opencode/space-bunny-free","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_function_srkdlgm3357a_1","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"echo should-be-rejected\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"control_request","request_id":"per_0e275ddc30016AFkck6WZ5RDMz","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"echo should-be-rejected"},"tool_use_id":"call_function_srkdlgm3357a_1","permission_suggestions":[{"type":"opencode","always":["echo *"]}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_srkdlgm3357a_1","content":"Unable to execute command: echo should-be-rejected","is_error":true}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e275e569001aOHOA600sNgP2o","model":"opencode/space-bunny-free","usage":{"input_tokens":8924,"cache_read_input_tokens":1136,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The command was rejected. I"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" should report that. Maybe the harness has a permission system that rejects commands. Let me just report to the user.\n\nI could try to understand why"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" — maybe there's a permission rule. But the user just asked to run the command. It failed. Let me report faithfully"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":". Maybe try once more? The error says \"Unable to execute command\" which seems like a permission denial.\n\nI should not try"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" to circumvent the rejection. Just report."}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The command was rejected by the harness — it didn't execute.\n\n```\n$ echo should-be-rejected\n→"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" {\"error\":{\"type\":\"tool.execution\",\"message\":\"Unable to execute command: echo should-be-rejected\"}}\n```\n\nNo output was produced, since the shell never ran. This looks like a permission/policy denial rather than a command"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" error (`echo` is harmless and would have worked otherwise). I won't try to work around it — let me know if you want me to check the permission config,"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" or if you'd like to run it yourself."}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1d8a2f8affeDIhI678vtgTa6g","num_turns":2,"duration_ms":7375,"total_cost_usd":0,"usage":{"input_tokens":8967,"output_tokens":146,"cache_read_input_tokens":10560,"cache_creation_input_tokens":0}}

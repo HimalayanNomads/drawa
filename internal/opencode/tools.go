@@ -7,6 +7,7 @@ var toolNames = map[string]string{
 	"edit":      "Edit",
 	"write":     "Write",
 	"bash":      "Bash",
+	"shell":     "Bash", // OpenCode v2 renamed its shell tool from "bash"
 	"glob":      "Glob",
 	"grep":      "Grep",
 	"list":      "LS",

@@ -5,7 +5,7 @@
 import { make } from '../lib/dom'
 import { saveSoon } from '../lib/store'
 import { cards, meta, type Session } from './session'
-import { meta as agentMeta, metaNow } from '../lib/agents'
+import { meta as agentMeta, metaNow, title } from '../lib/agents'
 import { send } from './live'
 
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
@@ -23,13 +23,26 @@ function fillModel(S: Session, sel: HTMLSelectElement) {
   sel.value = S.model // the card's choice, restored or picked before the list arrived
 }
 
-/** The model picker for a card's message bar: options come from its agent itself (GET /api/meta). */
+/** The model picker for a card's message bar: options come from its agent itself (GET /api/meta). A fresh backend
+ *  (nothing asked yet this page load) can take a few seconds the first time (its own throwaway process, and for
+ *  OpenCode, its model catalog warming up), so the picker shows a spinner and disables rather than sitting there
+ *  looking like "Default" is the only option. */
 export function modelPicker(S: Session) {
   const sel = make('select', 'modelsel')
   sel.setAttribute('aria-label', 'Model for this session')
   sel.append(Object.assign(make('option', '', 'Default model'), { value: '' }))
   fillModel(S, sel)
-  if (S.backend !== 'claude') agentMeta(S.backend).then(() => fillModel(S, sel))
+  if (S.backend !== 'claude' && !modelsOf(S).length) {
+    sel.disabled = true
+    sel.dataset.loading = ''
+    sel.title = `Fetching ${title(S.backend)}'s models — this can take a few seconds the first time…`
+    agentMeta(S.backend).then(() => {
+      fillModel(S, sel)
+      sel.disabled = false
+      delete sel.dataset.loading
+      sel.removeAttribute('title')
+    })
+  }
   sel.value = S.model
   sel.onchange = () => { S.model = sel.value; saveSoon() }
   S.modelSel = sel

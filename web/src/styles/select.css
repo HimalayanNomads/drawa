@@ -6,6 +6,11 @@
 .xsel[aria-expanded=true] svg{transform:rotate(180deg)}
 .xsel[aria-expanded=true]{border-color:var(--line-2);background:var(--hover)}
 .xsel:disabled{opacity:.55;cursor:default}
+/* a slow first fetch (a fresh backend process asked for its models): swap the chevron for a spinner */
+.xsel[data-loading]{position:relative}
+.xsel[data-loading] svg{visibility:hidden}
+.xsel[data-loading]::after{content:"";position:absolute;right:8px;top:50%;width:10px;height:10px;margin-top:-5px;
+  border:1.5px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
 /* permission-mode colors, set from the select's data-mode */
 .xsel[data-mode=acceptEdits]{color:var(--edit);border-color:color-mix(in oklab,var(--edit) 50%,var(--line))}
 .xsel[data-mode=auto]{color:var(--write);border-color:color-mix(in oklab,var(--write) 50%,var(--line))}

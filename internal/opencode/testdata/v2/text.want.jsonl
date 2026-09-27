@@ -1,0 +1,8 @@
+{"type":"user","message":{"role":"user","content":"Say hello in exactly three words."},"uuid":"msg_0e2729457001DgWepHjh7hP3ge"}
+{"type":"system","subtype":"init","session_id":"ses_f1d8d70c7ffexbEewdXV150mwK","model":"opencode/space-bunny-free"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e272947b001YVCgTyu03cBU6y","model":"opencode/space-bunny-free","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello, how are you?"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1d8d70c7ffexbEewdXV150mwK","num_turns":1,"duration_ms":2666,"total_cost_usd":0,"usage":{"input_tokens":8904,"output_tokens":7,"cache_read_input_tokens":489,"cache_creation_input_tokens":0}}

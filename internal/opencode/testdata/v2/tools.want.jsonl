@@ -1,0 +1,19 @@
+{"type":"user","message":{"role":"user","content":"Run the shell command: echo tool-fixture-ok"},"uuid":"msg_0e2730108001SXG1WY9bQhVKIz"}
+{"type":"system","subtype":"init","session_id":"ses_f1d8d03f7ffeeVXemZ06WQ0zHX","model":"opencode/space-bunny-free"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e273011a001YJUAMxpj75WVFO","model":"opencode/space-bunny-free","usage":{"input_tokens":18,"cache_read_input_tokens":647,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll run that command."}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_function_110rjqmzv5f4_1","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"echo tool-fixture-ok\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"control_request","request_id":"per_0e2730cf9001sK4A6q3F1ODUls","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"echo tool-fixture-ok"},"tool_use_id":"call_function_110rjqmzv5f4_1","permission_suggestions":[{"type":"opencode","always":["echo *"]}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_function_110rjqmzv5f4_1","content":[{"text":"tool-fixture-ok\n","type":"text"}],"is_error":false}]}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e27310e9001WZPa88eeynP42N","model":"opencode/space-bunny-free","usage":{"input_tokens":8925,"cache_read_input_tokens":1136,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Output:\n\n```\ntool-fixture-ok"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\n```"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"ses_f1d8d03f7ffeeVXemZ06WQ0zHX","num_turns":2,"duration_ms":6039,"total_cost_usd":0,"usage":{"input_tokens":8949,"output_tokens":54,"cache_read_input_tokens":10566,"cache_creation_input_tokens":0}}

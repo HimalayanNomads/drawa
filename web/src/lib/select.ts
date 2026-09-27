@@ -26,6 +26,7 @@ export function enhance(select: HTMLSelectElement): void {
       if (v == null) trigger.removeAttribute(a); else trigger.setAttribute(a, v)
     }
     if (select.dataset.mode) trigger.dataset.mode = select.dataset.mode; else delete trigger.dataset.mode
+    if (select.dataset.loading !== undefined) trigger.dataset.loading = ''; else delete trigger.dataset.loading
     trigger.disabled = select.disabled
     if (menu) render() // options arrived (or changed) while open
   }
@@ -41,7 +42,7 @@ export function enhance(select: HTMLSelectElement): void {
   }
   new MutationObserver(sync).observe(select, {
     childList: true, subtree: true, characterData: true,
-    attributes: true, attributeFilter: ['data-mode', 'title', 'aria-label', 'disabled', 'selected', 'label'],
+    attributes: true, attributeFilter: ['data-mode', 'data-loading', 'title', 'aria-label', 'disabled', 'selected', 'label'],
   })
   select.addEventListener('change', sync)
   sync()

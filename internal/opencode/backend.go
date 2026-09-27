@@ -1,5 +1,6 @@
-// Package opencode is the OpenCode agent backend: one `opencode serve` per card, driven over its HTTP API, its
-// event stream translated into the wire format (translate.go) so the page reads it like any other card.
+// Package opencode is the OpenCode agent backend: one `opencode serve` per card, driven over its HTTP API (this
+// file: registration and process lifecycle; client.go: the API calls a turn makes), its event stream translated
+// into the wire format (translate.go, translate2.go) so the page reads it like any other card.
 package opencode
 
 import (
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,8 +25,34 @@ import (
 	"drawa/internal/procx"
 )
 
-// Version is the OpenCode release this backend was built and tested against (its API changes often).
-const Version = "1.18.32"
+// Version and VersionV2 are the OpenCode releases this backend was built and tested against: v2's HTTP server (a
+// near-total rewrite of v1's, see spawn/session/Send/meta below) needs its own code path, so both are tracked.
+const (
+	Version   = "1.18.32"
+	VersionV2 = "2.0.18"
+)
+
+// rawVersion runs `opencode --version` once (cached: every call site would otherwise re-run it).
+var rawVersion = sync.OnceValue(func() string {
+	r, err := procx.RunEnv(10*time.Second, "", nil, "opencode", "--version")
+	if err != nil || r.Code != 0 {
+		return ""
+	}
+	return strings.TrimSpace(r.Stdout)
+})
+
+// normalizeVersion strips the "opencode " / "v" prefix v2 prints ("opencode v2.0.18") that v1 didn't ("1.18.32").
+func normalizeVersion(v string) string {
+	v = strings.TrimPrefix(v, "opencode ")
+	return strings.TrimPrefix(v, "v")
+}
+
+// isV2 reports whether the installed OpenCode is a v2 release.
+func isV2() bool {
+	major, _, _ := strings.Cut(normalizeVersion(rawVersion()), ".")
+	n, _ := strconv.Atoi(major)
+	return n >= 2
+}
 
 var sidRe = regexp.MustCompile(`^ses_[A-Za-z0-9]{10,60}$`)
 
@@ -38,15 +66,24 @@ func init() {
 	})
 }
 
+// wireTranslator is implemented by both the v1 and v2 event translators (translate.go, translate2.go); the two
+// servers' events are different enough (a rewritten vocabulary and payload shape) that they need one each.
+type wireTranslator interface {
+	frame(raw []byte) []string
+	setModel(model string)
+	setSid(sid string)
+}
+
 type server struct {
 	p      *live.Proc
 	base   string // http://127.0.0.1:<port>, once it listens
 	pass   string
 	ready  chan struct{} // closed when base is known (or the process ended first)
 	client *http.Client
+	v2     bool // this card's OpenCode is a v2 release: different endpoints, request/response shapes and events
 
 	mu    sync.Mutex
-	tr    *translator
+	tr    wireTranslator
 	sid   string
 	mode  string
 	model string
@@ -55,12 +92,16 @@ type server struct {
 
 // versionWarning notes an installed OpenCode other than the tested one (a warning: newer ones usually work).
 func versionWarning() string {
-	r, err := procx.RunEnv(10*time.Second, "", nil, "opencode", "--version")
-	if err != nil || r.Code != 0 {
+	v := rawVersion()
+	if v == "" {
 		return ""
 	}
-	if v := strings.TrimSpace(r.Stdout); v != Version {
-		return "version " + v + ", tested with " + Version
+	tested := Version
+	if isV2() {
+		tested = VersionV2
+	}
+	if normalizeVersion(v) != tested {
+		return "version " + v + ", tested with " + tested
 	}
 	return ""
 }
@@ -85,8 +126,16 @@ func permissions(mode string) map[string]string {
 var listeningRe = regexp.MustCompile(`listening on (http://127\.0\.0\.1:\d+)`)
 
 func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
+	v2 := isV2()
+	var tr wireTranslator
+	if v2 {
+		tr = newTranslatorV2(s.Sid, s.Model)
+	} else {
+		tr = newTranslator(s.Sid, s.Model)
+	}
 	srv := &server{pass: randHex(16), ready: make(chan struct{}), client: &http.Client{}, sid: s.Sid, mode: s.Mode, model: s.Model,
-		tr: newTranslator(s.Sid, s.Model), sse: make(chan struct{})}
+		tr: tr, sse: make(chan struct{}), v2: v2}
+	// the static permission config still works in its v1 shape on a v2 server; only the runtime API (SetMode) changed
 	cfg := map[string]any{"permission": permissions(s.Mode)}
 	if s.MCPURL != "" {
 		cfg["mcp"] = map[string]any{"canvas": map[string]any{"type": "remote", "url": s.MCPURL, "oauth": false}}
@@ -134,10 +183,14 @@ func (s *server) pump(sink live.Sink) {
 	sink.Ended()
 }
 
-// events streams GET /event and hands each translated line to the sink.
+// events streams GET /event (v1) or /api/event (v2) and hands each translated line to the sink.
 func (s *server) events(sink live.Sink) {
 	defer close(s.sse)
-	req, _ := http.NewRequest("GET", s.base+"/event?directory="+url.QueryEscape(config.Root), nil)
+	path := "/event"
+	if s.v2 {
+		path = "/api/event"
+	}
+	req, _ := http.NewRequest("GET", s.base+path+"?directory="+url.QueryEscape(config.Root), nil)
 	req.SetBasicAuth("opencode", s.pass)
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -205,145 +258,6 @@ func (s *server) call(method, path string, body, out any) error {
 		return json.Unmarshal(b, out)
 	}
 	return nil
-}
-
-// session returns the card's session, creating it on the first message.
-func (s *server) session() (string, error) {
-	s.mu.Lock()
-	sid := s.sid
-	s.mu.Unlock()
-	if sid != "" {
-		return sid, nil
-	}
-	var sess struct {
-		ID string `json:"id"`
-	}
-	if err := s.call("POST", "/session", map[string]any{}, &sess); err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	s.sid, s.tr.sid = sess.ID, sess.ID
-	s.mu.Unlock()
-	if s.mode != "" && s.mode != "default" && s.mode != "plan" {
-		s.SetMode(s.mode)
-	}
-	return sess.ID, nil
-}
-
-// parts turns a message (a string or Claude content blocks) into OpenCode prompt parts.
-func parts(content any) []map[string]any {
-	if text, ok := content.(string); ok {
-		return []map[string]any{{"type": "text", "text": text}}
-	}
-	var out []map[string]any
-	list, _ := content.([]any)
-	for _, b := range list {
-		m, _ := b.(map[string]any)
-		switch m["type"] {
-		case "text":
-			if t, _ := m["text"].(string); t != "" {
-				out = append(out, map[string]any{"type": "text", "text": t})
-			}
-		case "image":
-			src, _ := m["source"].(map[string]any)
-			if src["type"] == "base64" {
-				mime, _ := src["media_type"].(string)
-				data, _ := src["data"].(string)
-				out = append(out, map[string]any{"type": "file", "mime": mime, "url": "data:" + mime + ";base64," + data})
-			}
-		}
-	}
-	return out
-}
-
-func (s *server) Send(content any) error {
-	sid, err := s.session()
-	if err != nil {
-		return err
-	}
-	body := map[string]any{"parts": parts(content), "agent": "build"}
-	s.mu.Lock()
-	if s.mode == "plan" {
-		body["agent"] = "plan"
-	}
-	if provider, model, ok := strings.Cut(s.model, "/"); ok {
-		body["model"] = map[string]any{"providerID": provider, "modelID": model}
-	}
-	s.mu.Unlock()
-	return s.call("POST", "/session/"+sid+"/prompt_async", body, nil)
-}
-
-// Respond answers a permission ask (per_…) or questions (que_…).
-func (s *server) Respond(rid, ask string, a live.Answer) error {
-	if strings.HasPrefix(rid, "que_") {
-		if !a.Allow {
-			return s.call("POST", "/question/"+rid+"/reject", map[string]any{}, nil)
-		}
-		var d struct {
-			Request struct {
-				Input struct {
-					Questions []struct {
-						Question string `json:"question"`
-					} `json:"questions"`
-				} `json:"input"`
-			} `json:"request"`
-		}
-		json.Unmarshal([]byte(ask), &d)
-		answers := [][]string{}
-		for _, q := range d.Request.Input.Questions {
-			var labels []string
-			for _, l := range strings.Split(a.Answers[q.Question], ", ") {
-				if l = strings.TrimSpace(l); l != "" {
-					labels = append(labels, l)
-				}
-			}
-			answers = append(answers, append([]string{}, labels...))
-		}
-		return s.call("POST", "/question/"+rid+"/reply", map[string]any{"answers": answers}, nil)
-	}
-	reply := map[string]any{"reply": "reject"}
-	switch {
-	case a.Allow && a.Always:
-		reply["reply"] = "always"
-	case a.Allow:
-		reply["reply"] = "once"
-	case a.Message != "":
-		reply["message"] = a.Message
-	}
-	return s.call("POST", "/permission/"+rid+"/reply", reply, nil)
-}
-
-// SetMode: plan mode is OpenCode's plan agent, picked per message; the others are the session's permission rules.
-func (s *server) SetMode(mode string) error {
-	s.mu.Lock()
-	s.mode = mode
-	sid := s.sid
-	s.mu.Unlock()
-	if sid == "" || mode == "plan" {
-		return nil // no session yet (it starts in this mode), or the next message picks the plan agent
-	}
-	var rules []map[string]string
-	for perm, action := range permissions(mode) {
-		rules = append(rules, map[string]string{"permission": perm, "pattern": "*", "action": action})
-	}
-	return s.call("PATCH", "/session/"+sid, map[string]any{"permission": rules}, nil)
-}
-
-func (s *server) SetModel(model string) error {
-	s.mu.Lock()
-	s.model, s.tr.model = model, model
-	s.mu.Unlock()
-	return nil // the next message carries it
-}
-
-func (s *server) Interrupt() error {
-	s.mu.Lock()
-	sid := s.sid
-	s.mu.Unlock()
-	if sid == "" {
-		return nil
-	}
-	return s.call("POST", "/session/"+sid+"/abort", map[string]any{}, nil)
 }
 
 func (s *server) Close() { s.p.Stop() }

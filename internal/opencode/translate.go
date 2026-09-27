@@ -1,57 +1,20 @@
 package opencode
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 )
 
-// translator turns one card's OpenCode events (GET /event frames) into wire lines (live/wire.go). OpenCode sends
-// whole parts on every change plus text deltas; the page wants Claude's block-by-block stream, so it keeps what it
-// has sent of each part. Everything is keyed to the card's session: other sessions in the same server are the
-// card's sub-agents (task calls), which the page reads as whole assistant/user lines tagged with the call.
+// translator turns one card's OpenCode v1 events (GET /event frames) into wire lines (live/wire.go). OpenCode
+// sends whole parts on every change plus text deltas; the page wants Claude's block-by-block stream, so it keeps
+// what it has sent of each part. Everything is keyed to the card's session: other sessions in the same server are
+// the card's sub-agents (task calls), which the page reads as whole assistant/user lines tagged with the call.
 type translator struct {
-	sid   string // the card's session (ses_…)
-	model string // provider/model, shown on the card
-
+	turn
 	roles    map[string]string // message id -> user | assistant
 	echoed   map[string]bool   // user messages already echoed
-	msg      string            // the card's assistant message being streamed ("" between messages)
-	next     int               // the next block index in it
-	blocks   map[string]*block // part id -> its block in the stream
-	open     []*block          // blocks started and not stopped, in order
-	calls    map[string]call   // tool call id -> its Claude name and input (for asks about it)
-	results  map[string]bool   // tool calls whose result was sent
 	children map[string]string // a sub-agent's session -> the task call that started it
 	childTxt map[string]bool   // sub-agent text parts already sent
-
-	busy                bool // mid-turn: init was sent, result not yet
-	turns               int
-	cost                float64
-	usage               tokens
-	started, ended      float64 // ms: the turn's first assistant message was created, its last one completed
-	errName, errMessage string
-}
-
-type block struct {
-	index int
-	kind  string // text | thinking
-	sent  int    // bytes of the part's text already sent
-	msg   string
-}
-
-type call struct {
-	name  string
-	input map[string]any
-}
-
-type tokens struct {
-	Input  float64 `json:"input"`
-	Output float64 `json:"output"`
-	Cache  struct {
-		Read  float64 `json:"read"`
-		Write float64 `json:"write"`
-	} `json:"cache"`
 }
 
 type span struct {
@@ -93,42 +56,10 @@ type message struct {
 
 func newTranslator(sid, model string) *translator {
 	return &translator{
-		sid: sid, model: model,
-		roles: map[string]string{}, echoed: map[string]bool{}, blocks: map[string]*block{}, calls: map[string]call{},
-		results: map[string]bool{}, children: map[string]string{}, childTxt: map[string]bool{},
+		turn:  newTurn(sid, model),
+		roles: map[string]string{}, echoed: map[string]bool{}, children: map[string]string{}, childTxt: map[string]bool{},
 	}
 }
-
-// obj is a JSON object that keeps its keys in order (key, value, key, value, …): live's classify recognizes lines
-// by how they start, e.g. {"type":"stream_event","event":{"type":"message_start".
-type obj []any
-
-func (o obj) MarshalJSON() ([]byte, error) {
-	var b bytes.Buffer
-	b.WriteByte('{')
-	for i := 0; i+1 < len(o); i += 2 {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		k, _ := json.Marshal(o[i])
-		v, err := json.Marshal(o[i+1])
-		if err != nil {
-			return nil, err
-		}
-		b.Write(k)
-		b.WriteByte(':')
-		b.Write(v)
-	}
-	b.WriteByte('}')
-	return b.Bytes(), nil
-}
-
-func line(o obj) string {
-	b, _ := json.Marshal(o)
-	return string(b)
-}
-
-func streamEvent(ev obj) string { return line(obj{"type", "stream_event", "event", ev}) }
 
 // frame translates one event frame ({type, properties}) into zero or more wire lines.
 func (t *translator) frame(raw []byte) []string {
@@ -202,14 +133,10 @@ func (t *translator) frame(raw []byte) []string {
 			SessionID string `json:"sessionID"`
 		}
 		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.sid && t.busy {
-			emit(t.end()...)
+			emit(t.end(func(name string) bool { return name == "MessageAbortedError" })...)
 		}
 	}
 	return out
-}
-
-func (t *translator) begin() {
-	t.busy, t.turns, t.cost, t.started, t.ended, t.errName, t.errMessage = true, 0, 0, 0, 0, "", ""
 }
 
 func (t *translator) message(m message) []string {
@@ -232,36 +159,6 @@ func (t *translator) message(m message) []string {
 		t.ended = m.Time.Completed
 	}
 	return out
-}
-
-func (t *translator) startMessage(id string) []string {
-	out := t.stopMessage()
-	t.msg, t.next = id, 0
-	// ponytail: OpenCode reports tokens when a step ends, so the context meter shows the previous step's input
-	u := t.usage
-	return append(out, streamEvent(obj{"type", "message_start", "message", obj{"id", id, "model", t.model,
-		"usage", obj{"input_tokens", u.Input, "cache_read_input_tokens", u.Cache.Read, "cache_creation_input_tokens", u.Cache.Write}}}))
-}
-
-func (t *translator) stopMessage() []string {
-	if t.msg == "" {
-		return nil
-	}
-	var out []string
-	for _, b := range t.open {
-		out = append(out, streamEvent(obj{"type", "content_block_stop", "index", b.index}))
-	}
-	t.open, t.msg = nil, ""
-	t.turns++
-	return append(out, streamEvent(obj{"type", "message_stop"}))
-}
-
-func (t *translator) delta(b *block, text string) string {
-	key := "text"
-	if b.kind == "thinking" {
-		key = "thinking"
-	}
-	return streamEvent(obj{"type", "content_block_delta", "index", b.index, "delta", obj{"type", key + "_delta", key, text}})
 }
 
 func (t *translator) part(p part) []string {
@@ -320,25 +217,6 @@ func (t *translator) textPart(p part) []string {
 		out = append(out, t.stop(b))
 	}
 	return out
-}
-
-func (t *translator) isOpen(b *block) bool {
-	for _, o := range t.open {
-		if o == b {
-			return true
-		}
-	}
-	return false
-}
-
-func (t *translator) stop(b *block) string {
-	for i, o := range t.open {
-		if o == b {
-			t.open = append(t.open[:i:i], t.open[i+1:]...)
-			break
-		}
-	}
-	return streamEvent(obj{"type", "content_block_stop", "index", b.index})
 }
 
 func (t *translator) toolPart(p part) []string {
@@ -475,25 +353,4 @@ func (t *translator) question(raw json.RawMessage) []string {
 func (t *translator) mine(sid string) bool {
 	_, child := t.children[sid]
 	return sid == t.sid || child
-}
-
-// end: the card's session went idle; the turn's result.
-func (t *translator) end() []string {
-	out := t.stopMessage()
-	subtype, isErr := "success", false
-	switch {
-	case t.errName == "MessageAbortedError":
-		subtype, isErr = "error_during_execution", true
-	case t.errName != "":
-		subtype, isErr = "error", true
-	}
-	dur := 0.0
-	if t.ended > t.started && t.started > 0 {
-		dur = t.ended - t.started
-	}
-	u := t.usage
-	t.busy = false
-	return append(out, line(obj{"type", "result", "subtype", subtype, "is_error", isErr, "result", t.errMessage,
-		"session_id", t.sid, "num_turns", t.turns, "duration_ms", dur, "total_cost_usd", t.cost,
-		"usage", obj{"input_tokens", u.Input, "output_tokens", u.Output, "cache_read_input_tokens", u.Cache.Read, "cache_creation_input_tokens", u.Cache.Write}}))
 }

@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"Write a very long 500 word essay about the history of tea, slowly."},"uuid":"msg_0e2739306001BXHPpp6dFQ3W9Y"}
+{"type":"system","subtype":"init","session_id":"ses_f1d8c71f2ffe7PKsmv1lI15rQt","model":"opencode/space-bunny-free"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_0e2739314001iapyMw8uV85hu8","model":"opencode/space-bunny-free","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"error_during_execution","is_error":true,"result":"","session_id":"ses_f1d8c71f2ffe7PKsmv1lI15rQt","num_turns":1,"duration_ms":1504,"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}
