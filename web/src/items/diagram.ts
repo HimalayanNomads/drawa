@@ -18,11 +18,17 @@ let mermaid: Promise<Mermaid> | undefined // big library: loaded on first diagra
 const init = (m: Mermaid) => m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: isDark() ? 'dark' : 'neutral',
   htmlLabels: false, flowchart: { htmlLabels: false },
   fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--sans').trim() || 'system-ui, sans-serif' })
-// Theme switched: new drawings use it, pinned diagrams redraw. ponytail: diagrams already in chat replies keep their colors.
-onTheme(() => mermaid?.then(m => {
+// Theme switched: new drawings use it; pinned diagrams and the ones in replies redraw. The zoom view needs nothing:
+// it's modal (the theme can't change while it's open) and copies the reply's drawing each time it opens.
+onTheme(() => mermaid?.then(async m => {
   init(m)
   live.clear()
   for (const n of items('diagram')) draw(n.querySelector<HTMLElement>('.dnode-b')!, n.dataset.src!).catch(() => {})
+  for (const d of document.querySelectorAll<HTMLElement>('.mermaid[data-src]')) {
+    const old = d.querySelector(':scope > svg')
+    if (!old) continue // still being drawn: it picks up the new theme anyway
+    try { old.outerHTML = (await m.render(`md-${Date.now()}-${++seq}`, d.dataset.src!)).svg } catch {}
+  }
 }))
 
 function load() {
