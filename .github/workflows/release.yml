@@ -29,9 +29,9 @@ jobs:
           - goos: linux
             goarch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -49,9 +49,10 @@ jobs:
           mkdir -p internal/webassets/dist
           cp -r web/dist/. internal/webassets/dist/
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false # no dependencies, so there's no go.sum to key a module cache on
 
       - name: Build drawa
         env:
@@ -65,7 +66,7 @@ jobs:
       - name: Package
         run: tar -czf "drawa-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" -C out drawa
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: drawa-${{ matrix.goos }}-${{ matrix.goarch }}
           path: "*.tar.gz"
@@ -75,7 +76,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
