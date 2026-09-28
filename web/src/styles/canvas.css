@@ -75,6 +75,10 @@ body.erasing #ink path:hover{opacity:.45}
 
 /* minimap: one box per item, in its kind's color (the kind map above); only states change it here */
 #minimap{position:relative;width:200px;height:128px;border-radius:var(--r-tag);background:var(--canvas);overflow:hidden;cursor:pointer}
+/* quiet: faded and pulled up out of the corner's flow (a negative margin keeps its size, so it still draws);
+   hovering the corner brings it back. Reduced motion drops the transition (index.css). */
+#minimap{transition:opacity .25s,margin-top .25s}
+#nav[data-state=quiet]:not(:hover) #minimap{opacity:0;margin-top:-134px;pointer-events:none}
 #mm i{position:absolute;display:block;border-radius:var(--r-hair);background:color-mix(in oklab,var(--kind,var(--line-2)) 60%,transparent)}
 #mm i[data-kind=session]{--kind:color-mix(in oklab,var(--ink) 50%,transparent)} /* idle: neutral, so a working one stands out */
 #mm i[data-kind=session][data-s=busy]{--kind:var(--accent)}#mm i[data-kind=session][data-s=asking]{--kind:var(--run)}

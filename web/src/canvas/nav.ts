@@ -1,7 +1,7 @@
 // Moving around the canvas: drag the background to pan (Hand mode, Space, the middle button), the wheel pans,
 // Ctrl/Cmd+wheel (and pinch) zooms; the minimap and the zoom buttons in the corner.
 import { $, make } from '../lib/dom'
-import { stage, view, apply, applySoon, zoomView, zoomAt, fit, track, onChange, placed, rect, type Rect } from './canvas'
+import { stage, view, apply, applySoon, zoomView, zoomAt, fit, track, onChange, changed, placed, rect, type Rect } from './canvas'
 
 stage.addEventListener('pointerdown', e => {
   if (e.button > 1 || (e.target as Element).closest('.item, .fullview, .pinbar')) return
@@ -113,6 +113,26 @@ onChange(viewOnly => {
   }
   at(vp, v)
 })
+
+/* ---------- the minimap shows while the view moves and folds away after a quiet spell; hovering the corner keeps it
+   (CSS), and a session starting to ask brings it back so its box can say which one needs you ---------- */
+const nav = $('#nav')
+let quiet = 0, lastView = ''
+function wake() {
+  delete nav.dataset.state
+  clearTimeout(quiet)
+  quiet = setTimeout(() => { nav.dataset.state = 'quiet' }, 1500)
+}
+onChange(() => {
+  const at = `${view.x},${view.y},${view.k}` // only the view: items resizing while Claude streams shouldn't wake it
+  if (at !== lastView) { lastView = at; wake() }
+})
+new MutationObserver(recs => {
+  if (!recs.some(r => (r.target as HTMLElement).dataset.state === 'asking' && r.oldValue !== 'asking')) return
+  wake()
+  changed(true) // repaint the boxes' states now, not at the next pan
+}).observe(stage, { subtree: true, attributeFilter: ['data-state'], attributeOldValue: true })
+
 minimap.addEventListener('pointerdown', e => {
   const b = minimap.getBoundingClientRect()
   const wx = (e.clientX - b.left) / mmScale + mmOrigin.x, wy = (e.clientY - b.top) / mmScale + mmOrigin.y
