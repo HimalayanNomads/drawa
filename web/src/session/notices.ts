@@ -25,8 +25,8 @@ export function meta(S: Session, text: string) {
 }
 
 // "Another Claude session sent a message: <agent-message from=…>…</agent-message>", then a note from the harness
-// that isn't part of the report
-const HANDOFF = /^Another Claude session sent a message[^\n]*:\s*<agent-message from="([^"]+)">([\s\S]*?)(?:<\/agent-message>|$)/
+// that isn't part of the report. A hand-back queued while Claude was busy is echoed bare, from <agent-message> on.
+const HANDOFF = /^(?:Another Claude session sent a message[^\n]*:\s*)?<agent-message from="([^"]+)">([\s\S]*?)(?:<\/agent-message>|$)/
 const reports = new WeakMap<Element, string>()
 
 /** An agent's message to this session, usually its final report in the harness's hand-back frame: shown as the report
