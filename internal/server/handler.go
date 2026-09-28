@@ -89,6 +89,10 @@ var getRoutes = map[string]routeFunc{
 		info, _ := update.Check() // offline: no newer release to offer, which is the right answer
 		return info, 200, nil
 	},
+	"/api/update/progress": func(q url.Values) (any, int, error) {
+		got, total := update.Progress()
+		return map[string]int64{"got": got, "total": total}, 200, nil
+	},
 	"/api/tree": func(q url.Values) (any, int, error) { return ok(filesx.Tree(q.Get("path"))) },
 	"/api/file": func(q url.Values) (any, int, error) {
 		p, err := need(q, "path")

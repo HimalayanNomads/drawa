@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -82,6 +83,16 @@ func Check() (Info, error) {
 	avail := newer(cache.latest, config.Version) && cache.latest != cache.installed
 	return Info{Current: config.Version, Latest: cache.latest, URL: cache.url, Available: avail, Installed: cache.installed}, nil
 }
+
+// progress counts the release archive's bytes while Install downloads it, for the page's dialog to poll.
+var progress struct{ got, total atomic.Int64 }
+
+type counted struct{}
+
+func (counted) Write(p []byte) (int, error) { progress.got.Add(int64(len(p))); return len(p), nil }
+
+// Progress is how much of the archive Install has downloaded so far (total is 0 until GitHub says the size).
+func Progress() (got, total int64) { return progress.got.Load(), progress.total.Load() }
 
 // Pending reports whether an installed update is waiting for a restart.
 func Pending() bool {
@@ -169,11 +180,11 @@ func Install() error {
 	defer os.RemoveAll(tmp)
 
 	archivePath := filepath.Join(tmp, asset)
-	if err := download(base+"/"+asset, archivePath); err != nil {
+	if err := download(base+"/"+asset, archivePath, true); err != nil {
 		return fmt.Errorf("downloading %s: %w", asset, err)
 	}
 	sumsPath := filepath.Join(tmp, "checksums.txt")
-	if err := download(base+"/checksums.txt", sumsPath); err != nil {
+	if err := download(base+"/checksums.txt", sumsPath, false); err != nil {
 		return fmt.Errorf("downloading checksums.txt: %w", err)
 	}
 	if err := verify(archivePath, asset, sumsPath); err != nil {
@@ -192,7 +203,7 @@ func Install() error {
 	return nil
 }
 
-func download(url, dest string) error {
+func download(url, dest string, track bool) error {
 	resp, err := downloadClient.Get(url)
 	if err != nil {
 		return err
@@ -206,7 +217,13 @@ func download(url, dest string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
+	var w io.Writer = f
+	if track {
+		progress.got.Store(0)
+		progress.total.Store(max(resp.ContentLength, 0))
+		w = io.MultiWriter(f, counted{})
+	}
+	_, err = io.Copy(w, resp.Body)
 	return err
 }
 

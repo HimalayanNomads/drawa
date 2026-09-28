@@ -32,11 +32,18 @@ function failed(e: unknown) {
   say(`Couldn't update: ${e instanceof Error ? e.message : e}. You can also run `, make('code', '', 'drawa --update'), ' in a terminal.')
 }
 
+const mb = (n: number) => (n / 1e6).toFixed(1)
+
 async function install() {
   lock(true)
   say(`Downloading ${info.latest}…`)
+  // the POST answers only once it's installed; a release is ~20MB, so show how far a slow link has got meanwhile
+  const poll = setInterval(async () => {
+    const p = await api<{ got: number; total: number }>('update/progress').catch(() => null)
+    if (busy && p?.total) say(`Downloading ${info.latest}… ${mb(p.got)} of ${mb(p.total)} MB`)
+  }, 500)
   try {
-    const r = await post('update', {})
+    const r = await post('update', {}).finally(() => clearInterval(poll))
     lock(false)
     d.dataset.state = 'restart'
     title.textContent = `${info.latest} is installed`
