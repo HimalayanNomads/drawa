@@ -62,9 +62,17 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
 // delete it, or edit it (back into the message box, to fix and send again). CSS hides the buttons once it's read.
 function takeBackButtons(S: Session, bubble: HTMLElement, again: { prompt: string; refs: Ref[]; images: Pasted[] } | null) {
   const row = make('span', 'unsend')
-  if (again) row.append(iconButton(ICON.pencil, 'Edit (take it back to fix)', () => unsend(S, bubble).then(ok => { if (ok) putBack(S, again.prompt, again.refs, again.images) })))
+  if (again) row.append(iconButton(ICON.pencil, 'Edit (take it back to fix; ↑ in the empty message box edits the last one)', () => unsend(S, bubble).then(ok => { if (ok) putBack(S, again.prompt, again.refs, again.images) }), 'edit'))
   row.append(iconButton(ICON.x, 'Delete (take it back)', () => unsend(S, bubble)))
   bubble.append(row)
+}
+
+/** ↑ in an empty message box: edit the last message you sent, if it's still waiting. False: it isn't (history takes ↑). */
+export function editLast(S: Session): boolean {
+  const last = [...S.log.querySelectorAll<HTMLElement>(':scope > .me')].pop()
+  const edit = last?.classList.contains('queued') ? last.querySelector<HTMLButtonElement>('.unsend .edit') : null
+  edit?.click()
+  return !!edit
 }
 
 // ponytail: shell runs sent with the message go with it; give them back to takeShell if that's ever missed.

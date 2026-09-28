@@ -6,7 +6,7 @@ import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, type Session } from './session'
-import { send } from './live'
+import { send, editLast } from './live'
 import { readImages, thumb, type Pasted } from './images'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
@@ -106,7 +106,12 @@ export function composer(S: Session, body: HTMLElement) {
   commandMenu(S, form)
   // after the menu's handler: when the "/" or "@" menu is open, it takes Up/Down (and prevents the default)
   const step = recall(ta, S.log)
-  ta.addEventListener('keydown', e => { if (!e.defaultPrevented && step(e)) { e.preventDefault(); fit() } })
+  ta.addEventListener('keydown', e => {
+    if (e.defaultPrevented) return
+    const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing
+    if (plainUp && !ta.value && editLast(S)) e.preventDefault() // the last message is still queued: take it back to edit
+    else if (step(e)) { e.preventDefault(); fit() }
+  })
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
