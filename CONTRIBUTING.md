@@ -132,6 +132,7 @@ flowchart TB
     api["HTTP API and event stream"] --> procs["Session manager · agent backends"]
     api --> repo["Git, GitHub and files"]
     api --> mcp["Canvas tools MCP endpoint"]
+    cli["Project argument · a GitHub URL is cloned into the cache (internal/remote)"]
   end
 
   subgraph tools["Local tools"]

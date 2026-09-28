@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"drawa/internal/remote"
 )
 
 const defaultPort = 8765
@@ -96,8 +98,33 @@ func netToken() string {
 	return t
 }
 
-// Root is the project folder Claude works in: the first non-flag argument, default the current folder.
+// Root is the project folder Claude works in: the first non-flag argument, default the current folder. A GitHub
+// URL maps to its clone folder in the cache (a local path of the same name wins); main() does the cloning, since
+// this runs at init and must not touch the network.
 var Root = rootDir()
+
+// Cloned is true when Root is a clone of someone else's code: the argument was a GitHub URL, or a folder inside the
+// clone cache (opening it directly must not skip the trust question). CloneURL and CloneRef say what main() clones
+// into Root on first run; empty for a folder given directly, which already exists. No initializers: rootDir() sets them while Root is
+// initialized, and a zero-value var is never reassigned after that.
+var Cloned bool
+var CloneURL, CloneRef string
+
+// Trusted is the answer main() got when it asked whether to trust a clone. Kept in DRAWA_TRUST so the
+// self-restart (syscall.Exec with os.Environ) doesn't ask again.
+var Trusted bool
+
+const TrustEnv = "DRAWA_TRUST"
+
+// Untrusted: agents start without the project's own settings, since its hooks would run shell commands unasked.
+func Untrusted() bool { return Cloned && !Trusted }
+
+// TrustFor reads a DRAWA_TRUST value ("1:<root>" or "0:<root>"): ok only when it was given for root, since every
+// child process inherits the variable and a drawa started from one on another repo must still ask.
+func TrustFor(v, root string) (trust, ok bool) {
+	answer, r, _ := strings.Cut(v, ":") // Cut: the root may hold colons
+	return answer == "1", r == root
+}
 
 func rootDir() string {
 	arg := "."
@@ -107,6 +134,12 @@ func rootDir() string {
 			break
 		}
 	}
+	if _, err := os.Stat(arg); err != nil {
+		if dir, url, ref, ok := remote.Parse(arg); ok {
+			Cloned, CloneURL, CloneRef = true, url, ref
+			return dir
+		}
+	}
 	abs, err := filepath.Abs(arg)
 	if err != nil {
 		abs = arg
@@ -114,7 +147,13 @@ func rootDir() string {
 	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
 		abs = resolved
 	}
+	Cloned = inCache(abs, remote.Base())
 	return abs
+}
+
+// inCache: both paths are resolved, so a prefix with a trailing separator is enough (/repos2 isn't inside /repos).
+func inCache(abs, base string) bool {
+	return strings.HasPrefix(abs, base+string(filepath.Separator))
 }
 
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)

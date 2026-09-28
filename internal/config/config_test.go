@@ -86,3 +86,37 @@ func TestNetTokenSurvivesRestart(t *testing.T) {
 		t.Errorf("re-exec'd process got a new token %q, want %q", b, a)
 	}
 }
+
+func TestInCache(t *testing.T) {
+	base := "/c/drawa/repos"
+	cases := map[string]bool{
+		"/c/drawa/repos/github.com/o/r":     true,
+		"/c/drawa/repos/github.com/o/r/sub": true, // a subfolder of a clone counts too
+		"/c/drawa/repos":                    false,
+		"/c/drawa/repos2/github.com/o/r":    false,
+		"/home/me/project":                  false,
+	}
+	for p, want := range cases {
+		if got := inCache(p, base); got != want {
+			t.Errorf("inCache(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+func TestTrustFor(t *testing.T) {
+	cases := []struct {
+		v, root   string
+		trust, ok bool
+	}{
+		{"1:/r", "/r", true, true},
+		{"0:/r", "/r", false, true},
+		{"1:/r", "/other", true, false},
+		{"1:/a:b", "/a:b", true, true}, // the root may hold colons
+		{"", "/r", false, false},
+	}
+	for _, c := range cases {
+		if trust, ok := TrustFor(c.v, c.root); trust != c.trust || ok != c.ok {
+			t.Errorf("TrustFor(%q, %q) = %v, %v; want %v, %v", c.v, c.root, trust, ok, c.trust, c.ok)
+		}
+	}
+}

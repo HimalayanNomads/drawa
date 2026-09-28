@@ -70,8 +70,22 @@ func writeMCPConfig(url string) (string, error) {
 	return f.Name(), nil
 }
 
+// untrustedArgs keeps a clone of someone else's repo from configuring Claude: `claude -p` shows no workspace-trust
+// prompt, so the project's .claude/settings.json hooks would run shell commands unasked. With only the user's own
+// settings (checked on CLI 2.1.283) .claude/settings.json and settings.local.json are skipped whole (hooks, permissions),
+// and so are .mcp.json servers (even with enableAllProjectMcpServers), CLAUDE.md and CLAUDE.local.md
+// (nested ones too), and .claude/agents, commands and skills. Still loaded: user settings, user-scope MCP servers,
+// managed policy, and what Drawa passes itself (--mcp-config, so the canvas tools keep working). The repo's files
+// can still carry prompt injection once Claude reads them; tool calls go through the approval flow as usual.
+func untrustedArgs() []string {
+	if !config.Untrusted() {
+		return nil
+	}
+	return []string{"--setting-sources", "user"}
+}
+
 func buildArgv(sid, mode, model, effort, mcpPath string) []string {
-	argv := append([]string{}, claudeArgv...)
+	argv := append(append([]string{}, claudeArgv...), untrustedArgs()...)
 	if mcpPath != "" {
 		argv = append(argv, "--mcp-config", mcpPath)
 	}
@@ -291,7 +305,8 @@ func (c *claude) Kill() { c.p.Kill() }
 
 // claudeOneShot is a one-off `claude -p` call with Haiku, the text on stdin.
 func claudeOneShot(prompt, text string) (bool, string) {
-	r, err := procx.RunEnv(120*time.Second, text, nil, "claude", "-p", "--model", "haiku", prompt)
+	argv := append([]string{"claude", "-p", "--model", "haiku"}, untrustedArgs()...)
+	r, err := procx.RunEnv(120*time.Second, text, nil, append(argv, prompt)...)
 	if err != nil {
 		return false, err.Error()
 	}

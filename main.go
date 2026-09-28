@@ -1,6 +1,8 @@
 // Browser UI for Claude Code.
 //
 //	drawa [--net] [project-folder]   (default: the current folder, like `code .`); opens http://127.0.0.1:8765
+//	drawa [--net] <github-url>       clones into the cache and opens it
+//	drawa --clean [github-url]       removes cached clones with no unsaved work
 //	drawa --update                   installs the latest release over this binary
 //	drawa --version
 //
@@ -11,6 +13,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -29,6 +32,7 @@ import (
 	"drawa/internal/live"
 	_ "drawa/internal/opencode" // registers the opencode backend
 	"drawa/internal/qr"
+	"drawa/internal/remote"
 	"drawa/internal/server"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
@@ -52,11 +56,37 @@ const (
 	reset  = "\033[0m"
 )
 
+// askTrust asks whether a cloned repo's own agent settings may load; their hooks and plugins run commands with no
+// approval. The answer rides DRAWA_TRUST through self-restarts, tagged with Root: every child (agents, shells, git)
+// inherits the variable, and a drawa started from one on another repo must still ask. No terminal means untrusted.
+func askTrust() bool {
+	if v, ok := os.LookupEnv(config.TrustEnv); ok {
+		if trust, ok := config.TrustFor(v, config.Root); ok {
+			return trust
+		}
+	}
+	trust := false
+	// the terminal itself, like sudo: stdin may be /dev/null or a pipe, and stdout may be redirected to a log
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		fmt.Fprint(tty, "Trust this repo's agent settings? Its hooks and plugins can run commands on your machine. [y/N] ")
+		line, _ := bufio.NewReader(tty).ReadString('\n')
+		tty.Close()
+		answer := strings.ToLower(strings.TrimSpace(line))
+		trust = answer == "y" || answer == "yes"
+	}
+	os.Setenv(config.TrustEnv, map[bool]string{true: "1", false: "0"}[trust]+":"+config.Root)
+	return trust
+}
+
 // preflight checks the external tools this app shells out to and prints a pass/fail line for each. At least one
 // agent backend's CLI is required (every card is one of their processes); the others, and git and gh, are optional
 // (the Git/GitHub windows and their per-call code already degrade gracefully without them), so those only warn.
 func preflight() {
 	if st, err := os.Stat(config.Root); err != nil || !st.IsDir() { // claude can't start in it: every send would fail
+		if arg := firstArg(); strings.Contains(arg, "://") || strings.HasPrefix(arg, "git@") {
+			fmt.Printf("%s isn't a supported GitHub repo URL (https://github.com/owner/repo, …/tree/<branch>, or git@github.com:owner/repo.git).\n", arg)
+			os.Exit(1)
+		}
 		fmt.Printf("%s isn't a folder.\n", config.Root)
 		if len(os.Args) > 1 && strings.Contains(os.Args[1], "=") {
 			fmt.Printf("Environment variables go before the command: %s drawa\n", os.Args[1])
@@ -104,6 +134,16 @@ func preflight() {
 	if !ok {
 		os.Exit(1)
 	}
+}
+
+// firstArg is the first non-flag argument anywhere, as config.rootDir reads it ("" if none).
+func firstArg() string {
+	for _, a := range os.Args[1:] {
+		if !strings.HasPrefix(a, "-") {
+			return a
+		}
+	}
+	return ""
 }
 
 func warnOf(f func() string) string {
@@ -211,7 +251,30 @@ func main() {
 		}
 		return
 	}
+	if slices.Contains(os.Args[1:], "--clean") { // before preflight: cleaning doesn't need claude
+		if err := remote.Clean(firstArg()); err != nil { // `drawa <url> --clean` cleans only <url>
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Print(banner)
+	if config.Cloned { // before preflight, which needs Root to exist
+		if _, err := exec.LookPath("git"); err != nil {
+			fmt.Println("git is needed to open a GitHub URL.")
+			os.Exit(1)
+		}
+		if config.CloneURL != "" { // empty: a clone's folder opened directly, nothing to clone
+			if err := remote.Ensure(config.Root, config.CloneURL, config.CloneRef); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		}
+		config.Trusted = askTrust()
+		if config.Untrusted() {
+			fmt.Println("Opening untrusted: the repo's own agent settings (hooks, permissions, MCP servers, plugins) are ignored.")
+		}
+	}
 	preflight()
 	if _, err := os.Stat(filepath.Join(config.Dist, "index.html")); err != nil && !webassets.Available() {
 		// first run from a fresh clone: build the UI so there is one command to learn. A standalone release

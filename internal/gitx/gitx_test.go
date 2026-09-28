@@ -116,3 +116,67 @@ func TestRootRel(t *testing.T) {
 		t.Fatal("rootRel(../x) accepted")
 	}
 }
+
+func TestCommandOverrides(t *testing.T) {
+	savedC, savedT := config.Cloned, config.Trusted
+	t.Cleanup(func() { config.Cloned, config.Trusted = savedC, savedT })
+	has := func(list []string, s string) bool { return slices.Contains(list, s) }
+	for _, c := range []struct{ cloned, trusted, prompt, locked bool }{
+		{false, false, false, false}, {true, true, true, false}, {true, false, true, true},
+	} {
+		config.Cloned, config.Trusted = c.cloned, c.trusted
+		env, argv := command([]string{"diff", "--cached"})
+		if has(env, "GIT_TERMINAL_PROMPT=0") != c.prompt || has(argv, "credential.interactive=false") != c.prompt {
+			t.Errorf("%+v: prompt overrides env=%v argv=%v", c, env, argv)
+		}
+		if has(argv, "core.fsmonitor=false") != c.locked || has(argv, "core.hooksPath=/dev/null") != c.locked ||
+			has(argv, "--no-ext-diff") != c.locked {
+			t.Errorf("%+v: untrusted overrides argv=%v", c, argv)
+		}
+		if !has(env, "GIT_LITERAL_PATHSPECS=1") || argv[0] != "git" || argv[len(argv)-1] != "--cached" {
+			t.Errorf("%+v: env=%v argv=%v", c, env, argv)
+		}
+	}
+}
+
+// A repo whose .git/config names commands (fsmonitor, an external diff) runs none of them from Drawa's own git calls
+// when the clone is untrusted; the trusted run first proves the commands would have run.
+func TestUntrustedRunsNoRepoCommands(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	repo, _ := filepath.EvalSymlinks(t.TempDir())
+	marker := filepath.Join(t.TempDir(), "ran")
+	script := filepath.Join(t.TempDir(), "evil.sh")
+	os.WriteFile(script, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "i"},
+		{"config", "core.fsmonitor", script}, {"config", "diff.external", script}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	savedR, savedC, savedT := config.Root, config.Cloned, config.Trusted
+	t.Cleanup(func() { config.Root, config.Cloned, config.Trusted = savedR, savedC, savedT; prefixCache.ok = false })
+	config.Root, config.Cloned = repo, true
+	prefixCache.ok = false
+	os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644)
+	Git("add", "f")
+	os.WriteFile(filepath.Join(repo, "f"), []byte("b\n"), 0o644)
+	run := func() bool {
+		os.Remove(marker)
+		gitStatus()
+		GitDiff("f", false)
+		_, err := os.Stat(marker)
+		return err == nil
+	}
+	config.Trusted = true
+	if !run() {
+		t.Skip("this git ran neither command even when trusted")
+	}
+	config.Trusted = false
+	if run() {
+		t.Fatal("untrusted clone ran a command from .git/config")
+	}
+}

@@ -4,14 +4,12 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
-
-	"drawa/internal/procx"
 )
 
 // oneShot answers one prompt about text (on stdin) with OpenCode's default model: `opencode run --format json`,
 // whose text events are the reply. The session it creates is deleted, so it doesn't fill the history list.
 func oneShot(prompt, text string) (bool, string) {
-	r, err := procx.RunEnv(180*time.Second, text, nil, "opencode", "run", "--format", "json", prompt)
+	r, err := ocRun(180*time.Second, text, "run", "--format", "json", prompt)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -34,7 +32,7 @@ func oneShot(prompt, text string) (bool, string) {
 		}
 	}
 	if sid != "" && sidRe.MatchString(sid) {
-		go procx.RunEnv(30*time.Second, "", nil, "opencode", "session", "delete", sid)
+		go ocRun(30*time.Second, "", "session", "delete", sid)
 	}
 	if out := strings.TrimSpace(strings.Join(reply, "")); r.Code == 0 && out != "" {
 		return true, out

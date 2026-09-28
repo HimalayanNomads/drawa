@@ -114,7 +114,7 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 
 ## Server (`main.go`, `internal/`)
 
-`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`). Everything it does lives in `internal/`, one file (or small file group) per responsibility. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
+`main.go` is the thin entry point (the self-restart loop and `main()`; the project folder argument is read in `internal/config`; a GitHub URL there maps to a cached clone that `internal/remote` makes, and sets `config.Cloned`; unless the user answers y to the trust prompt, `config.Untrusted()` makes every agent call skip the project's own settings (`--setting-sources user`, `OPENCODE_DISABLE_PROJECT_CONFIG`), so gate any new agent spawn on it). Everything it does lives in `internal/`, one file (or small file group) per responsibility. Add a new domain the same way: one new package in `internal/`, imported where its routes or callers need it. `go test ./...` covers the riskiest small pieces (GitHub check merging, session/transcript loading, the canvas MCP endpoint, the multiplexed event stream) the way `test_server.py` used to.
 
 - Stdlib only (`net/http`). No third-party Go modules — `go.mod` should stay dependency-free the same way the old `server.py` was.
 - **Security checks are not optional:**

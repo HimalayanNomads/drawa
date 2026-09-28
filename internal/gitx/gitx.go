@@ -29,9 +29,8 @@ func GitOpts(o Opts, args ...string) (bool, string) {
 	if o.Timeout == 0 {
 		o.Timeout = 30 * time.Second
 	}
-	// literal pathspecs: a page-supplied ":/x" would otherwise name a file from the repo's top, outside Root
-	env := append(os.Environ(), "GIT_LITERAL_PATHSPECS=1")
-	r, err := procx.RunEnv(o.Timeout, o.Stdin, env, append([]string{"git"}, args...)...)
+	env, argv := command(args)
+	r, err := procx.RunEnv(o.Timeout, o.Stdin, env, argv...)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -43,6 +42,29 @@ func GitOpts(o Opts, args ...string) (bool, string) {
 		out = r.Stdout
 	}
 	return false, strings.Trim(out, "\n")
+}
+
+// command is the env and argv for every git call Drawa makes.
+func command(args []string) (env, argv []string) {
+	// literal pathspecs: a page-supplied ":/x" would otherwise name a file from the repo's top, outside Root
+	env = append(os.Environ(), "GIT_LITERAL_PATHSPECS=1")
+	argv = []string{"git"}
+	if config.Cloned {
+		// a blobless clone fetches old blobs on demand (diff, blame): with nobody at Drawa's terminal to answer, a
+		// credential prompt would hang the Git window until the timeout, so fail at once instead
+		env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=", "SSH_ASKPASS_REQUIRE=never")
+		argv = append(argv, "-c", "credential.interactive=false")
+	}
+	if config.Untrusted() {
+		// the agent may be talked into editing .git/config, and the Git window polls status with no approval: turn off
+		// the repo-local settings that run commands (credential.helper= drops the helper list, the user's own too)
+		argv = append(argv, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
+			"-c", "credential.helper=", "-c", "core.sshCommand=ssh -o BatchMode=yes")
+		if len(args) > 0 && (args[0] == "diff" || args[0] == "log") { // diff drivers and textconv from .gitattributes
+			args = append([]string{args[0], "--no-ext-diff", "--no-textconv"}, args[1:]...)
+		}
+	}
+	return env, append(argv, args...)
 }
 
 var stateCache = struct {
@@ -241,7 +263,8 @@ func GitDiff(rel string, staged bool) (map[string]any, error) {
 // gitHead runs git and keeps only the first max bytes of its output, then stops it: a huge diff is never held whole.
 // Returns (exited cleanly or was cut short, stdout or else stderr).
 func gitHead(max int, args ...string) (bool, string) {
-	r, err := procx.RunLimit(30*time.Second, max, "", append(os.Environ(), "GIT_LITERAL_PATHSPECS=1"), append([]string{"git"}, args...)...)
+	env, argv := command(args)
+	r, err := procx.RunLimit(30*time.Second, max, "", env, argv...)
 	if err != nil {
 		return false, err.Error()
 	}

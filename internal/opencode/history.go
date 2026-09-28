@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"drawa/internal/config"
-	"drawa/internal/procx"
 	"drawa/internal/sessions"
 )
 
@@ -31,7 +30,7 @@ func (history) List() []sessions.Info {
 		return listCache.list
 	}
 	out := []sessions.Info{}
-	r, err := procx.RunEnv(30*time.Second, "", nil, "opencode", "session", "list", "--format", "json", "--max-count", "200")
+	r, err := ocRun(30*time.Second, "", "session", "list", "--format", "json", "--max-count", "200")
 	if err == nil && r.Code == 0 {
 		var all []struct {
 			ID        string  `json:"id"`
@@ -68,7 +67,7 @@ func (history) Load(sid, agent string) ([]map[string]any, bool) {
 	if agent != "" {
 		return []map[string]any{}, true
 	}
-	r, err := procx.RunEnv(60*time.Second, "", nil, "opencode", "export", sid)
+	r, err := ocRun(60*time.Second, "", "export", sid)
 	if err != nil || r.Code != 0 {
 		return nil, false
 	}

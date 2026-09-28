@@ -98,7 +98,13 @@ Drawa opens http://127.0.0.1:8765 in your browser, and Claude works in that fold
 drawa                  # the current folder
 drawa ~/some/project   # any other folder
 drawa --net .          # also reachable from other devices on the network
+drawa https://github.com/owner/repo   # clones it into a cache folder and opens it (reruns reuse the clone)
+drawa --clean          # removes cached clones (or pass one repo's URL)
 ```
+
+Opening a GitHub URL, or a folder inside its clone, asks on each launch whether to trust the repo (only the server's own restarts after code changes reuse the answer). Answer `n` (the default) and its own `.claude/` settings, hooks, `.mcp.json`, `CLAUDE.md` and OpenCode project config are ignored, since they could run commands on your machine.
+
+`--clean` keeps any clone with uncommitted, unpushed, stashed or ignored files. Don't run it while a Drawa is open on that clone. A GitHub folder link (`/tree/main/docs`) opens the repo on its default branch.
 
 In the message box, `/` opens skills and slash commands and `@` references files or canvas items. The toolbar picks the model and permission mode.
 

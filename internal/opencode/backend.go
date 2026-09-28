@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,9 +33,30 @@ const (
 	VersionV2 = "2.0.18"
 )
 
+// untrustedEnv keeps a clone of someone else's repo from configuring OpenCode. OPENCODE_DISABLE_PROJECT_CONFIG
+// (checked on 1.18.33) skips the project's opencode.json(c), its .opencode/ folders (plugins there are code that
+// runs as soon as any opencode command loads config, even `opencode debug config`; also agents, commands, MCP
+// servers) and its AGENTS.md/CLAUDE.md. The user's global config and OPENCODE_CONFIG_CONTENT (the canvas server,
+// the permissions) still load.
+func untrustedEnv() []string {
+	if !config.Untrusted() {
+		return nil
+	}
+	return []string{"OPENCODE_DISABLE_PROJECT_CONFIG=1"}
+}
+
+// ocRun is procx.RunEnv for an opencode command, which also runs in Root, so it gets untrustedEnv too.
+func ocRun(timeout time.Duration, stdin string, args ...string) (*procx.Result, error) {
+	var env []string
+	if e := untrustedEnv(); e != nil {
+		env = append(os.Environ(), e...)
+	}
+	return procx.RunEnv(timeout, stdin, env, append([]string{"opencode"}, args...)...)
+}
+
 // rawVersion runs `opencode --version` once (cached: every call site would otherwise re-run it).
 var rawVersion = sync.OnceValue(func() string {
-	r, err := procx.RunEnv(10*time.Second, "", nil, "opencode", "--version")
+	r, err := ocRun(10*time.Second, "", "--version")
 	if err != nil || r.Code != 0 {
 		return ""
 	}
@@ -143,6 +165,7 @@ func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
 	cfgJSON, _ := json.Marshal(cfg)
 	// the password and the MCP URL (it carries the card's token) go in the environment, never argv
 	env := []string{"OPENCODE_SERVER_PASSWORD=" + srv.pass, "OPENCODE_CONFIG_CONTENT=" + string(cfgJSON)}
+	env = append(env, untrustedEnv()...)
 	p, stdin, err := live.StartProc([]string{"opencode", "serve", "--port", "0", "--hostname", "127.0.0.1"}, env, sink.Exited)
 	if err != nil {
 		return nil, err
