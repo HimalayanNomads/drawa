@@ -3,6 +3,8 @@ package opencode
 import (
 	"encoding/json"
 	"fmt"
+
+	"drawa/internal/live"
 )
 
 // translatorV2 turns one card's OpenCode v2 events (GET /api/event frames) into wire lines (live/wire.go). v2
@@ -14,13 +16,13 @@ import (
 // task calls, their events are simply dropped by the t.sid filters below (session.tool.* etc. name the session
 // only in general terms, not scoped by an equivalent to v1's part.sessionID for a child).
 type translatorV2 struct {
-	turn
+	live.Turn
 	echoed  map[string]bool   // inbox ids already echoed as the user's message
 	pending map[string]string // tool call id -> its name, from tool.input.started (tool.called doesn't repeat it)
 }
 
 func newTranslatorV2(sid, model string) *translatorV2 {
-	return &translatorV2{turn: newTurn(sid, model), echoed: map[string]bool{}, pending: map[string]string{}}
+	return &translatorV2{Turn: live.NewTurn(sid, model), echoed: map[string]bool{}, pending: map[string]string{}}
 }
 
 // frame translates one event frame ({type, data}) into zero or more wire lines.
@@ -40,9 +42,9 @@ func (t *translatorV2) frame(raw []byte) []string {
 		var p struct {
 			SessionID string `json:"sessionID"`
 		}
-		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.sid && !t.busy {
-			t.begin()
-			emit(line(obj{"type", "system", "subtype", "init", "session_id", t.sid, "model", t.model}))
+		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.Sid && !t.Busy {
+			t.Begin()
+			emit(live.Line(live.Obj{"type", "system", "subtype", "init", "session_id", t.Sid, "model", t.Model}))
 		}
 	case "session.inbox.enqueued":
 		emit(t.echo(f.Data)...)
@@ -52,8 +54,8 @@ func (t *translatorV2) frame(raw []byte) []string {
 		var p struct {
 			SessionID string `json:"sessionID"`
 		}
-		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.sid {
-			emit(t.stopMessage()...)
+		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.Sid {
+			emit(t.StopMessage()...)
 		}
 	case "session.text.started":
 		emit(t.startPart(f.Data, "text")...)
@@ -73,7 +75,7 @@ func (t *translatorV2) frame(raw []byte) []string {
 			ID        string `json:"id"`
 			Name      string `json:"name"`
 		}
-		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.sid {
+		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.Sid {
 			t.pending[p.ID] = p.Name
 		}
 	case "session.tool.called":
@@ -88,12 +90,12 @@ func (t *translatorV2) frame(raw []byte) []string {
 		emit(t.form(f.Data)...)
 	case "session.usage.updated":
 		var p struct {
-			SessionID string  `json:"sessionID"`
-			Cost      float64 `json:"cost"`
-			Tokens    tokens  `json:"tokens"`
+			SessionID string      `json:"sessionID"`
+			Cost      float64     `json:"cost"`
+			Tokens    live.Tokens `json:"tokens"`
 		}
-		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.sid {
-			t.cost, t.usage = p.Cost, p.Tokens
+		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.Sid {
+			t.Cost, t.Usage = p.Cost, p.Tokens
 		}
 	case "session.execution.succeeded", "session.execution.failed", "session.execution.interrupted":
 		var p struct {
@@ -103,15 +105,15 @@ func (t *translatorV2) frame(raw []byte) []string {
 				Message string `json:"message"`
 			} `json:"error"`
 		}
-		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.sid && t.busy {
+		if json.Unmarshal(f.Data, &p) == nil && p.SessionID == t.Sid && t.Busy {
 			if f.Type != "session.execution.succeeded" {
-				t.errName, t.errMessage = f.Type, p.Error.Message
-				if t.errMessage == "" {
-					t.errMessage = p.Error.Type
+				t.ErrName, t.ErrMessage = f.Type, p.Error.Message
+				if t.ErrMessage == "" {
+					t.ErrMessage = p.Error.Type
 				}
 			}
-			t.ended = f.Created
-			emit(t.end(func(name string) bool { return name == "session.execution.interrupted" })...)
+			t.Ended = f.Created
+			emit(t.End(func(name string) bool { return name == "session.execution.interrupted" })...)
 		}
 	}
 	return out
@@ -129,11 +131,11 @@ func (t *translatorV2) echo(raw json.RawMessage) []string {
 			} `json:"payload"`
 		} `json:"item"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid || p.Item.Type != "user" || p.Item.Payload.Text == "" || t.echoed[p.InboxID] {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid || p.Item.Type != "user" || p.Item.Payload.Text == "" || t.echoed[p.InboxID] {
 		return nil
 	}
 	t.echoed[p.InboxID] = true
-	return []string{line(obj{"type", "user", "message", obj{"role", "user", "content", p.Item.Payload.Text}, "uuid", p.InboxID})}
+	return []string{live.Line(live.Obj{"type", "user", "message", live.Obj{"role", "user", "content", p.Item.Payload.Text}, "uuid", p.InboxID})}
 }
 
 func (t *translatorV2) stepStarted(raw json.RawMessage) []string {
@@ -146,15 +148,15 @@ func (t *translatorV2) stepStarted(raw json.RawMessage) []string {
 		} `json:"model"`
 		Started float64 `json:"started"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid {
 		return nil
 	}
 	if p.Model.ID != "" && p.Model.ProviderID != "" {
-		t.model = p.Model.ProviderID + "/" + p.Model.ID
+		t.Model = p.Model.ProviderID + "/" + p.Model.ID
 	}
-	out := t.startMessage(p.AssistantMessageID)
-	if t.started == 0 {
-		t.started = p.Started
+	out := t.StartMessage(p.AssistantMessageID)
+	if t.Started == 0 {
+		t.Started = p.Started
 	}
 	return out
 }
@@ -169,18 +171,18 @@ func (t *translatorV2) startPart(raw json.RawMessage, kind string) []string {
 		AssistantMessageID string `json:"assistantMessageID"`
 		Ordinal            int    `json:"ordinal"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid {
 		return nil
 	}
 	key := blockKey(kind, p.AssistantMessageID, p.Ordinal)
-	if t.blocks[key] != nil {
+	if t.Blocks[key] != nil {
 		return nil
 	}
-	b := &block{index: t.next, kind: kind, msg: t.msg}
-	t.next++
-	t.blocks[key] = b
-	t.open = append(t.open, b)
-	return []string{streamEvent(obj{"type", "content_block_start", "index", b.index, "content_block", obj{"type", kind, kind, ""}})}
+	b := &live.Block{Index: t.Next, Kind: kind, Msg: t.Msg}
+	t.Next++
+	t.Blocks[key] = b
+	t.Open = append(t.Open, b)
+	return []string{live.StreamEvent(live.Obj{"type", "content_block_start", "index", b.Index, "content_block", live.Obj{"type", kind, kind, ""}})}
 }
 
 func (t *translatorV2) deltaPart(raw json.RawMessage, kind string) []string {
@@ -190,15 +192,15 @@ func (t *translatorV2) deltaPart(raw json.RawMessage, kind string) []string {
 		Ordinal            int    `json:"ordinal"`
 		Delta              string `json:"delta"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid {
 		return nil
 	}
-	b := t.blocks[blockKey(kind, p.AssistantMessageID, p.Ordinal)]
-	if b == nil || !t.isOpen(b) {
+	b := t.Blocks[blockKey(kind, p.AssistantMessageID, p.Ordinal)]
+	if b == nil || !t.IsOpen(b) {
 		return nil
 	}
-	b.sent += len(p.Delta)
-	return []string{t.delta(b, p.Delta)}
+	b.Sent += len(p.Delta)
+	return []string{t.Delta(b, p.Delta)}
 }
 
 func (t *translatorV2) endPart(raw json.RawMessage, kind string) []string {
@@ -208,18 +210,18 @@ func (t *translatorV2) endPart(raw json.RawMessage, kind string) []string {
 		Ordinal            int    `json:"ordinal"`
 		Text               string `json:"text"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid {
 		return nil
 	}
-	b := t.blocks[blockKey(kind, p.AssistantMessageID, p.Ordinal)]
-	if b == nil || !t.isOpen(b) {
+	b := t.Blocks[blockKey(kind, p.AssistantMessageID, p.Ordinal)]
+	if b == nil || !t.IsOpen(b) {
 		return nil
 	}
 	var out []string
-	if b.sent == 0 && p.Text != "" { // arrived whole, no deltas
-		out = append(out, t.delta(b, p.Text))
+	if b.Sent == 0 && p.Text != "" { // arrived whole, no deltas
+		out = append(out, t.Delta(b, p.Text))
 	}
-	return append(out, t.stop(b))
+	return append(out, t.Stop(b))
 }
 
 // toolCalled: v2 hands the whole call (id + parsed input) in one event, unlike v1's evolving part; its name came
@@ -230,23 +232,23 @@ func (t *translatorV2) toolCalled(raw json.RawMessage) []string {
 		ID        string         `json:"id"`
 		Input     map[string]any `json:"input"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid || p.ID == "" {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid || p.ID == "" {
 		return nil
 	}
-	if _, seen := t.calls[p.ID]; seen {
+	if _, seen := t.Calls[p.ID]; seen {
 		return nil
 	}
 	rawName := t.pending[p.ID]
 	delete(t.pending, p.ID)
 	name, input := tool(rawName, p.Input)
-	t.calls[p.ID] = call{name, input}
+	t.Calls[p.ID] = live.ToolCall{Name: name, Input: input}
 	in, _ := json.Marshal(input)
-	i := t.next
-	t.next++
+	i := t.Next
+	t.Next++
 	return []string{
-		streamEvent(obj{"type", "content_block_start", "index", i, "content_block", obj{"type", "tool_use", "id", p.ID, "name", name, "input", obj{}}}),
-		streamEvent(obj{"type", "content_block_delta", "index", i, "delta", obj{"type", "input_json_delta", "partial_json", string(in)}}),
-		streamEvent(obj{"type", "content_block_stop", "index", i}),
+		live.StreamEvent(live.Obj{"type", "content_block_start", "index", i, "content_block", live.Obj{"type", "tool_use", "id", p.ID, "name", name, "input", live.Obj{}}}),
+		live.StreamEvent(live.Obj{"type", "content_block_delta", "index", i, "delta", live.Obj{"type", "input_json_delta", "partial_json", string(in)}}),
+		live.StreamEvent(live.Obj{"type", "content_block_stop", "index", i}),
 	}
 }
 
@@ -261,16 +263,16 @@ func (t *translatorV2) toolResult(raw json.RawMessage, isErr bool) []string {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.sid || p.ID == "" || t.results[p.ID] {
+	if json.Unmarshal(raw, &p) != nil || p.SessionID != t.Sid || p.ID == "" || t.Results[p.ID] {
 		return nil
 	}
-	t.results[p.ID] = true
+	t.Results[p.ID] = true
 	var content any = p.Error.Message
 	if !isErr {
 		json.Unmarshal(p.Content, &content)
 	}
-	return []string{line(obj{"type", "user", "message", obj{"role", "user",
-		"content", []obj{{"type", "tool_result", "tool_use_id", p.ID, "content", content, "is_error", isErr}}}})}
+	return []string{live.Line(live.Obj{"type", "user", "message", live.Obj{"role", "user",
+		"content", []live.Obj{{"type", "tool_result", "tool_use_id", p.ID, "content", content, "is_error", isErr}}}})}
 }
 
 // permission: OpenCode asks before a tool runs; the page shows it as Claude's can_use_tool ask about that call.
@@ -289,27 +291,27 @@ func (t *translatorV2) permission(raw json.RawMessage) []string {
 	if json.Unmarshal(raw, &p) != nil || p.ID == "" || !t.mine(p.SessionID) {
 		return nil
 	}
-	c, ok := t.calls[p.Source.ID]
+	c, ok := t.Calls[p.Source.ID]
 	if !ok { // asked before its call reached us: describe it from what the ask carries
-		c = call{p.Action, map[string]any{}}
+		c = live.ToolCall{Name: p.Action, Input: map[string]any{}}
 		if n, ok := toolNames[p.Action]; ok {
-			c.name = n
+			c.Name = n
 		}
 		if f, _ := p.Metadata["filepath"].(string); f != "" {
-			c.input["file_path"] = f
+			c.Input["file_path"] = f
 		} else if len(p.Resources) > 0 {
 			if p.Action == "shell" {
-				c.input["command"] = p.Resources[0]
+				c.Input["command"] = p.Resources[0]
 			} else {
-				c.input["file_path"] = p.Resources[0]
+				c.Input["file_path"] = p.Resources[0]
 			}
 		}
 	}
-	req := obj{"subtype", "can_use_tool", "tool_name", c.name, "input", c.input, "tool_use_id", p.Source.ID}
+	req := live.Obj{"subtype", "can_use_tool", "tool_name", c.Name, "input", c.Input, "tool_use_id", p.Source.ID}
 	if len(p.Save) > 0 {
-		req = append(req, "permission_suggestions", []obj{{"type", "opencode", "always", p.Save}})
+		req = append(req, "permission_suggestions", []live.Obj{{"type", "opencode", "always", p.Save}})
 	}
-	return []string{line(obj{"type", "control_request", "request_id", p.ID, "request", req})}
+	return []string{live.Line(live.Obj{"type", "control_request", "request_id", p.ID, "request", req})}
 }
 
 // form: OpenCode v2's generic form, used by its question tool (metadata.kind == "question"); shown as Claude's
@@ -340,16 +342,16 @@ func (t *translatorV2) form(raw json.RawMessage) []string {
 	if json.Unmarshal(raw, &p) != nil || p.Form.ID == "" || p.Form.Metadata.Kind != "question" || !t.mine(p.Form.SessionID) {
 		return nil
 	}
-	qs := make([]obj, 0, len(p.Form.Fields))
+	qs := make([]live.Obj, 0, len(p.Form.Fields))
 	for _, f := range p.Form.Fields {
-		opts := make([]obj, 0, len(f.Options))
+		opts := make([]live.Obj, 0, len(f.Options))
 		for _, o := range f.Options {
-			opts = append(opts, obj{"label", o.Label, "description", o.Description})
+			opts = append(opts, live.Obj{"label", o.Label, "description", o.Description})
 		}
-		qs = append(qs, obj{"question", f.Description, "header", f.Title, "options", opts, "multiSelect", f.Type == "multiselect"})
+		qs = append(qs, live.Obj{"question", f.Description, "header", f.Title, "options", opts, "multiSelect", f.Type == "multiselect"})
 	}
-	return []string{line(obj{"type", "control_request", "request_id", p.Form.ID, "request", obj{"subtype", "can_use_tool",
-		"tool_name", "AskUserQuestion", "input", obj{"questions", qs}, "tool_use_id", p.Form.Metadata.Tool.ID}})}
+	return []string{live.Line(live.Obj{"type", "control_request", "request_id", p.Form.ID, "request", live.Obj{"subtype", "can_use_tool",
+		"tool_name", "AskUserQuestion", "input", live.Obj{"questions", qs}, "tool_use_id", p.Form.Metadata.Tool.ID}})}
 }
 
-func (t *translatorV2) mine(sid string) bool { return sid == t.sid }
+func (t *translatorV2) mine(sid string) bool { return sid == t.Sid }

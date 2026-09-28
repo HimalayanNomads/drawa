@@ -132,7 +132,7 @@ func agents() []map[string]any {
 			modes = append(modes, m)
 		}
 		sort.Strings(modes)
-		out = append(out, map[string]any{"name": name, "title": k.Title, "installed": err == nil, "install": k.Install,
+		out = append(out, map[string]any{"name": name, "title": k.Title, "blurb": k.Blurb, "installed": err == nil, "install": k.Install,
 			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend})
 	}
 	return out

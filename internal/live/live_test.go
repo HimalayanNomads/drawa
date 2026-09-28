@@ -2,7 +2,9 @@ package live
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -126,6 +128,41 @@ func TestClassifyWrapsNonJSON(t *testing.T) {
 		if json.Unmarshal([]byte(out), &d) != nil || d["type"] == nil {
 			t.Fatalf("%q -> %q: not a typed JSON object", in, out)
 		}
+	}
+}
+
+// An ask the agent takes back is gone: not re-sent to a page that attaches, and it no longer keeps the card working.
+func TestCancelledAskIsGone(t *testing.T) {
+	l := NewForTest("", "g")
+	l.Emit(`{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{}}}`)
+	if len(l.Snapshot().Asks) != 1 || !l.working() {
+		t.Fatalf("ask not tracked: %v", l.Snapshot().Asks)
+	}
+	l.Emit(`{"type":"control_cancel_request","request_id":"r1"}`)
+	if a := l.Snapshot().Asks; len(a) != 0 || l.working() {
+		t.Fatalf("after cancel: asks %v, working %v", a, l.working())
+	}
+}
+
+type failing struct{ Backend }
+
+func (failing) SetMode(string) error   { return &Refused{errors.New("not mid-turn")} }
+func (failing) Interrupt() error       { return errors.New("broken pipe") }
+func (failing) Kill()                  {}
+func (failing) Send(any, string) error { return &Refused{errors.New("no such thread")} }
+
+// A Refused error is passed on, but the process stays alive; any other one marks it gone.
+func TestRefusedKeepsProcess(t *testing.T) {
+	l := NewForTest("", "g")
+	l.be = failing{}
+	if err := l.ChangeMode("plan"); err == nil || !l.Alive() {
+		t.Fatalf("refused: err %v, alive %v", err, l.Alive())
+	}
+	if err := l.Send("hi", ""); err == nil || !l.Alive() || l.working() { // no turn came, so the card isn't busy
+		t.Fatalf("refused send: err %v, alive %v, working %v", err, l.Alive(), l.working())
+	}
+	if err := l.Interrupt(); err == nil || l.Alive() {
+		t.Fatalf("broken: err %v, alive %v", err, l.Alive())
 	}
 }
 
@@ -282,3 +319,45 @@ func TestEvictPerBackend(t *testing.T) {
 		t.Fatalf("expected b (the capped backend's oldest idle card) evicted; got %v", victim)
 	}
 }
+
+type slowRefuse struct {
+	nopBackend
+	gate chan struct{}
+}
+
+func (b slowRefuse) Send(any, string) error { <-b.gate; return &Refused{errors.New("turned down")} }
+
+// A card stays busy while any send may still start a turn, and stops being busy once every one was turned down.
+func TestRefusedSendsBusy(t *testing.T) {
+	l := NewForTest("", "g")
+	gate := make(chan struct{})
+	l.be = slowRefuse{gate: gate}
+	done := make(chan struct{})
+	for range 2 { // two overlapping sends, both refused
+		go func() { l.Send("a", ""); done <- struct{}{} }()
+	}
+	for !func() bool { l.mu.Lock(); defer l.mu.Unlock(); return l.inflight == 2 }() {
+		runtime.Gosched()
+	}
+	gate <- struct{}{}
+	<-done
+	if !l.working() {
+		t.Error("not busy with a send still in flight")
+	}
+	close(gate)
+	<-done
+	if l.working() {
+		t.Error("still busy after every send was turned down")
+	}
+	l.mu.Lock()
+	l.accepted = true // one was taken (its turn is coming): a refused one doesn't clear busy
+	l.busy = true
+	l.mu.Unlock()
+	l.be = slowRefuse{gate: closed()}
+	l.Send("b", "")
+	if !l.working() {
+		t.Error("cleared busy while an accepted send's turn is coming")
+	}
+}
+
+func closed() chan struct{} { c := make(chan struct{}); close(c); return c }

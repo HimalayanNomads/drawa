@@ -1,0 +1,24 @@
+{"type":"system","subtype":"init","session_id":"01a0e839-72c9-7d43-b281-980cdbe0e468","model":"gpt-5.6-luna"}
+{"type":"user","message":{"role":"user","content":"Run the shell command `touch y.txt`. If it is declined, reply: skipped"},"uuid":"01a0e839-94ff-7a63-8cee-e9ffd4f60f59"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"01a0e839-73bd-7ee1-95e9-4cd33e357447","model":"gpt-5.6-luna","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"’m"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" running"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" the"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" requested"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" command"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" now"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"."}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"exec-cf4d319c-1686-4b0e-be9d-f4a86da899f9","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"touch y.txt\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"control_request","request_id":"cx-0","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"touch y.txt"},"tool_use_id":"exec-cf4d319c-1686-4b0e-be9d-f4a86da899f9","permission_suggestions":[{"type":"codex"}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"exec-cf4d319c-1686-4b0e-be9d-f4a86da899f9","content":"Declined.","is_error":true}]}}
+{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"sk"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"ipped"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":2}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"01a0e839-72c9-7d43-b281-980cdbe0e468","num_turns":1,"duration_ms":15000,"total_cost_usd":0,"usage":{"input_tokens":1012,"output_tokens":6,"cache_read_input_tokens":11008,"cache_creation_input_tokens":0},"modelUsage":{"gpt-5.6-luna":{"contextWindow":258400}}}

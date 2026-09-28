@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"01a0e839-731b-7ae2-b2bd-5704ca31244c","model":"gpt-5.6-luna"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"What color is this image? One word."},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAF0lEQVR4nGP4z8BAEiJN9aiGUQ1DSgMAkPn/Afnh+ngAAAAASUVORK5CYII="}}]},"uuid":"01a0e839-9234-7730-a48f-c23a0edcc4b1"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"01a0e839-740b-7152-9e56-b4473cc988e6","model":"gpt-5.6-luna","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Red"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"01a0e839-731b-7ae2-b2bd-5704ca31244c","num_turns":1,"duration_ms":11000,"total_cost_usd":0,"usage":{"input_tokens":2910,"output_tokens":5,"cache_read_input_tokens":8960,"cache_creation_input_tokens":0},"modelUsage":{"gpt-5.6-luna":{"contextWindow":258400}}}

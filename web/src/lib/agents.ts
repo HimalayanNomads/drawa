@@ -5,22 +5,18 @@ import { api } from './api'
 import { make } from './dom'
 import { enhance } from './select'
 
-export interface Agent { name: string; title: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean }
+export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean }
 export interface Model { value: string; displayName: string; description: string }
 export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
 
 export let agents: Agent[] = []
 export const agentsReady: Promise<void> = api<Agent[]>('agents').then(a => { agents = a }, () => {})
 
-const TITLES: Record<string, string> = { claude: 'Claude Code', opencode: 'OpenCode' }
+const TITLES: Record<string, string> = { claude: 'Claude Code', opencode: 'OpenCode', codex: 'Codex' }
 /** What the page calls an agent: "Claude Code". */
 export const title = (name: string) => agents.find(a => a.name === name)?.title || TITLES[name] || name
-const BLURBS: Record<string, string> = {
-  claude: 'Your Claude subscription, through the claude CLI',
-  opencode: 'Any provider you set up in OpenCode, or its free models',
-}
 /** One line on what picking it means, for menus. */
-export const blurb = (name: string) => BLURBS[name] ?? ''
+export const blurb = (name: string) => agents.find(a => a.name === name)?.blurb ?? ''
 /** How copy refers to it: "Claude is working", "OpenCode is working". */
 export const who = (name: string) => title(name).replace(/ Code$/, '')
 export const installed = () => agents.filter(a => a.installed)

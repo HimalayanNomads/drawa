@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"01a0e839-72e5-71a0-88ae-3f8cf9b21702","model":"gpt-5.6-luna"}
+{"type":"user","message":{"role":"user","content":"Reply with just the word: hi"},"uuid":"01a0e839-9583-72e3-84a3-ef5ad0010e30"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"01a0e839-7380-7ce3-baa7-f034d0719bca","model":"gpt-5.6-luna","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"01a0e839-72e5-71a0-88ae-3f8cf9b21702","num_turns":1,"duration_ms":10000,"total_cost_usd":0,"usage":{"input_tokens":2906,"output_tokens":5,"cache_read_input_tokens":8960,"cache_creation_input_tokens":0},"modelUsage":{"gpt-5.6-luna":{"contextWindow":258400}}}

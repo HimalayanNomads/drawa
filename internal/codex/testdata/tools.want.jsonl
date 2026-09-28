@@ -1,0 +1,16 @@
+{"type":"system","subtype":"init","session_id":"01a0e839-73c2-75e1-b4f5-cd9ac96fbf7d","model":"gpt-5.6-luna"}
+{"type":"user","message":{"role":"user","content":"Run the shell command `ls` and then reply with one word: done"},"uuid":"01a0e839-91b9-7933-8ca6-14f49c8cb40a"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"01a0e839-7424-74e3-bfaf-297b02676f7a","model":"gpt-5.6-luna","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"**Listing directory contents**"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"exec-1d80028d-ae65-40d2-a7f7-4cf1f8a0c6f9","name":"Bash","input":{}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"ls\"}"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":1}}
+{"type":"control_request","request_id":"cx-0","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"exec-1d80028d-ae65-40d2-a7f7-4cf1f8a0c6f9","permission_suggestions":[{"type":"codex"}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"exec-1d80028d-ae65-40d2-a7f7-4cf1f8a0c6f9","content":"x.txt\n","is_error":false}]}}
+{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"done"}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":2}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"01a0e839-73c2-75e1-b4f5-cd9ac96fbf7d","num_turns":1,"duration_ms":15000,"total_cost_usd":0,"usage":{"input_tokens":952,"output_tokens":5,"cache_read_input_tokens":11008,"cache_creation_input_tokens":0},"modelUsage":{"gpt-5.6-luna":{"contextWindow":258400}}}

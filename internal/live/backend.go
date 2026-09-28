@@ -1,6 +1,7 @@
 package live
 
 import (
+	"errors"
 	"sort"
 
 	"drawa/internal/sessions"
@@ -39,6 +40,18 @@ type Unsender interface {
 	Unsend(id string) (bool, error) // false: already read (or never queued)
 }
 
+// Refused is a backend error meaning the agent turned the request down (a mode it won't switch to mid-turn, say)
+// while its process is fine: Live passes it on without treating the process as gone.
+type Refused struct{ Err error }
+
+func (r *Refused) Error() string { return r.Err.Error() }
+func (r *Refused) Unwrap() error { return r.Err }
+
+func refused(err error) bool {
+	var r *Refused
+	return errors.As(err, &r)
+}
+
 // Sink is how a backend reports; *Live implements it.
 type Sink interface {
 	Emit(line string) // one output line (no newline): Live classifies and buffers it
@@ -56,6 +69,7 @@ type History interface {
 type Kind struct {
 	Bin, Label, Install string          // the executable, how preflight names it, where to get it
 	Title               string          // what the page calls it ("Claude Code")
+	Blurb               string          // one line on what picking it means, for menus
 	Modes               map[string]bool // the Drawa permission modes it accepts
 	MaxLive             int             // at most this many of its cards live at once (0: no limit of its own)
 	Unsend              bool            // its Backend is an Unsender: queued messages can be deleted or edited

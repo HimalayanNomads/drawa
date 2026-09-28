@@ -22,6 +22,8 @@ import (
 //     "permission_suggestions"}}: an ask. Non-empty permission_suggestions offers "Always allow"; questions are
 //     tool_name AskUserQuestion with input.questions [{question, header, options[{label, description}],
 //     multiSelect}]. The answer comes back as Backend.Respond.
+//   - {"type":"control_cancel_request","request_id"}: the agent took an ask back without an answer (its turn was
+//     stopped, say); the page closes that ask.
 //   - {"type":"result","subtype","is_error","result","total_cost_usd","usage","modelUsage":{m:{contextWindow}}}:
 //     ends every turn; subtype error_during_execution reads as "Stopped".
 //   - Lines of a sub-agent carry "parent_tool_use_id" (its Agent call's tool_use id); only assistant and user
@@ -34,11 +36,12 @@ import (
 // generic tool row. Live adds its own lines (exit, canvas_call, _gap, attach); backends don't emit those.
 
 // CheckWire checks a translated stream against the rules the page depends on: blocks open and close in order
-// within a message, tool results answer an earlier tool call, asks carry an id, and a turn that started (a user
-// message) ends with a result. Backends' golden tests run their translated fixtures through it.
+// within a message, tool results answer an earlier tool call, asks carry an id (and a cancel names one), and a
+// turn that started (a user message) ends with a result. Backends' golden tests run their translated fixtures
+// through it.
 func CheckWire(lines []string) error {
 	open := map[float64]bool{}
-	calls := map[string]bool{}
+	calls, asked := map[string]bool{}, map[string]bool{}
 	inTurn := false
 	for i, line := range lines {
 		var d map[string]any
@@ -96,11 +99,17 @@ func CheckWire(lines []string) error {
 			}
 		case "control_request":
 			req, _ := d["request"].(map[string]any)
-			if id, _ := d["request_id"].(string); id == "" || req["subtype"] == nil {
+			id, _ := d["request_id"].(string)
+			if id == "" || req["subtype"] == nil {
 				return fmt.Errorf("line %d: control_request without request_id or subtype", i+1)
 			}
+			asked[id] = true
 			if req["subtype"] == "can_use_tool" && req["tool_name"] == nil {
 				return fmt.Errorf("line %d: can_use_tool without tool_name", i+1)
+			}
+		case "control_cancel_request":
+			if id, _ := d["request_id"].(string); !asked[id] {
+				return fmt.Errorf("line %d: control_cancel_request for unknown request_id %q", i+1, id)
 			}
 		case "result":
 			if len(open) > 0 {

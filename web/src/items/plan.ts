@@ -305,6 +305,14 @@ export function plansExpired(S: Session) {
   for (const p of all) if (p.S === S) p.req = undefined
 }
 
+/** The agent took back the plan's request (control_cancel_request): like plansExpired, for that one plan. */
+export function planWithdrawn(S: Session, req: string) {
+  const p = all.find(p => p.S === S && p.req === req)
+  if (!p) return
+  p.req = undefined
+  setState(p, `Withdrawn: ${who(S.backend)} no longer needs an answer`, 'draft')
+}
+
 /* ---------- canvas bookkeeping ---------- */
 export function dropPlans(S: Session) {
   for (const p of all.filter(p => p.S === S)) { p.el.remove(); all.splice(all.indexOf(p), 1) }

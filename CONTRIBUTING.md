@@ -137,12 +137,12 @@ flowchart TB
 
   subgraph tools["Local tools"]
     direction LR
-    claude["Claude Code CLI"] ~~~ oc["OpenCode CLI"] ~~~ gitgh["git and gh"]
+    claude["Claude Code CLI"] ~~~ oc["OpenCode CLI"] ~~~ cx["Codex CLI"] ~~~ gitgh["git and gh"]
   end
 
   user --> web
   web -- "JSON API · one event stream" --> go
-  go <-- "stream-json · HTTP and events · MCP · subprocesses" --> tools
+  go <-- "stream-json · HTTP and events · JSON-RPC · MCP · subprocesses" --> tools
 ```
 
 Arrows inside the frontend show which way imports go. The rules for where code goes are in [`CLAUDE.md`](CLAUDE.md).

@@ -42,6 +42,7 @@ Drawa runs entirely on your machine. It drives the `claude` CLI you already have
 |---|---|
 | [Claude Code](https://claude.com/claude-code) | **One agent is required.** `claude` on `PATH` and logged in, for your Claude subscription. |
 | [OpenCode](https://opencode.ai) | Or, instead or as well: `opencode` on `PATH`, for any other provider or its free models. See below. Tested with OpenCode 1.18.32. |
+| [Codex](https://developers.openai.com/codex/cli) | Or: `codex` on `PATH` and logged in, for your ChatGPT plan or an OpenAI API key. See below. Tested with Codex 0.158.0. |
 | `git` | Optional. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | OS | macOS or Linux. Windows isn't supported yet. |
@@ -61,6 +62,15 @@ Things to know:
 - **What differs.** OpenCode has no Auto mode, and no effort setting. The status line's usage windows are Claude Code's, so OpenCode cards don't show them.
 - **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB), so at most 3 stay running at once; the least recently used idle one closes and resumes on its next message.
 - **Commit messages.** The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
+
+### Use Codex
+
+[Codex](https://developers.openai.com/codex/cli) is OpenAI's coding agent. With `codex` installed and logged in (`codex login`), **New session ▾** offers a Codex session, and each card picks its model from Codex's list.
+
+- **What's the same.** Approvals (commands, file edits, canvas changes), the files and commands windows, canvas tools, pasted images and history work as they do for Claude Code. Looking at the canvas never asks.
+- **What differs.** Codex has no Auto mode and no effort setting here (it uses its default). **Read only** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (when it's idle, or over the cap of 3; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn. Sub-agents show as one row, not their own window, and a queued message can't be taken back.
+- **Trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
+- **Memory.** At most 3 Codex sessions stay running at once; the least recently used idle one closes and resumes on its next message.
 
 ## Install
 
@@ -102,7 +112,7 @@ drawa https://github.com/owner/repo   # clones it into a cache folder and opens 
 drawa --clean          # removes cached clones (or pass one repo's URL)
 ```
 
-Opening a GitHub URL, or a folder inside its clone, asks on each launch whether to trust the repo (only the server's own restarts after code changes reuse the answer). Answer `n` (the default) and its own `.claude/` settings, hooks, `.mcp.json`, `CLAUDE.md` and OpenCode project config are ignored, since they could run commands on your machine.
+Opening a GitHub URL, or a folder inside its clone, asks on each launch whether to trust the repo (only the server's own restarts after code changes reuse the answer). Answer `n` (the default) and its own `.claude/` settings, hooks, `.mcp.json`, `CLAUDE.md`, OpenCode project config, and Codex's `.codex/` config and `AGENTS.md` are ignored, since they could run commands on your machine.
 
 `--clean` keeps any clone with uncommitted, unpushed, stashed or ignored files. Don't run it while a Drawa is open on that clone. A GitHub folder link (`/tree/main/docs`) opens the repo on its default branch.
 
@@ -124,7 +134,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 | `DRAWA_PORT` | `8765` | Port to serve on. Set it to run two projects at once. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
 | `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
-| `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB; OpenCode has its own cap of 3). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
+| `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB; OpenCode and Codex each have their own cap of 3). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
 | `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh

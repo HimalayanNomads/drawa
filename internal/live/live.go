@@ -31,18 +31,20 @@ type Live struct {
 	done chan struct{} // closed once the process has exited (code is set by then)
 	code int
 
-	lines   []string
-	base    int
-	trimTo  int // after a turn's result: lines before this can go once the next turn starts (the transcript has them)
-	size    int
-	last    time.Time
-	asks    []ask    // open approval requests in arrival order (re-sent to pages that attach later)
-	readers []string // pages reading this stream (newest last): the newest carries out canvas tool calls
-	calls   map[string]*Call
-	busy    bool            // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
-	tasks   map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
-	openMsg *int            // line where the message being streamed began: a page attaching now reads from there
-	exited  bool            // the process exited, or its input broke: the next send starts a new one (Python: p.poll())
+	lines    []string
+	base     int
+	trimTo   int // after a turn's result: lines before this can go once the next turn starts (the transcript has them)
+	size     int
+	last     time.Time
+	asks     []ask    // open approval requests in arrival order (re-sent to pages that attach later)
+	readers  []string // pages reading this stream (newest last): the newest carries out canvas tool calls
+	calls    map[string]*Call
+	busy     bool            // mid-turn: told to pages that attach (a reloaded page can't know otherwise)
+	inflight int             // Sends not answered yet
+	accepted bool            // a Send was taken since the last result: a turn is coming, whatever the others did
+	tasks    map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
+	openMsg  *int            // line where the message being streamed began: a page attaching now reads from there
+	exited   bool            // the process exited, or its input broke: the next send starts a new one (Python: p.poll())
 }
 
 type ask struct{ rid, line string }
@@ -146,9 +148,16 @@ func (l *Live) classify(line string) string {
 		l.mu.Lock()
 		l.openMsg = nil // complete: the transcript has it now
 		l.mu.Unlock()
+	case strings.HasPrefix(line, `{"type":"control_cancel_request"`): // the agent took an ask back unanswered
+		var d struct {
+			RequestID string `json:"request_id"`
+		}
+		if json.Unmarshal([]byte(line), &d) == nil {
+			l.PopAsk(d.RequestID)
+		}
 	case strings.Contains(line, `"type":"result"`) && isResult(line): // its keys come in any order
 		l.mu.Lock()
-		l.busy = false
+		l.busy, l.accepted = false, false
 		if len(l.asks) == 0 {
 			l.trimTo = l.base + len(l.lines) // this result's index: what came before goes when the next turn starts
 		}
@@ -184,36 +193,6 @@ func isResult(line string) bool {
 	return json.Unmarshal([]byte(line), &d) == nil && d.Type == "result"
 }
 
-func (l *Live) Push(line string) {
-	l.mu.Lock()
-	l.lines = append(l.lines, line)
-	l.size += len(line)
-	if len(l.lines) > Keep || l.size > KeepBytes {
-		l.dropTo(l.base + len(l.lines)/2)
-	}
-	l.last = time.Now()
-	l.mu.Unlock()
-	Changed.Notify()
-}
-
-// dropTo drops buffered lines before global index n, never past the start of the message being streamed (a page
-// attaching reads from there). Called with l.mu held.
-func (l *Live) dropTo(n int) {
-	if l.openMsg != nil && n > *l.openMsg {
-		n = *l.openMsg // ponytail: one message bigger than KeepBytes stays whole; it's freed once it completes
-	}
-	drop := min(n-l.base, len(l.lines))
-	if drop <= 0 {
-		return
-	}
-	for _, s := range l.lines[:drop] {
-		l.size -= len(s)
-	}
-	clear(l.lines[:drop]) // so the dropped strings can be freed (the array itself stays shared)
-	l.lines = l.lines[drop:]
-	l.base += drop
-}
-
 // Kill hard-kills the process group without waiting (the server is about to be replaced, or Close timed out).
 func (l *Live) Kill() {
 	if l.be != nil {
@@ -228,15 +207,16 @@ func (l *Live) Alive() bool {
 }
 
 // wrote records a write to the process: one that failed means it can't take input any more, so the next send
-// starts a new one.
+// starts a new one. A Refused one is the agent saying no: the process is fine.
 func (l *Live) wrote(err error) error {
+	broken := err != nil && !refused(err)
 	l.mu.Lock()
 	l.last = time.Now()
-	if err != nil {
+	if broken {
 		l.exited = true
 	}
 	l.mu.Unlock()
-	if err != nil {
+	if broken {
 		l.Kill()
 	}
 	return err
@@ -245,13 +225,23 @@ func (l *Live) wrote(err error) error {
 // Send is a user message: a string or Claude content blocks; id is its uuid (or "").
 func (l *Live) Send(content any, id string) error {
 	l.mu.Lock()
+	l.inflight++
 	l.busy = true
 	if len(l.asks) == 0 {
 		// ponytail: trimmed here, not at the result, so streams still reading that turn's tail aren't cut off
 		l.dropTo(l.trimTo)
 	}
 	l.mu.Unlock()
-	return l.wrote(l.be.Send(content, id))
+	err := l.wrote(l.be.Send(content, id))
+	l.mu.Lock()
+	l.inflight--
+	if err == nil {
+		l.accepted = l.busy // (not if its turn's result already came: that would outlive the turn)
+	} else if refused(err) && l.inflight == 0 && !l.accepted { // every send was turned down: no turn is coming
+		l.busy = false
+	}
+	l.mu.Unlock()
+	return err
 }
 
 // Unsend takes back a message Send queued, if the agent hasn't read it yet (false: it has, or it can't).
@@ -283,44 +273,6 @@ func (l *Live) Close() {
 		return
 	}
 	l.be.Close()
-}
-
-// Snapshot is the buffer state a page attaching needs, taken under the lock (not the lines: see LinesFrom).
-type Snapshot struct {
-	Base    int
-	End     int // the index the next line gets
-	Busy    bool
-	OpenMsg *int
-	Asks    []string // open approval request lines, in arrival order
-}
-
-func (l *Live) Snapshot() Snapshot {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	asks := make([]string, len(l.asks))
-	for i, a := range l.asks {
-		asks[i] = a.line
-	}
-	var openMsg *int
-	if l.openMsg != nil {
-		v := *l.openMsg
-		openMsg = &v
-	}
-	return Snapshot{Base: l.base, End: l.base + len(l.lines), Busy: l.busy, OpenMsg: openMsg, Asks: asks}
-}
-
-// LinesFrom returns lines from n (a global index) onward, plus the buffer's new end index.
-func (l *Live) LinesFrom(n int) ([]string, int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	start := n - l.base
-	if start < 0 {
-		start = 0
-	}
-	if start > len(l.lines) {
-		start = len(l.lines)
-	}
-	return append([]string(nil), l.lines[start:]...), l.base + len(l.lines)
 }
 
 func (l *Live) PopAsk(rid string) (string, bool) {

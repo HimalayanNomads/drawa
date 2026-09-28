@@ -11,7 +11,7 @@ import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
 import { agentWindow, agentMsg, agentDone, showAgent, agentId, agentCall, agentMessaged, relayed } from '../items/agent'
 import { put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
-import { approval } from './asks'
+import { approval, withdrawAsk } from './asks'
 import { thumb } from './images'
 import { notify } from './notify'
 import { replayShell } from './shell'
@@ -257,6 +257,7 @@ export function on(S: Session, m: Msg) {
   if (m.session_id && m.session_id !== S.sid && !m.parent_tool_use_id) { S.sid = m.session_id; save() }
   if (m.parent_tool_use_id) return subagent(S, m.parent_tool_use_id, m)
   if (m.type === 'control_request' && m.request?.subtype === 'can_use_tool') return approval(S, m)
+  if (m.type === 'control_cancel_request') return withdrawAsk(S, m.request_id)
   if (m.type === 'system' && m.subtype === 'status' && m.permissionMode) setMode(S, m.permissionMode, false)
   // an agent started (its id is what SendMessage addresses) or a background one finished
   if (m.type === 'system' && m.subtype === 'task_started' && !m.owned_by_subagent && m.tool_use_id) agentId(m.tool_use_id, m.task_id)

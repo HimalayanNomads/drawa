@@ -2,7 +2,7 @@
 // (Plan approval goes through the same request, but plan.ts shows it as a document on the canvas.)
 import { make, rel, button } from '../lib/dom'
 import { post } from '../lib/api'
-import { reviewPlan, plansExpired } from '../items/plan'
+import { reviewPlan, plansExpired, planWithdrawn } from '../items/plan'
 import { change } from '../panels/diff'
 import { notify } from './notify'
 import { put, renderCard, type Session } from './session'
@@ -21,6 +21,7 @@ export function approval(S: Session, m: Msg) {
   const input = r.input ?? {}, tool = r.display_name ?? r.tool_name
   const what = rel(String(input.command ?? input.file_path ?? input.url ?? input.pattern ?? describe(input) ?? ''))
   const box = put(S, make('div', 'ask perm')), top = make('div', 'top'), row = make('div', 'row')
+  box.dataset.rid = id
   top.append(make('span', 'need', 'Approval needed'), make('b', '', tool))
   box.append(top, make('code', '', what || tool))
   const caption = r.description && r.description !== what ? r.description : r.decision_reason !== 'This command requires approval' ? r.decision_reason : ''
@@ -57,6 +58,7 @@ export function approval(S: Session, m: Msg) {
 /** Claude asks you multiple-choice questions (AskUserQuestion): answer them in the card. */
 function question(S: Session, id: string, qs: { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }[]) {
   const box = put(S, make('div', 'ask q')), picked = qs.map(() => new Set<string>()), other = qs.map(() => '')
+  box.dataset.rid = id
   const row = make('div', 'row'), skip = make('button', 'btn', 'Skip'), ok = make('button', 'btn primary', 'Answer')
   const ready = () => { ok.disabled = !qs.every((_, i) => picked[i].size || other[i].trim()) }
   qs.forEach((q, i) => {
@@ -116,11 +118,24 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
 export function expireAsks(S: Session) {
   if (!S.asks.size) return
   S.asks.clear()
-  for (const box of S.log.querySelectorAll<HTMLElement>('.ask:not(.done)')) {
-    box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(x => (x.disabled = true))
-    box.querySelector(':scope > .err')?.remove()
-    box.querySelector(':scope > .row')?.replaceChildren(make('span', 'answered', `Expired: ${who(S.backend)} stopped before this was answered`))
-    box.classList.add('done')
-  }
+  for (const box of S.log.querySelectorAll<HTMLElement>('.ask:not(.done)')) closeAsk(S, box, `Expired: ${who(S.backend)} stopped before this was answered`)
   plansExpired(S)
+}
+
+/** The agent took back one ask (control_cancel_request): it went ahead without an answer, e.g. its turn was stopped. */
+export function withdrawAsk(S: Session, id: string) {
+  if (!S.asks.delete(id)) return
+  const box = S.log.querySelector<HTMLElement>(`.ask[data-rid="${CSS.escape(id)}"]:not(.done)`)
+  if (box) closeAsk(S, box, `Withdrawn: ${who(S.backend)} no longer needs an answer`)
+  else planWithdrawn(S, id) // plan approvals are a window on the canvas, not a box in the log
+  renderCard(S)
+}
+
+function closeAsk(S: Session, box: HTMLElement, why: string) {
+  // its buttons are about to be disabled: don't let keyboard focus fall to <body>
+  if (box.contains(document.activeElement)) S.ta.focus()
+  box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(x => (x.disabled = true))
+  box.querySelector(':scope > .err')?.remove()
+  box.querySelector(':scope > .row')?.replaceChildren(make('span', 'answered', why))
+  box.classList.add('done')
 }

@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 // session returns the card's session, creating it on the first message.
 func (s *server) session() (string, error) {
 	s.mu.Lock()
-	sid, mode, model := s.sid, s.mode, s.model
+	sid, mode, model, spawned := s.sid, s.mode, s.model, s.spawnMode
 	s.mu.Unlock()
 	if sid != "" {
 		return sid, nil
@@ -45,10 +46,14 @@ func (s *server) session() (string, error) {
 	}
 	s.mu.Lock()
 	s.sid = id
-	s.tr.setSid(id)
+	s.tr.SetSid(id)
 	s.mu.Unlock()
-	if mode != "" && mode != "default" && mode != "plan" {
-		s.SetMode(mode)
+	// the process's config has the mode it spawned in: a different one picked since applies now, or the session
+	// would run with the old permissions (full access, after leaving bypass). Failing here replaces the process.
+	if mode != spawned {
+		if err := s.SetMode(mode); err != nil {
+			return "", err
+		}
 	}
 	return id, nil
 }
@@ -235,7 +240,21 @@ func v2Action(perm string) string {
 
 // SetMode: plan mode is OpenCode's plan agent, picked per message on v1 or set on the session on v2; the other
 // modes are the session's permission rules (a different ruleset shape on each version).
-func (s *server) SetMode(mode string) error {
+// SetMode and Interrupt fail closed: if OpenCode turns either down, the process is replaced (a new one starts in
+// the right mode, with no turn running) rather than kept as a harmless refusal.
+func (s *server) SetMode(mode string) error { return fatal(s.setMode(mode)) }
+func (s *server) Interrupt() error          { return fatal(s.interrupt()) }
+
+// fatal is err without the live.Refused that keeps the process alive.
+func fatal(err error) error {
+	var r *live.Refused
+	if errors.As(err, &r) {
+		return r.Err
+	}
+	return err
+}
+
+func (s *server) setMode(mode string) error {
 	s.mu.Lock()
 	s.mode = mode
 	sid, v2 := s.sid, s.v2
@@ -251,20 +270,14 @@ func (s *server) SetMode(mode string) error {
 		if err := s.call("POST", "/api/session/"+sid+"/agent", map[string]any{"agent": agent}, nil); err != nil {
 			return err
 		}
-		if mode == "plan" {
-			return nil
-		}
 		var rules []map[string]any
-		for perm, action := range permissions(mode) {
+		for perm, action := range permissions(rulesFor(mode)) {
 			rules = append(rules, map[string]any{"action": v2Action(perm), "resource": "*", "effect": action})
 		}
 		return s.call("PATCH", "/api/session/"+sid, map[string]any{"permissions": rules}, nil)
 	}
-	if mode == "plan" {
-		return nil // the next message picks the plan agent
-	}
-	var rules []map[string]string
-	for perm, action := range permissions(mode) {
+	var rules []map[string]string // (and the next message picks the plan agent, in plan)
+	for perm, action := range permissions(rulesFor(mode)) {
 		rules = append(rules, map[string]string{"permission": perm, "pattern": "*", "action": action})
 	}
 	return s.call("PATCH", "/session/"+sid, map[string]any{"permission": rules}, nil)
@@ -275,7 +288,7 @@ func (s *server) SetMode(mode string) error {
 func (s *server) SetModel(model string) error {
 	s.mu.Lock()
 	s.model = model
-	s.tr.setModel(model)
+	s.tr.SetModel(model)
 	sid, v2 := s.sid, s.v2
 	s.mu.Unlock()
 	if !v2 || sid == "" {
@@ -288,7 +301,7 @@ func (s *server) SetModel(model string) error {
 	return s.call("POST", "/api/session/"+sid+"/model", map[string]any{"model": map[string]any{"id": id, "providerID": provider}}, nil)
 }
 
-func (s *server) Interrupt() error {
+func (s *server) interrupt() error {
 	s.mu.Lock()
 	sid, v2 := s.sid, s.v2
 	s.mu.Unlock()
@@ -299,4 +312,13 @@ func (s *server) Interrupt() error {
 		return s.call("POST", "/api/session/"+sid+"/interrupt", map[string]any{}, nil)
 	}
 	return s.call("POST", "/session/"+sid+"/abort", map[string]any{}, nil)
+}
+
+// rulesFor is the mode whose permission rules a mode uses: plan is the plan agent plus default's asking, so
+// switching to it from bypass doesn't keep bypass's rules.
+func rulesFor(mode string) string {
+	if mode == "plan" {
+		return "default"
+	}
+	return mode
 }

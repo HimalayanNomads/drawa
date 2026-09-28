@@ -3,6 +3,8 @@ package opencode
 import (
 	"encoding/json"
 	"strings"
+
+	"drawa/internal/live"
 )
 
 // translator turns one card's OpenCode v1 events (GET /event frames) into wire lines (live/wire.go). OpenCode
@@ -10,7 +12,7 @@ import (
 // what it has sent of each part. Everything is keyed to the card's session: other sessions in the same server are
 // the card's sub-agents (task calls), which the page reads as whole assistant/user lines tagged with the call.
 type translator struct {
-	turn
+	live.Turn
 	roles    map[string]string // message id -> user | assistant
 	echoed   map[string]bool   // user messages already echoed
 	children map[string]string // a sub-agent's session -> the task call that started it
@@ -25,17 +27,17 @@ type span struct {
 }
 
 type part struct {
-	ID        string  `json:"id"`
-	SessionID string  `json:"sessionID"`
-	MessageID string  `json:"messageID"`
-	Type      string  `json:"type"`
-	Text      string  `json:"text"`
-	Synthetic bool    `json:"synthetic"`
-	Time      *span   `json:"time"`
-	CallID    string  `json:"callID"`
-	Tool      string  `json:"tool"`
-	Cost      float64 `json:"cost"`
-	Tokens    *tokens `json:"tokens"`
+	ID        string       `json:"id"`
+	SessionID string       `json:"sessionID"`
+	MessageID string       `json:"messageID"`
+	Type      string       `json:"type"`
+	Text      string       `json:"text"`
+	Synthetic bool         `json:"synthetic"`
+	Time      *span        `json:"time"`
+	CallID    string       `json:"callID"`
+	Tool      string       `json:"tool"`
+	Cost      float64      `json:"cost"`
+	Tokens    *live.Tokens `json:"tokens"`
 	State     *struct {
 		Status   string         `json:"status"`
 		Input    map[string]any `json:"input"`
@@ -56,7 +58,7 @@ type message struct {
 
 func newTranslator(sid, model string) *translator {
 	return &translator{
-		turn:  newTurn(sid, model),
+		Turn:  live.NewTurn(sid, model),
 		roles: map[string]string{}, echoed: map[string]bool{}, children: map[string]string{}, childTxt: map[string]bool{},
 	}
 }
@@ -80,9 +82,9 @@ func (t *translator) frame(raw []byte) []string {
 				Type string `json:"type"`
 			} `json:"status"`
 		}
-		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.sid && p.Status.Type == "busy" && !t.busy {
-			t.begin()
-			emit(line(obj{"type", "system", "subtype", "init", "session_id", t.sid, "model", t.model}))
+		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.Sid && p.Status.Type == "busy" && !t.Busy {
+			t.Begin()
+			emit(live.Line(live.Obj{"type", "system", "subtype", "init", "session_id", t.Sid, "model", t.Model}))
 		}
 	case "message.updated":
 		var p struct {
@@ -105,10 +107,10 @@ func (t *translator) frame(raw []byte) []string {
 			Field     string `json:"field"`
 			Delta     string `json:"delta"`
 		}
-		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.sid && p.Field == "text" {
-			if b := t.blocks[p.PartID]; b != nil && b.msg == t.msg {
-				b.sent += len(p.Delta)
-				emit(t.delta(b, p.Delta))
+		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.Sid && p.Field == "text" {
+			if b := t.Blocks[p.PartID]; b != nil && b.Msg == t.Msg {
+				b.Sent += len(p.Delta)
+				emit(t.Delta(b, p.Delta))
 			}
 		}
 	case "permission.asked":
@@ -125,15 +127,15 @@ func (t *translator) frame(raw []byte) []string {
 				} `json:"data"`
 			} `json:"error"`
 		}
-		if json.Unmarshal(f.Properties, &p) == nil && (p.SessionID == t.sid || p.SessionID == "") {
-			t.errName, t.errMessage = p.Error.Name, p.Error.Data.Message
+		if json.Unmarshal(f.Properties, &p) == nil && (p.SessionID == t.Sid || p.SessionID == "") {
+			t.ErrName, t.ErrMessage = p.Error.Name, p.Error.Data.Message
 		}
 	case "session.idle":
 		var p struct {
 			SessionID string `json:"sessionID"`
 		}
-		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.sid && t.busy {
-			emit(t.end(func(name string) bool { return name == "MessageAbortedError" })...)
+		if json.Unmarshal(f.Properties, &p) == nil && p.SessionID == t.Sid && t.Busy {
+			emit(t.End(func(name string) bool { return name == "MessageAbortedError" })...)
 		}
 	}
 	return out
@@ -141,28 +143,28 @@ func (t *translator) frame(raw []byte) []string {
 
 func (t *translator) message(m message) []string {
 	t.roles[m.ID] = m.Role
-	if m.SessionID != t.sid || m.Role != "assistant" {
+	if m.SessionID != t.Sid || m.Role != "assistant" {
 		return nil
 	}
 	if m.ProviderID != "" && m.ModelID != "" {
-		t.model = m.ProviderID + "/" + m.ModelID
+		t.Model = m.ProviderID + "/" + m.ModelID
 	}
 	var out []string
-	if t.msg != m.ID && m.Time.Completed == 0 {
-		out = append(out, t.startMessage(m.ID)...)
-		if t.started == 0 {
-			t.started = m.Time.Created
+	if t.Msg != m.ID && m.Time.Completed == 0 {
+		out = append(out, t.StartMessage(m.ID)...)
+		if t.Started == 0 {
+			t.Started = m.Time.Created
 		}
 	}
-	if m.Time.Completed != 0 && t.msg == m.ID {
-		out = append(out, t.stopMessage()...)
-		t.ended = m.Time.Completed
+	if m.Time.Completed != 0 && t.Msg == m.ID {
+		out = append(out, t.StopMessage()...)
+		t.Ended = m.Time.Completed
 	}
 	return out
 }
 
 func (t *translator) part(p part) []string {
-	if p.SessionID != t.sid {
+	if p.SessionID != t.Sid {
 		if parent, ok := t.children[p.SessionID]; ok {
 			return t.childPart(parent, p)
 		}
@@ -175,46 +177,46 @@ func (t *translator) part(p part) []string {
 				return nil
 			}
 			t.echoed[p.MessageID] = true
-			return []string{line(obj{"type", "user", "message", obj{"role", "user", "content", p.Text}, "uuid", p.MessageID})}
+			return []string{live.Line(live.Obj{"type", "user", "message", live.Obj{"role", "user", "content", p.Text}, "uuid", p.MessageID})}
 		}
 		return t.textPart(p)
 	case "tool":
 		return t.toolPart(p)
 	case "step-finish":
 		if p.Tokens != nil {
-			t.usage = *p.Tokens
+			t.Usage = *p.Tokens
 		}
-		t.cost += p.Cost
+		t.Cost += p.Cost
 	}
 	return nil
 }
 
 func (t *translator) textPart(p part) []string {
 	var out []string
-	if t.msg != p.MessageID {
-		out = append(out, t.startMessage(p.MessageID)...)
+	if t.Msg != p.MessageID {
+		out = append(out, t.StartMessage(p.MessageID)...)
 	}
-	b := t.blocks[p.ID]
+	b := t.Blocks[p.ID]
 	if b == nil {
 		kind := "text"
 		if p.Type == "reasoning" {
 			kind = "thinking"
 		}
-		b = &block{index: t.next, kind: kind, msg: t.msg}
-		t.next++
-		t.blocks[p.ID] = b
-		t.open = append(t.open, b)
-		out = append(out, streamEvent(obj{"type", "content_block_start", "index", b.index, "content_block", obj{"type", kind, kind, ""}}))
+		b = &live.Block{Index: t.Next, Kind: kind, Msg: t.Msg}
+		t.Next++
+		t.Blocks[p.ID] = b
+		t.Open = append(t.Open, b)
+		out = append(out, live.StreamEvent(live.Obj{"type", "content_block_start", "index", b.Index, "content_block", live.Obj{"type", kind, kind, ""}}))
 	}
-	if !t.isOpen(b) {
+	if !t.IsOpen(b) {
 		return out
 	}
-	if len(p.Text) > b.sent { // text that came whole rather than as deltas
-		out = append(out, t.delta(b, p.Text[b.sent:]))
-		b.sent = len(p.Text)
+	if len(p.Text) > b.Sent { // text that came whole rather than as deltas
+		out = append(out, t.Delta(b, p.Text[b.Sent:]))
+		b.Sent = len(p.Text)
 	}
 	if p.Time != nil && p.Time.End != 0 {
-		out = append(out, t.stop(b))
+		out = append(out, t.Stop(b))
 	}
 	return out
 }
@@ -224,19 +226,19 @@ func (t *translator) toolPart(p part) []string {
 		return nil
 	}
 	var out []string
-	if _, seen := t.calls[p.CallID]; !seen {
-		if t.msg != p.MessageID {
-			out = append(out, t.startMessage(p.MessageID)...)
+	if _, seen := t.Calls[p.CallID]; !seen {
+		if t.Msg != p.MessageID {
+			out = append(out, t.StartMessage(p.MessageID)...)
 		}
 		name, input := tool(p.Tool, p.State.Input)
-		t.calls[p.CallID] = call{name, input}
+		t.Calls[p.CallID] = live.ToolCall{Name: name, Input: input}
 		in, _ := json.Marshal(input)
-		i := t.next
-		t.next++
+		i := t.Next
+		t.Next++
 		out = append(out,
-			streamEvent(obj{"type", "content_block_start", "index", i, "content_block", obj{"type", "tool_use", "id", p.CallID, "name", name, "input", obj{}}}),
-			streamEvent(obj{"type", "content_block_delta", "index", i, "delta", obj{"type", "input_json_delta", "partial_json", string(in)}}),
-			streamEvent(obj{"type", "content_block_stop", "index", i}))
+			live.StreamEvent(live.Obj{"type", "content_block_start", "index", i, "content_block", live.Obj{"type", "tool_use", "id", p.CallID, "name", name, "input", live.Obj{}}}),
+			live.StreamEvent(live.Obj{"type", "content_block_delta", "index", i, "delta", live.Obj{"type", "input_json_delta", "partial_json", string(in)}}),
+			live.StreamEvent(live.Obj{"type", "content_block_stop", "index", i}))
 	}
 	if child, _ := p.State.Metadata["sessionId"].(string); child != "" && p.Tool == "task" {
 		t.children[child] = p.CallID
@@ -247,20 +249,20 @@ func (t *translator) toolPart(p part) []string {
 // result is a finished tool call's tool_result line (parent: the sub-agent's task call, or "").
 func (t *translator) result(p part, parent string) []string {
 	st := p.State.Status
-	if (st != "completed" && st != "error") || t.results[p.CallID] {
+	if (st != "completed" && st != "error") || t.Results[p.CallID] {
 		return nil
 	}
-	t.results[p.CallID] = true
+	t.Results[p.CallID] = true
 	content, isErr := p.State.Output, st == "error"
 	if isErr {
 		content = p.State.Error
 	}
-	o := obj{"type", "user"}
+	o := live.Obj{"type", "user"}
 	if parent != "" {
 		o = append(o, "parent_tool_use_id", parent)
 	}
-	o = append(o, "message", obj{"role", "user", "content", []obj{{"type", "tool_result", "tool_use_id", p.CallID, "content", content, "is_error", isErr}}})
-	return []string{line(o)}
+	o = append(o, "message", live.Obj{"role", "user", "content", []live.Obj{{"type", "tool_result", "tool_use_id", p.CallID, "content", content, "is_error", isErr}}})
+	return []string{live.Line(o)}
 }
 
 // childPart: a sub-agent's text and tool calls, whole, tagged with the task call that started it.
@@ -271,18 +273,18 @@ func (t *translator) childPart(parent string, p part) []string {
 			return nil
 		}
 		t.childTxt[p.ID] = true
-		return []string{line(obj{"type", "assistant", "parent_tool_use_id", parent,
-			"message", obj{"role", "assistant", "content", []obj{{"type", "text", "text", p.Text}}}})}
+		return []string{live.Line(live.Obj{"type", "assistant", "parent_tool_use_id", parent,
+			"message", live.Obj{"role", "assistant", "content", []live.Obj{{"type", "text", "text", p.Text}}}})}
 	case "tool":
 		if p.State == nil || p.CallID == "" || p.State.Status == "pending" {
 			return nil
 		}
 		var out []string
-		if _, seen := t.calls[p.CallID]; !seen {
+		if _, seen := t.Calls[p.CallID]; !seen {
 			name, input := tool(p.Tool, p.State.Input)
-			t.calls[p.CallID] = call{name, input}
-			out = append(out, line(obj{"type", "assistant", "parent_tool_use_id", parent,
-				"message", obj{"role", "assistant", "content", []obj{{"type", "tool_use", "id", p.CallID, "name", name, "input", input}}}}))
+			t.Calls[p.CallID] = live.ToolCall{Name: name, Input: input}
+			out = append(out, live.Line(live.Obj{"type", "assistant", "parent_tool_use_id", parent,
+				"message", live.Obj{"role", "assistant", "content", []live.Obj{{"type", "tool_use", "id", p.CallID, "name", name, "input", input}}}}))
 		}
 		return append(out, t.result(p, parent)...)
 	}
@@ -305,27 +307,27 @@ func (t *translator) permission(raw json.RawMessage) []string {
 	if json.Unmarshal(raw, &p) != nil || p.ID == "" || !t.mine(p.SessionID) {
 		return nil
 	}
-	c, ok := t.calls[p.Tool.CallID]
+	c, ok := t.Calls[p.Tool.CallID]
 	if !ok { // asked before its call reached us: describe it from what the ask carries
-		c = call{p.Permission, map[string]any{}}
+		c = live.ToolCall{Name: p.Permission, Input: map[string]any{}}
 		if n, ok := toolNames[p.Permission]; ok {
-			c.name = n
+			c.Name = n
 		}
 		if f, _ := p.Metadata["filepath"].(string); f != "" {
-			c.input["file_path"] = f
+			c.Input["file_path"] = f
 		}
 		if cmd, _ := p.Metadata["command"].(string); cmd != "" {
-			c.input["command"] = cmd
+			c.Input["command"] = cmd
 		}
-		if len(c.input) == 0 && len(p.Patterns) > 0 {
-			c.input["pattern"] = strings.Join(p.Patterns, " ")
+		if len(c.Input) == 0 && len(p.Patterns) > 0 {
+			c.Input["pattern"] = strings.Join(p.Patterns, " ")
 		}
 	}
-	req := obj{"subtype", "can_use_tool", "tool_name", c.name, "input", c.input, "tool_use_id", p.Tool.CallID}
+	req := live.Obj{"subtype", "can_use_tool", "tool_name", c.Name, "input", c.Input, "tool_use_id", p.Tool.CallID}
 	if len(p.Always) > 0 {
-		req = append(req, "permission_suggestions", []obj{{"type", "opencode", "always", p.Always}})
+		req = append(req, "permission_suggestions", []live.Obj{{"type", "opencode", "always", p.Always}})
 	}
-	return []string{line(obj{"type", "control_request", "request_id", p.ID, "request", req})}
+	return []string{live.Line(live.Obj{"type", "control_request", "request_id", p.ID, "request", req})}
 }
 
 // question: OpenCode's question tool, shown as Claude's AskUserQuestion.
@@ -341,16 +343,16 @@ func (t *translator) question(raw json.RawMessage) []string {
 	if json.Unmarshal(raw, &p) != nil || p.ID == "" || !t.mine(p.SessionID) {
 		return nil
 	}
-	qs := make([]obj, 0, len(p.Questions))
+	qs := make([]live.Obj, 0, len(p.Questions))
 	for _, q := range p.Questions {
 		multi, _ := q["multiple"].(bool)
-		qs = append(qs, obj{"question", q["question"], "header", q["header"], "options", q["options"], "multiSelect", multi})
+		qs = append(qs, live.Obj{"question", q["question"], "header", q["header"], "options", q["options"], "multiSelect", multi})
 	}
-	return []string{line(obj{"type", "control_request", "request_id", p.ID, "request", obj{"subtype", "can_use_tool",
-		"tool_name", "AskUserQuestion", "input", obj{"questions", qs}, "tool_use_id", p.Tool.CallID}})}
+	return []string{live.Line(live.Obj{"type", "control_request", "request_id", p.ID, "request", live.Obj{"subtype", "can_use_tool",
+		"tool_name", "AskUserQuestion", "input", live.Obj{"questions", qs}, "tool_use_id", p.Tool.CallID}})}
 }
 
 func (t *translator) mine(sid string) bool {
 	_, child := t.children[sid]
-	return sid == t.sid || child
+	return sid == t.Sid || child
 }

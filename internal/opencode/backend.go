@@ -83,6 +83,7 @@ var modes = map[string]bool{"default": true, "acceptEdits": true, "plan": true, 
 func init() {
 	live.Register("opencode", live.Kind{
 		Bin: "opencode", Label: "opencode (OpenCode CLI)", Install: "install it: https://opencode.ai", Title: "OpenCode",
+		Blurb: "Any provider you set up in OpenCode, or its free models",
 		Modes: modes, SidOK: sidRe.MatchString, MaxLive: 3,
 		Spawn: spawn, Meta: meta, History: history{}, OneShot: oneShot, Warn: versionWarning,
 	})
@@ -92,8 +93,8 @@ func init() {
 // servers' events are different enough (a rewritten vocabulary and payload shape) that they need one each.
 type wireTranslator interface {
 	frame(raw []byte) []string
-	setModel(model string)
-	setSid(sid string)
+	SetModel(model string)
+	SetSid(sid string)
 }
 
 type server struct {
@@ -104,12 +105,13 @@ type server struct {
 	client *http.Client
 	v2     bool // this card's OpenCode is a v2 release: different endpoints, request/response shapes and events
 
-	mu    sync.Mutex
-	tr    wireTranslator
-	sid   string
-	mode  string
-	model string
-	sse   chan struct{} // closed when the event stream ends
+	mu        sync.Mutex
+	tr        wireTranslator
+	sid       string
+	mode      string
+	spawnMode string // the mode its config (OPENCODE_CONFIG_CONTENT) was built for
+	model     string
+	sse       chan struct{} // closed when the event stream ends
 }
 
 // versionWarning notes an installed OpenCode other than the tested one (a warning: newer ones usually work).
@@ -155,7 +157,7 @@ func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
 	} else {
 		tr = newTranslator(s.Sid, s.Model)
 	}
-	srv := &server{pass: randHex(16), ready: make(chan struct{}), client: &http.Client{}, sid: s.Sid, mode: s.Mode, model: s.Model,
+	srv := &server{pass: randHex(16), ready: make(chan struct{}), client: &http.Client{}, sid: s.Sid, mode: s.Mode, spawnMode: s.Mode, model: s.Model,
 		tr: tr, sse: make(chan struct{}), v2: v2}
 	// the static permission config still works in its v1 shape on a v2 server; only the runtime API (SetMode) changed
 	cfg := map[string]any{"permission": permissions(s.Mode)}
@@ -275,7 +277,11 @@ func (s *server) call(method, path string, body, out any) error {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("opencode %s %s: %d %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+		err := fmt.Errorf("opencode %s %s: %d %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+		if resp.StatusCode < 500 { // it turned the request down (an ask already answered, say): the server is fine
+			return &live.Refused{Err: err}
+		}
+		return err
 	}
 	if out != nil && len(b) > 0 {
 		return json.Unmarshal(b, out)

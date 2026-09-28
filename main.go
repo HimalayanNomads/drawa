@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "drawa/internal/codex" // registers the codex backend
 	"drawa/internal/config"
 	"drawa/internal/live"
 	_ "drawa/internal/opencode" // registers the opencode backend

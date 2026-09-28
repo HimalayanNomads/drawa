@@ -40,6 +40,8 @@ func TestCheckWireRejects(t *testing.T) {
 		"delta after close": {append(append([]string{}, wireTurn[:6]...), wireTurn[4]), "isn't open"},
 		"unknown tool call": {[]string{`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"zz"}]}}`}, "unknown call"},
 		"ask without id":    {append([]string{}, `{"type":"control_request","request":{"subtype":"can_use_tool","tool_name":"Bash"}}`), "request_id"},
+		"cancel without id": {append(append([]string{}, wireTurn[:10]...), `{"type":"control_cancel_request"}`), "unknown request_id"},
+		"cancel unasked":    {append(append([]string{}, wireTurn[:10]...), `{"type":"control_cancel_request","request_id":"r9"}`), "unknown request_id"},
 	} {
 		if err := CheckWire(c.lines); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v, want an error containing %q", name, err, c.want)
@@ -47,9 +49,27 @@ func TestCheckWireRejects(t *testing.T) {
 	}
 }
 
+// An ask taken back unanswered (its turn was stopped) is fine.
+func TestCheckWireCancelAsk(t *testing.T) {
+	lines := append(append([]string{}, wireTurn[:10]...), `{"type":"control_cancel_request","request_id":"r1"}`)
+	if err := CheckWire(append(lines, wireTurn[10:]...)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A process that dies mid-turn ends the stream with exit, not result: that's allowed.
 func TestCheckWireExitEndsTurn(t *testing.T) {
 	if err := CheckWire(append(append([]string{}, wireTurn[:4]...), `{"type":"exit","code":1}`)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A backend that knows the context window reports it in the result, last, as Claude does.
+func TestTurnEndWindow(t *testing.T) {
+	tn := NewTurn("s", "m")
+	tn.Window = 200000
+	out := tn.End(func(string) bool { return false })
+	if last := out[len(out)-1]; !strings.HasSuffix(last, `"modelUsage":{"m":{"contextWindow":200000}}}`) {
+		t.Fatal(last)
 	}
 }
