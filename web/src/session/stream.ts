@@ -293,7 +293,9 @@ export function on(S: Session, m: Msg) {
     const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n') : ''
     // a background task's report starts a turn of its own: its result mustn't un-queue a message Claude hasn't read
     if (text.startsWith('<task-notification>')) { notification(S, text); S.picked = true }
-    else if (m.isMeta && text) { if (!handoff(S, text, true)) meta(S, text) } // text the CLI adds itself (an agent's report, a skill's instructions): not something you typed
+    // text the CLI adds itself (an agent's report, a skill's instructions): not something you typed. The live stream
+    // flags it isSynthetic in newer CLIs (the transcript still says isMeta)
+    else if ((m.isMeta || m.isSynthetic) && text) { if (!handoff(S, text, true)) meta(S, text) }
     else if (text && handoff(S, text, true, false)) { /* an agent's report echoed from the queue, without isMeta */ }
     else if (text) { // Claude picked up a message: ours (queued here), or one this page didn't send (restored card, another tab)
       const q = S.queued.shift()
