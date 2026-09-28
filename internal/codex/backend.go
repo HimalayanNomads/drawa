@@ -31,8 +31,6 @@ func init() {
 	live.Register("codex", live.Kind{
 		Bin: "codex", Label: "codex (Codex CLI)", Install: "install it: https://developers.openai.com/codex/cli", Title: "Codex",
 		Blurb: "Your ChatGPT plan or OpenAI API key",
-		// no MaxLive of its own (each card's app-server is ~250 MB): how many a machine can keep running is the
-		// user's call, with DRAWA_MAX_LIVE
 		Modes: modes, SidOK: config.UUIDRe.MatchString,
 		Spawn: spawn, Meta: models, History: history{}, OneShot: oneShot, Warn: versionWarning,
 	})

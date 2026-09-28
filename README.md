@@ -60,7 +60,7 @@ Things to know:
 - **Privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
 - **What's the same.** Approvals, questions, the files and commands windows, sub-agents, canvas tools and history work as they do for Claude Code.
 - **What differs.** OpenCode has no Auto mode, and no effort setting. The status line's usage windows are Claude Code's, so OpenCode cards don't show them.
-- **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB), so at most 3 stay running at once; the least recently used idle one closes and resumes on its next message.
+- **Memory.** Each OpenCode session runs its own `opencode` server (about 300 MB). There's no OpenCode-specific limit: set `DRAWA_MAX_LIVE` if your machine needs one.
 - **Commit messages.** The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
 ### Use Codex
@@ -134,7 +134,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 | `DRAWA_PORT` | `8765` | Port to serve on. Set it to run two projects at once. |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
 | `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
-| `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB; OpenCode has its own cap of 3). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
+| `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
 | `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh

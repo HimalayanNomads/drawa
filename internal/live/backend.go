@@ -71,7 +71,6 @@ type Kind struct {
 	Title               string          // what the page calls it ("Claude Code")
 	Blurb               string          // one line on what picking it means, for menus
 	Modes               map[string]bool // the Drawa permission modes it accepts
-	MaxLive             int             // at most this many of its cards live at once (0: no limit of its own)
 	Unsend              bool            // its Backend is an Unsender: queued messages can be deleted or edited
 	SidOK               func(sid string) bool
 	Spawn               func(Spec, Sink) (Backend, error)

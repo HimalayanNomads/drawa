@@ -27,7 +27,7 @@ var Version = "dev"
 // Port is 8765 unless DRAWA_PORT overrides it (e.g. two projects open at once, or 8765 is already taken).
 var Port = port()
 
-// MaxLive caps running Claude processes (DRAWA_MAX_LIVE; 0, the default, means no cap). No default number: how
+// MaxLive caps running agent processes, of every backend together (DRAWA_MAX_LIVE; 0, the default, means no cap). No default number: how
 // many fit depends on the machine (each process is a few hundred MB), and the idle reaper already bounds them.
 var MaxLive = maxLive()
 

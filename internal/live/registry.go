@@ -50,21 +50,16 @@ func Start(cid, kind, sid, mode, model, effort string) (*Live, error) {
 }
 
 // evictLocked removes and returns the least recently used idle card (not working, not keep) when more are running
-// than config.MaxLive (if set), or more of keep's backend than its Kind.MaxLive; else nil. Called with Mu held.
+// than config.MaxLive (if set); else nil. Called with Mu held.
 func evictLocked(keep string) *Live {
-	kind := ""
-	if k := Registry[keep]; k != nil {
-		kind = k.Kind
+	if config.MaxLive <= 0 {
+		return nil
 	}
-	// lru over all cards, and over keep's backend's
-	type pick struct {
-		l   *Live
-		cid string
-		at  time.Time
-	}
-	var all, same pick
-	running, sameRunning := 0, 0
-	for cid, l := range Registry {
+	var victim *Live
+	var cid string
+	var at time.Time
+	running := 0
+	for id, l := range Registry {
 		l.mu.Lock()
 		alive, idle, last := !l.exited, !l.working(), l.last
 		l.mu.Unlock()
@@ -72,30 +67,15 @@ func evictLocked(keep string) *Live {
 			continue
 		}
 		running++
-		if l.Kind == kind {
-			sameRunning++
-		}
-		if cid == keep || !idle {
-			continue
-		}
-		if all.l == nil || last.Before(all.at) {
-			all = pick{l, cid, last}
-		}
-		if l.Kind == kind && (same.l == nil || last.Before(same.at)) {
-			same = pick{l, cid, last}
+		if id != keep && idle && (victim == nil || last.Before(at)) {
+			victim, cid, at = l, id, last
 		}
 	}
-	victim := pick{}
-	if k, ok := Lookup(kind); ok && k.MaxLive > 0 && sameRunning > k.MaxLive {
-		victim = same
-	} else if config.MaxLive > 0 && running > config.MaxLive {
-		victim = all
-	}
-	if victim.l == nil {
+	if running <= config.MaxLive || victim == nil {
 		return nil
 	}
-	delete(Registry, victim.cid)
-	return victim.l
+	delete(Registry, cid)
+	return victim
 }
 
 // Reap closes live agent processes with no traffic for IdleSecs (the next message resumes them).

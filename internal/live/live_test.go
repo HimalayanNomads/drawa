@@ -291,35 +291,6 @@ func TestStartUnknownBackend(t *testing.T) {
 	}
 }
 
-// A backend's own cap closes its least recently used idle card, even under the global cap; other backends' cards stay.
-func TestEvictPerBackend(t *testing.T) {
-	Register("test-capped", Kind{MaxLive: 2})
-	Mu.Lock()
-	saved, savedMax := Registry, config.MaxLive
-	Registry, config.MaxLive = map[string]*Live{}, 0
-	t.Cleanup(func() {
-		Mu.Lock()
-		Registry, config.MaxLive = saved, savedMax
-		Mu.Unlock()
-		delete(kinds, "test-capped")
-	})
-	add := func(cid, kind string, ago time.Duration) {
-		l := NewForTest("", "g")
-		l.Kind, l.last = kind, time.Now().Add(-ago)
-		Registry[cid] = l
-	}
-	add("claude-old", "claude", 3*time.Hour)
-	add("a", "test-capped", time.Hour)
-	add("b", "test-capped", 2*time.Hour)
-	add("new", "test-capped", 0)
-	victim := evictLocked("new")
-	_, bStill := Registry["b"]
-	Mu.Unlock()
-	if victim == nil || bStill {
-		t.Fatalf("expected b (the capped backend's oldest idle card) evicted; got %v", victim)
-	}
-}
-
 type slowRefuse struct {
 	nopBackend
 	gate chan struct{}
