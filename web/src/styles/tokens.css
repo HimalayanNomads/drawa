@@ -32,7 +32,7 @@
   --tab-h:34px;
 
   /* what each kind of canvas item is colored by (tab glyph, focus line, minimap, reference chips) */
-  --k-session:var(--accent);--k-run:var(--run);--k-diagram:var(--write);--k-sketch:var(--run);--k-plan:var(--accent);--k-note:var(--ink-2);--k-file:var(--read);--k-git:var(--write);--k-snippet:var(--run);--k-image:var(--read);--k-github:var(--accent);--k-agent:var(--write);--k-doc:var(--ink-2);--k-group:var(--ink-2);
+  --k-session:var(--accent);--k-run:var(--run);--k-diagram:var(--write);--k-sketch:var(--run);--k-plan:var(--accent);--k-note:var(--ink-2);--k-file:var(--read);--k-git:var(--write);--k-snippet:var(--run);--k-image:var(--read);--k-github:var(--accent);--k-agent:var(--write);--k-doc:var(--ink-2);--k-group:var(--ink-2);--k-preview:var(--read);
 
   /* z scale: canvas items stack inside #world's own context; these are the overlays above it */
   --z-frame:1; /* a group's frame: under every canvas item (they stack from 10 up, canvas.ts front()) */

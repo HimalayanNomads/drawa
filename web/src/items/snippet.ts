@@ -81,13 +81,13 @@ function codeSource(block: Element): Source {
 /** What a selection is, judged by where it sits. `null`: nothing to pin (inputs, window tabs, the toolbar). */
 function selectionSource(node: Element, range: Range, text: string): Source | null {
   if (node.closest(`${EDITABLE}, .win-h, #bar, .pinsel`)) return null
-  // a file open in the inspector: code, titled with its path and the selected line numbers
-  const src = node.closest('#viewer .src')
+  // a file (in the inspector or a preview window): code, titled with its path and the selected line numbers
+  const src = node.closest<HTMLElement>('.src[data-path]')
   if (src) {
     if (node.closest('.ln')) return null
-    const code = src.querySelector('pre:not(.ln) code')!, path = inspectorPath() || 'file'
+    const code = src.querySelector('pre:not(.ln) code')!, path = src.dataset.path!
     const start = textBefore(code, range).split('\n').length, end = start + text.replace(/\n$/, '').split('\n').length - 1
-    return { title: `${path}:${start}${end > start ? '-' + end : ''}`, text, type: 'code', lang: path.split('.').pop() ?? '', host: null }
+    return { title: `${path}:${start}${end > start ? '-' + end : ''}`, text, type: 'code', lang: path.split('.').pop() ?? '', host: src.closest<HTMLElement>('.item') }
   }
   // a diff (inspector's Changes, the Git window): code from that file
   const diff = node.closest('.diff')

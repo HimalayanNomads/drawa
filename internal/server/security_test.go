@@ -3,9 +3,13 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"drawa/internal/config"
 	"drawa/internal/images"
 	"drawa/internal/live"
 )
@@ -96,6 +100,33 @@ func TestStashRefusesSpecialFiles(t *testing.T) {
 	for _, p := range []string{"/dev/zero", t.TempDir()} {
 		if _, err := images.Stash(p); err == nil {
 			t.Errorf("Stash(%q) accepted", p)
+		}
+	}
+}
+
+func TestRawServesOnlyProjectImages(t *testing.T) {
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	old := config.Root
+	t.Cleanup(func() { config.Root = old })
+	config.Root = filepath.Join(root, "proj")
+	os.MkdirAll(filepath.Join(config.Root, "d.png"), 0o755)
+	os.WriteFile(filepath.Join(config.Root, "a.png"), []byte("\x89PNG\r\n\x1a\n"), 0o644)
+	os.WriteFile(filepath.Join(config.Root, "a.html"), []byte("<script>"), 0o644)
+	os.WriteFile(filepath.Join(root, "out.png"), []byte("secret"), 0o644)
+	h := Handler()
+	for _, c := range []struct {
+		path string
+		want int
+	}{{"a.png", 200}, {"../out.png", 404}, {"a.html", 415}, {"d.png", 404}, {"missing.png", 404}} {
+		req := httptest.NewRequest("GET", "/api/raw?path="+url.QueryEscape(c.path), nil)
+		req.Host = "127.0.0.1:8765"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s: status %d, want %d", c.path, rec.Code, c.want)
+		}
+		if c.want == 200 && (rec.Header().Get("Content-Type") != "image/png" || rec.Header().Get("X-Content-Type-Options") != "nosniff") {
+			t.Errorf("%s: headers %v", c.path, rec.Header())
 		}
 	}
 }

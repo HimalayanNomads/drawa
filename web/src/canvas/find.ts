@@ -1,5 +1,9 @@
 // Find a window: Ctrl/Cmd+K (or the toolbar's search button) lists everything on the canvas; type to filter by
-// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed.
+// title and content, Enter flies to it, brings it to the front and expands it if it was collapsed. Project files
+// matching the query are listed below the windows, the highlighted one previewed beside the list; picking one opens
+// it in a window (see fileOpener).
+import { api, q as enc } from '../lib/api'
+import { enhanceMarked } from '../lib/markdown'
 import { $, make, ping, reducedMotion } from '../lib/dom'
 import { items, centerOn, front, onCanvas, hidden } from './canvas'
 import { refIcon, kindName } from './refs'
@@ -8,12 +12,15 @@ import { titleOf, expand, focusInput } from './window'
 const box = document.body.appendChild(make('div', 'finder'))
 box.hidden = true
 box.setAttribute('role', 'dialog')
-box.setAttribute('aria-label', 'Find a window')
+box.setAttribute('aria-label', 'Find a window or file')
 const input = box.appendChild(make('input'))
-input.placeholder = 'Find a window: title or anything in it'
-input.setAttribute('aria-label', 'Find a window')
-const list = box.appendChild(make('div', 'finder-list'))
+input.placeholder = 'Find a window or a file'
+input.setAttribute('aria-label', 'Find a window or file')
+const body = box.appendChild(make('div', 'finder-b'))
+const list = body.appendChild(make('div', 'finder-list'))
 list.setAttribute('role', 'listbox')
+const peekBox = body.appendChild(make('div', 'finder-peek'))
+peekBox.onmousedown = e => e.preventDefault() // keeps focus in the input, whose blur closes the finder (wheel scrolling still works)
 
 const TEXT = 40_000
 /** What a window's content search covers: a chat log's newest ~40k characters (read row by row from the end, so a
@@ -27,7 +34,7 @@ function textOf(el: HTMLElement) {
   return parts.reverse().join('\n').slice(-TEXT)
 }
 
-interface Hit { el: HTMLElement; title: string; kind: string; excerpt: string; score: number }
+interface Hit { el?: HTMLElement; path?: string; title: string; kind: string; excerpt: string; score: number }
 interface Entry { el: HTMLElement; title: string; t: string; kind: string; body: string; b: string }
 let hits: Hit[] = [], sel = 0, index: Entry[] = []
 /** Read every window's title and text once, when the finder opens: typing then only filters this. */
@@ -38,6 +45,40 @@ function build() {
     const title = titleOf(el) || kindName(el.dataset.kind ?? ''), body = textOf(el)
     return { el, title, t: title.toLowerCase(), kind: el.dataset.kind ?? '', body, b: body.toLowerCase() }
   })
+}
+
+let openFile: ((path: string) => HTMLElement) | null = null, peekFile: ((path: string) => Promise<HTMLElement>) | null = null
+/** List project files too: picking one calls `open`, which returns its window (an open one, or a new one); the
+ *  highlighted one is shown beside the list with what `peek` draws. */
+export const fileOpener = (open: typeof openFile, peek: typeof peekFile) => { openFile = open; peekFile = peek }
+
+// the highlighted file's preview, kept while the finder is open so going back to a file is instant.
+// ponytail: kept unbounded until close (a few hundred files at most per open); an LRU if that grows.
+let peeked = ''
+const peeks = new Map<string, Promise<HTMLElement>>()
+const peekOf = (path: string) => { let v = peeks.get(path); if (!v) peeks.set(path, v = peekFile!(path)); return v }
+function peek() {
+  box.classList.toggle('peeking', !!peekFile && !!input.value.trim()) // wide while searching, so neither the highlight nor typing resizes it
+  const path = hits[sel]?.path ?? ''
+  if (path === peeked) return
+  peeked = path
+  if (!path || !peekFile) return void peekBox.replaceChildren()
+  // the last preview stays until this one is drawn: no blank flash between files
+  peekOf(path).then(v => { if (peeked === path && !box.hidden) { peekBox.replaceChildren(v); enhanceMarked(peekBox) } }).catch(() => {})
+}
+
+// files matching the query: the server's fuzzy search (the same as @ in a message), asked once typing pauses
+let found: string[] = [], fileQ = '', typing = 0
+function findFiles() {
+  clearTimeout(typing)
+  const q = fileQ = input.value.trim()
+  found = [] // the last query's files aren't this one's: none are pickable until the answer comes
+  if (!q || !openFile) return
+  typing = setTimeout(() => api<string[]>('files?q=' + enc(q)).then(list => { if (fileQ === q && !box.hidden) { found = list; draw(); if (peekFile) list.slice(0, 3).forEach(peekOf) } }).catch(() => {}), 120)
+}
+const fileHit = (path: string): Hit => {
+  const cut = path.lastIndexOf('/')
+  return { path, title: path.slice(cut + 1), kind: 'preview', excerpt: path.slice(0, cut + 1), score: 0 }
 }
 
 function search(q: string): Hit[] {
@@ -63,20 +104,28 @@ function search(q: string): Hit[] {
 }
 
 function draw() {
-  hits = search(input.value).slice(0, 50)
+  hits = [...search(input.value).slice(0, 50), ...found.map(fileHit)]
   sel = Math.min(sel, Math.max(0, hits.length - 1))
-  list.replaceChildren(...(hits.length ? hits.map((h, i) => {
+  list.replaceChildren(...(hits.length ? hits.flatMap((h, i) => {
     const row = make('button', 'finder-row' + (i === sel ? ' on' : ''))
     row.setAttribute('role', 'option')
     row.dataset.kind = h.kind
     const main = make('span', 'fr-main')
     main.append(make('b', '', h.title || '(untitled)'), ...(h.excerpt ? [make('small', '', h.excerpt)] : []))
     row.append(make('i', 'fr-g', refIcon(h.kind)), main, make('span', 'fr-k', kindName(h.kind)))
-    row.onmousedown = e => { e.preventDefault(); go(h.el) }
-    return row
-  }) : [make('p', 'none', 'No window matches.')]))
+    row.onmousedown = e => { e.preventDefault(); pick(h) }
+    // mousemove, not mouseenter: a redraw puts a new row under a resting pointer, which would take the highlight back from the arrow keys
+    row.onmousemove = () => { if (sel === i) return; list.querySelector('.on')?.classList.remove('on'); row.classList.add('on'); sel = i; peek() }
+    if (!h.path || hits[i - 1]?.path) return [row]
+    const head = make('p', 'finder-sec', 'Files') // the files start: their own section, below the windows
+    head.setAttribute('role', 'presentation')
+    return [head, row]
+  }) : [make('p', 'none', 'Nothing matches.')]))
   list.querySelector('.on')?.scrollIntoView({ block: 'nearest' })
+  peek()
 }
+
+const pick = (h: Hit) => { const el = h.el ?? openFile?.(h.path!); if (el) go(el) }
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */
 function go(el: HTMLElement) {
@@ -96,13 +145,13 @@ function openFinder() {
   draw()
   input.focus()
 }
-const close = () => { box.hidden = true; index = [] } // don't hold on to big texts
+const close = () => { box.hidden = true; index = []; found = []; peeked = ''; peeks.clear(); clearTimeout(typing); peekBox.replaceChildren() } // don't hold on to big texts
 
-input.addEventListener('input', () => { sel = 0; draw() })
+input.addEventListener('input', () => { sel = 0; findFiles(); draw() })
 input.addEventListener('keydown', e => {
   e.stopPropagation() // typing here isn't a canvas shortcut
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % Math.max(1, hits.length); draw() }
-  else if (e.key === 'Enter') { e.preventDefault(); if (hits[sel]) go(hits[sel].el) }
+  else if (e.key === 'Enter') { e.preventDefault(); if (hits[sel]) pick(hits[sel]) }
   else if (e.key === 'Escape') { e.preventDefault(); close() }
 })
 input.onblur = close // rows keep focus in the input (mousedown is prevented), so this is a real blur

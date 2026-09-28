@@ -26,6 +26,7 @@ import './items/snippet'
 import './items/image'
 import './items/agent'
 import './items/group' // Ctrl+G groups the selected windows into a frame
+import './items/preview' // Ctrl+K opens project files in windows
 import './canvas/find'
 import { openGit } from './items/git'
 import { openGitHub } from './items/github'

@@ -17,7 +17,7 @@ web/src/
   lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the update-available dialog), theme, tooltip
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
-  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window), group (a frame holding windows; + groupgeom.ts, its geometry)
+  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows; + groupgeom.ts, its geometry)
   panels/      side panels: file tree + inspector, diffs
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
@@ -43,6 +43,7 @@ The app scales through these registration points. A new feature should plug into
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/select.ts` |
 | Moves along when another item is dragged (a selection, a group's windows) | `moveWith(fn)` (`fn(el)` returns what comes with `el`; `movesWith(el)` follows every answer through; items with `data-locked` stay put) | `canvas/canvas.ts` |
+| Ctrl+K lists project files, previews the highlighted one and opens a picked one | `fileOpener(open, peek)` (`open(path)` returns the file's window, open or new; `peek(path)` draws its preview) | `canvas/find.ts` |
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:

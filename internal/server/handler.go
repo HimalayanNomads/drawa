@@ -216,6 +216,10 @@ func doGET(w http.ResponseWriter, r *http.Request) {
 		serveImage(w, r, key)
 		return
 	}
+	if path == "/api/raw" {
+		serveRaw(w, r, q.Get("path"))
+		return
+	}
 	route, found := getRoutes[path]
 	if !found {
 		http.Error(w, "", 404)
@@ -237,6 +241,40 @@ func serveImage(w http.ResponseWriter, r *http.Request, key string) {
 	w.Header().Set("Content-Type", cmp.Or(images.Type(data), "application/octet-stream"))
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable") // named by its hash: never changes
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
+}
+
+// rawTypes: only pictures, set by extension rather than sniffed, so /api/raw can't serve the project's HTML as a page.
+var rawTypes = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+	".svg": "image/svg+xml", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon",
+}
+
+const rawMax = 20 << 20
+
+// serveRaw serves a project picture's bytes for an <img>.
+func serveRaw(w http.ResponseWriter, r *http.Request, rel string) {
+	ctype, isImage := rawTypes[strings.ToLower(filepath.Ext(rel))]
+	if !isImage {
+		http.Error(w, "", 415)
+		return
+	}
+	f, info, err := filesx.Open(rel)
+	if err != nil {
+		http.Error(w, "", 404)
+		return
+	}
+	defer f.Close()
+	if info.Size() > rawMax {
+		http.Error(w, "", 413)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", ctype)
+	h.Set("X-Content-Type-Options", "nosniff")
+	// an SVG from a cloned repo opened directly would otherwise run its script on our origin
+	h.Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+	h.Set("Cache-Control", "no-cache") // the file may change on disk; ServeContent revalidates by mtime
+	http.ServeContent(w, r, "", info.ModTime(), f)
 }
 
 var errNoUI = errors.New("UI not built: run `npm install && npm run build` in web/")

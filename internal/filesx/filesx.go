@@ -240,23 +240,37 @@ func Find(q string, limit int) []string {
 
 var errNotFile = errors.New("not a file")
 
-// Get reads a file for the viewer.
-func Get(rel string) (map[string]any, error) {
+// Open opens a regular file inside the project for reading; the caller closes it.
+func Open(rel string) (*os.File, os.FileInfo, error) {
 	p, err := config.Inside(rel)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NONBLOCK, 0) // a plain open of a FIFO waits for a writer forever
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() { // FIFOs, devices, folders
+		err = errNotFile
+	}
+	if err == nil {
+		err = config.Opened(f, p)
+	}
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return f, info, nil
+}
+
+// Get reads a file for the viewer.
+func Get(rel string) (map[string]any, error) {
+	f, _, err := Open(rel)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() { // FIFOs, devices, folders
-		return nil, errNotFile
-	}
-	if err := config.Opened(f, p); err != nil {
-		return nil, err
-	}
 	data, err := io.ReadAll(io.LimitReader(f, 1_000_000)) // ponytail: 1MB cap, viewer not an editor
 	if err != nil {
 		return nil, err

@@ -292,3 +292,8 @@ button.ghti:hover{text-decoration:underline}
 .win.group[data-outline]::before{inset:-4px;border:1px dashed var(--accent)} /* round the whole group, tab included */
 .win.group[data-outline]::after{inset:-8px} /* corner squares (canvas.css), centered on the line */
 .item[data-outline]:not(.group){outline:1px solid var(--accent);outline-offset:3px}
+
+/* file previews (items/preview.ts): the inspector's code and Markdown views, scrolling inside the window */
+.pvnode-s{position:relative;flex:1;min-height:0;overflow:auto;background:var(--bg);cursor:text}
+.pvnode-s>.mdview{max-width:none}
+.pvnode .none{padding:16px;color:var(--muted);font-size:12.5px}

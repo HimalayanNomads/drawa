@@ -73,10 +73,15 @@ function resolve(m: Mark) {
   watch(m.host)
   // after a miss, search again only when the host grew (a row added, or its last row streaming), and only from
   // its last row seen then: a streaming chat would otherwise re-read its whole text every 250ms
-  const host = m.host, kids = host.childElementCount, tail = host.lastElementChild?.textContent?.length ?? 0
+  // (the ink layer isn't a row: a file preview's is its last child, while its text is replaced before it)
+  const host = m.host, kids = host.childElementCount
+  let last = host.lastElementChild
+  if (last?.matches('svg.ink-local')) last = last.previousElementSibling
+  const tail = last?.textContent?.length ?? 0
   const miss = m.miss?.host === host ? m.miss : undefined
   if (miss && (miss.n >= MISSES || (kids <= miss.kids && tail <= miss.tail))) return
-  const from = miss ? host.children[Math.max(0, miss.kids - 1)] : undefined
+  let from = miss ? host.children[Math.max(0, miss.kids - 1)] : undefined
+  if (from?.matches('svg.ink-local')) from = from.previousElementSibling ?? undefined
   let all: string
   if (from) { const r = document.createRange(); r.setStartBefore(from); r.setEnd(host, host.childNodes.length); all = r.toString() }
   else all = host.textContent ?? ''

@@ -2,7 +2,7 @@
 import { tipText } from '../lib/tooltip'
 import { api, q, type TreeItem } from '../lib/api'
 import { $, make, pathEl } from '../lib/dom'
-import { md, enhance, highlighter } from '../lib/markdown'
+import { md, enhance, enhanceMarked, highlighter } from '../lib/markdown'
 import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
 import type { Change } from './diff'
 import { centerOn } from '../canvas/canvas'
@@ -100,6 +100,40 @@ export function showTab(which: 'changes' | 'viewer') {
   syncFoldAll()
 }
 
+export const isMarkdown = (p: string) => /\.(md|markdown|mdx)$/i.test(p)
+
+/** A file's text as code with line numbers, highlighted by its extension. Also the preview window's body. */
+export async function sourceView(p: string, text: string | null) {
+  const src = make('div', 'src'), ln = make('pre', 'ln'), pre = make('pre'), code = make('code', '', text ?? 'Binary file, not shown.')
+  src.dataset.path = p // pinning a selection names the file and its lines (snippet.ts)
+  const lines = text == null ? 1 : text.replace(/\n$/, '').split('\n').length
+  ln.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n')
+  pre.append(code)
+  src.append(ln, pre)
+  const ext = p.split('.').pop()!
+  if (text != null && text.length < 300_000) {
+    const hljs = await highlighter()
+    if (hljs.getLanguage(ext)) code.className = 'language-' + ext
+    hljs.highlightElement(code)
+  }
+  return src
+}
+
+/** A Markdown file rendered, its relative pictures loaded from the project.
+ *  ponytail: relative links still point at the page; send them to the inspector if that's missed. */
+export function mdView(p: string, text: string) {
+  const out = make('div', 'md mdview')
+  out.innerHTML = md(text)
+  enhance(out)
+  const dir = 'http://p/' + p.slice(0, p.lastIndexOf('/') + 1)
+  for (const img of out.querySelectorAll('img')) {
+    const s = img.getAttribute('src') ?? ''
+    if (!s || /^([a-z][\w+.-]*:|\/|#)/i.test(s)) continue
+    try { img.src = '/api/raw?path=' + q(decodeURIComponent(new URL(s, dir).pathname.slice(1))) } catch { /* a stray % in the path: left as written */ }
+  }
+  return out
+}
+
 export async function view(p: string) {
   const head = make('div', 'vhead'), ins = make('button', 'btn', 'Insert path')
   ins.title = 'Add this path to the message you are writing'
@@ -110,36 +144,23 @@ export async function view(p: string) {
     ta.focus()
   }
 
-  const src = make('div', 'src'), ln = make('pre', 'ln'), pre = make('pre'), code = make('code')
-  let text: string | null = null
+  let text: string | null = null, src: HTMLElement
   try {
     ({ text } = await api<{ text: string | null }>('file?path=' + q(p)))
-    code.textContent = text ?? 'Binary file, not shown.'
-    const lines = text == null ? 1 : text.replace(/\n$/, '').split('\n').length
-    ln.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n')
-    const ext = p.split('.').pop()!
-    if (text != null && text.length < 300_000) {
-      const hljs = await highlighter()
-      if (hljs.getLanguage(ext)) code.className = 'language-' + ext
-      hljs.highlightElement(code)
-    }
+    src = await sourceView(p, text)
   } catch (e) {
-    code.textContent = (e as Error).message
+    src = make('p', 'none', (e as Error).message)
   }
   if (inspecting !== p) return // user moved on while loading
-  pre.append(code)
-  src.append(ln, pre)
 
-  if (text != null && /\.(md|markdown|mdx)$/i.test(p)) {
-    // ponytail: relative images/links won't resolve, the server doesn't serve project files raw
-    const preview = make('div', 'md mdview'), toggle = make('button', 'btn')
-    preview.innerHTML = md(text)
-    enhance(preview)
+  if (text != null && isMarkdown(p)) {
+    const preview = mdView(p, text), toggle = make('button', 'btn')
     const sync = () => { preview.hidden = mdSource; src.hidden = !mdSource; toggle.textContent = mdSource ? 'Preview' : 'Source' }
     toggle.onclick = () => { mdSource = !mdSource; sync() }
     sync()
     head.append(toggle, ins)
     $('#viewer').replaceChildren(head, preview, src)
+    enhanceMarked($('#viewer')) // built off-page: diagrams and code tools need it shown first
   } else {
     head.append(ins)
     $('#viewer').replaceChildren(head, src)
