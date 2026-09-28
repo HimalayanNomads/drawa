@@ -236,7 +236,12 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	cmd.Start()
+	// its own session: a browser this starts would otherwise sit in the terminal's foreground group, and the
+	// Ctrl+C or hangup that stops drawa would close it too
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if cmd.Start() == nil {
+		go cmd.Wait() // reap xdg-open so it doesn't linger as a zombie
+	}
 }
 
 func main() {
