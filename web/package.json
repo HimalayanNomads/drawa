@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "check": "tsc",
-    "postinstall": "node -e \"require('fs').cpSync('node_modules/@excalidraw/excalidraw/dist/prod/fonts','public/excalidraw/fonts',{recursive:true})\""
+    "postinstall": "node -e \"require('fs').cpSync('node_modules/@excalidraw/excalidraw/dist/prod/fonts','public/excalidraw/fonts',{recursive:true,filter:p=>!p.includes('Xiaolai')})\""
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
