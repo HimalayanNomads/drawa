@@ -5,7 +5,7 @@ import { api } from './api'
 import { make } from './dom'
 import { enhance } from './select'
 
-export interface Agent { name: string; title: string; installed: boolean; install: string; modes: string[]; canWrite: boolean }
+export interface Agent { name: string; title: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean }
 export interface Model { value: string; displayName: string; description: string }
 export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
 
@@ -24,6 +24,8 @@ export const blurb = (name: string) => BLURBS[name] ?? ''
 /** How copy refers to it: "Claude is working", "OpenCode is working". */
 export const who = (name: string) => title(name).replace(/ Code$/, '')
 export const installed = () => agents.filter(a => a.installed)
+/** Whether a queued message can still be taken back (deleted, or edited) until the agent reads it. */
+export const canUnsend = (name: string) => !!agents.find(a => a.name === name)?.canUnsend
 /** The Drawa permission modes an agent supports (all, until the list has loaded). */
 export const modesOf = (name: string) => agents.find(a => a.name === name)?.modes
 

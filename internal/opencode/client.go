@@ -107,7 +107,7 @@ func textAndFiles(content any) (string, []map[string]any) {
 	return strings.Join(text, "\n"), files
 }
 
-func (s *server) Send(content any) error {
+func (s *server) Send(content any, _ string) error {
 	sid, err := s.session()
 	if err != nil {
 		return err

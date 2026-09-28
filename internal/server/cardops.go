@@ -13,7 +13,7 @@ import (
 // ARNs with / and @); they end up on its command line, so nothing starting with - (it would read as an option).
 var modelRe = regexp.MustCompile(`^[\w.\[\]/@][\w.\[\]:/@-]{0,199}$`)
 
-// handleCardOp is the per-card operations: send a message, answer an approval, change mode, answer a canvas
+// handleCardOp is the per-card operations: send a message (or take back a queued one), answer an approval, change mode, answer a canvas
 // call, interrupt, or close. live.Mu only guards the Registry map itself (live.Start spawns outside it, so two
 // concurrent /api/send calls for a new card still start one process); once a *Live is in hand, every card's I/O
 // runs unlocked from every other card's, and its backend serializes writes to that one card's process.
@@ -71,7 +71,29 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 			http.Error(w, "", 400)
 			return
 		}
-		err = lv.Send(content)
+		id := str(body["uuid"])
+		if id != "" && !config.UUIDRe.MatchString(id) {
+			http.Error(w, "", 400)
+			return
+		}
+		err = lv.Send(content, id)
+
+	case "/api/unsend":
+		// take back a queued message: {cancelled: false} when the agent has read it already
+		id := str(body["uuid"])
+		if !config.UUIDRe.MatchString(id) {
+			http.Error(w, "", 400)
+			return
+		}
+		cancelled := false
+		if lv != nil && lv.Alive() {
+			if cancelled, err = lv.Unsend(id); err != nil {
+				sendJSON(w, map[string]any{"error": err.Error()}, 502)
+				return
+			}
+		}
+		sendJSON(w, map[string]any{"cancelled": cancelled}, 200)
+		return
 
 	case "/api/respond":
 		if lv == nil || !lv.Alive() { // the process that asked is gone: nothing can take this answer

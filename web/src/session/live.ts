@@ -1,11 +1,11 @@
 // The live connection to a card's Claude process: send messages, and read its output stream (re-attaching
 // after network drops or a reload) until the process exits.
-import { make, uuid, button } from '../lib/dom'
+import { make, uuid, button, iconButton, ICON, toast } from '../lib/dom'
 import { post } from '../lib/api'
 import { quiet } from '../canvas/graph'
 import { toContent, type Ref } from '../canvas/refs'
 import { cards, put, renderCard, type Session } from './session'
-import { chip } from './composer'
+import { chip, putBack } from './composer'
 import { on, type Msg } from './stream'
 import { thumb, imageBlock, type Pasted } from './images'
 import { askPermission } from './notify'
@@ -14,13 +14,15 @@ import { takeShell } from './shell'
 import { agentsStopped } from '../items/agent'
 import { expireAsks } from './asks'
 import { reload } from './history'
+import { canUnsend, who } from '../lib/agents'
 
 /** Send a message (text, or content blocks like images with a short label for the bubble). Resolves to whether
  *  the server took it. */
 export async function send(S: Session, prompt: string, content?: object[], refs: Ref[] = [], images: Pasted[] = []): Promise<boolean> {
   askPermission() // first message: a good moment to ask (it's a user action) whether you want notifications
   S.log.querySelector('.empty')?.remove()
-  const bubble = put(S, make('div', 'me queued', prompt))
+  const bubble = put(S, make('div', 'me queued', prompt)), id = uuid()
+  bubble.dataset.uuid = id // Claude's echo carries it too (shown() goes by it)
   if (refs.length || images.length) {
     const row = make('div', 'refs sent')
     row.append(...images.map(img => thumb(img)), ...refs.map(r => chip(r)))
@@ -31,6 +33,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
   S.queued.push(bubble)
   if (S.title === 'New session') S.title = prompt.slice(0, 48)
   S.done = false
+  const waits = S.pending > 0 // behind a running turn; otherwise Claude starts on it at once, with nothing to take back
   S.pending++
   renderCard(S)
   try {
@@ -39,17 +42,50 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     if (shell) p = typeof p === 'string' ? shell + p : [{ type: 'text', text: shell }, ...p]
     if (images.length) p = [...(typeof p === 'string' ? [{ type: 'text', text: p }] : p), ...images.map(imageBlock)]
     if (!bubble.isConnected) return false // the card was cleared (/clear) while this was being prepared
-    await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend })
+    await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend, uuid: id })
     attach(S)
+    if (waits && canUnsend(S.backend)) takeBackButtons(S, bubble, content ? null : { prompt, refs, images })
     return true
   } catch (e) {
-    S.queued.splice(S.queued.indexOf(bubble), 1)
+    const i = S.queued.indexOf(bubble)
+    if (i >= 0) S.queued.splice(i, 1)
     bubble.classList.replace('queued', 'failed')
     put(S, make('div', 'err', `Could not send: ${(e as Error).message}`))
     S.pending = Math.max(0, S.pending - 1)
     renderCard(S)
     return false
   }
+}
+
+/* ---------- taking back a queued message ---------- */
+// Until Claude reads a queued message (between tool calls, or when its turn ends) the CLI can drop it from its queue:
+// delete it, or edit it (back into the message box, to fix and send again). CSS hides the buttons once it's read.
+function takeBackButtons(S: Session, bubble: HTMLElement, again: { prompt: string; refs: Ref[]; images: Pasted[] } | null) {
+  const row = make('span', 'unsend')
+  if (again) row.append(iconButton(ICON.pencil, 'Edit (take it back to fix)', () => unsend(S, bubble).then(ok => { if (ok) putBack(S, again.prompt, again.refs, again.images) })))
+  row.append(iconButton(ICON.x, 'Delete (take it back)', () => unsend(S, bubble)))
+  bubble.append(row)
+}
+
+// ponytail: shell runs sent with the message go with it; give them back to takeShell if that's ever missed.
+// ponytail: an error answer (no reply in 5s) leaves the bubble queued, and the card counted busy, if the CLI did drop
+// it; its answers have come back at once so far
+async function unsend(S: Session, bubble: HTMLElement): Promise<boolean> {
+  const live = () => bubble.isConnected && bubble.classList.contains('queued')
+  if (!live() || bubble.dataset.state === 'unsending') return false // one take-back at a time (double click, edit then delete)
+  bubble.dataset.state = 'unsending'
+  const r = await post('unsend', { cid: S.cid, uuid: bubble.dataset.uuid, backend: S.backend }).catch(() => null)
+  delete bubble.dataset.state
+  if (!r?.cancelled) {
+    if (live()) toast(r ? `${who(S.backend)} has already read it.` : 'Could not take it back.')
+    return false
+  }
+  const i = S.queued.indexOf(bubble)
+  if (i >= 0) S.queued.splice(i, 1) // (gone already if the card was cleared meanwhile)
+  bubble.remove()
+  S.pending = Math.max(0, S.pending - 1)
+  renderCard(S)
+  return true
 }
 
 /* ---------- reading: one stream per page for all its cards ---------- */

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"drawa/internal/config"
@@ -34,7 +35,7 @@ var claudeArgv = []string{
 func init() {
 	Register("claude", Kind{
 		Bin: "claude", Label: "claude (Claude Code CLI)", Install: "install it: https://claude.com/claude-code", Title: "Claude Code",
-		Modes: config.Modes, SidOK: config.UUIDRe.MatchString,
+		Modes: config.Modes, SidOK: config.UUIDRe.MatchString, Unsend: true,
 		Spawn: spawnClaude, Meta: claudeMeta, History: claudeHistory{}, OneShot: claudeOneShot,
 	})
 }
@@ -44,6 +45,8 @@ type claude struct {
 	stdin   io.WriteCloser
 	writeMu sync.Mutex // one line at a time on stdin
 	mcpCfg  string     // temp file with the canvas MCP config (its URL carries the token, so not on the command line)
+	waitMu  sync.Mutex
+	waits   map[string]chan map[string]any // control requests of ours awaiting their control_response, by request_id
 }
 
 // writeMCPConfig writes the canvas MCP config to a 0600 temp file (CreateTemp's mode): the URL carries the card's
@@ -117,6 +120,9 @@ func (c *claude) pump(sink Sink) {
 	for {
 		raw, err := br.ReadBytes('\n')
 		if line := strings.TrimRight(string(raw), "\r\n"); strings.TrimSpace(line) != "" {
+			if strings.Contains(line, `"control_response"`) { // (answered checks it is one)
+				c.answered(line)
+			}
 			sink.Emit(line)
 		}
 		if err != nil { // EOF, or the read end closed pipeGrace after the process exited
@@ -137,18 +143,76 @@ func (c *claude) write(obj map[string]any) error {
 	return err
 }
 
+var requests atomic.Int64
+
+// requestID names one of our control requests, unique even for two in the same clock tick.
+func requestID() string { return fmt.Sprintf("ui-%d-%d", time.Now().UnixNano(), requests.Add(1)) }
+
 func (c *claude) control(subtype string, kw map[string]any) error {
 	req := map[string]any{"subtype": subtype}
 	for k, v := range kw {
 		req[k] = v
 	}
 	return c.write(map[string]any{
-		"type": "control_request", "request_id": fmt.Sprintf("ui-%d", time.Now().UnixNano()), "request": req,
+		"type": "control_request", "request_id": requestID(), "request": req,
 	})
 }
 
-func (c *claude) Send(content any) error {
-	return c.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
+func (c *claude) Send(content any, id string) error {
+	msg := map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}
+	if id != "" {
+		msg["uuid"] = id // what Unsend names it by (and the CLI echoes it back with it)
+	}
+	return c.write(msg)
+}
+
+// Unsend takes a message back out of the CLI's queue, if Claude hasn't read it yet: it reads queued messages at
+// the end of a turn, or between tool calls.
+func (c *claude) Unsend(id string) (bool, error) {
+	rid := requestID()
+	ch := make(chan map[string]any, 1)
+	c.waitMu.Lock()
+	if c.waits == nil {
+		c.waits = map[string]chan map[string]any{}
+	}
+	c.waits[rid] = ch
+	c.waitMu.Unlock()
+	defer func() { c.waitMu.Lock(); delete(c.waits, rid); c.waitMu.Unlock() }()
+	err := c.write(map[string]any{
+		"type": "control_request", "request_id": rid,
+		"request": map[string]any{"subtype": "cancel_async_message", "message_uuid": id},
+	})
+	if err != nil {
+		return false, err
+	}
+	select {
+	case r := <-ch:
+		if e, _ := r["error"].(string); e != "" {
+			return false, fmt.Errorf("%s", e)
+		}
+		got, _ := r["response"].(map[string]any)
+		return got["cancelled"] == true, nil
+	case <-time.After(5 * time.Second): // an older CLI that doesn't know the request may never answer
+		return false, fmt.Errorf("no answer")
+	}
+}
+
+// answered hands a control_response to the Unsend waiting for it.
+func (c *claude) answered(line string) {
+	var d struct{ Response map[string]any }
+	if json.Unmarshal([]byte(line), &d) != nil || d.Response == nil {
+		return
+	}
+	rid, _ := d.Response["request_id"].(string)
+	c.waitMu.Lock()
+	ch := c.waits[rid]
+	c.waitMu.Unlock()
+	if ch != nil {
+		select { // never block the output: a second answer to one id is dropped
+		case ch <- d.Response:
+		default:
+		}
+	}
 }
 
 func (c *claude) SetMode(mode string) error {

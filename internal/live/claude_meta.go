@@ -18,7 +18,7 @@ func claudeMeta() map[string]any {
 	defer TrackMeta(l)()
 	c := l.be.(*claude)
 	c.control("initialize", nil)
-	c.Send("/usage")
+	c.Send("/usage", "")
 	deadline := time.Now().Add(20 * time.Second)
 	pos := 0
 	out := map[string]any{}

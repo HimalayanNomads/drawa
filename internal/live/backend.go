@@ -25,13 +25,18 @@ type Answer struct {
 // Backend runs one card's agent process. It reports through the Sink it was spawned with, in the wire format
 // described in wire.go, whatever its own protocol is.
 type Backend interface {
-	Send(content any) error                  // a user message: a string or Claude content blocks
+	Send(content any, id string) error       // a user message: a string or Claude content blocks; id: its uuid, or ""
 	Respond(rid, ask string, a Answer) error // answer the ask it emitted as line `ask` ("{}" if it's gone)
 	SetMode(mode string) error               // a Drawa permission mode (a key of its Kind's Modes)
 	SetModel(model string) error
 	Interrupt() error
 	Close() // graceful: waits up to 5s, then kills
 	Kill()  // the whole process group, now
+}
+
+// Unsender is a Backend that can take back a message it was sent but hasn't read yet (see Kind.Unsend).
+type Unsender interface {
+	Unsend(id string) (bool, error) // false: already read (or never queued)
 }
 
 // Sink is how a backend reports; *Live implements it.
@@ -53,6 +58,7 @@ type Kind struct {
 	Title               string          // what the page calls it ("Claude Code")
 	Modes               map[string]bool // the Drawa permission modes it accepts
 	MaxLive             int             // at most this many of its cards live at once (0: no limit of its own)
+	Unsend              bool            // its Backend is an Unsender: queued messages can be deleted or edited
 	SidOK               func(sid string) bool
 	Spawn               func(Spec, Sink) (Backend, error)
 	Meta                func() map[string]any // {models, commands}; Meta() caches it

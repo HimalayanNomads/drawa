@@ -242,8 +242,8 @@ func (l *Live) wrote(err error) error {
 	return err
 }
 
-// Send is a user message: a string or Claude content blocks.
-func (l *Live) Send(content any) error {
+// Send is a user message: a string or Claude content blocks; id is its uuid (or "").
+func (l *Live) Send(content any, id string) error {
 	l.mu.Lock()
 	l.busy = true
 	if len(l.asks) == 0 {
@@ -251,7 +251,16 @@ func (l *Live) Send(content any) error {
 		l.dropTo(l.trimTo)
 	}
 	l.mu.Unlock()
-	return l.wrote(l.be.Send(content))
+	return l.wrote(l.be.Send(content, id))
+}
+
+// Unsend takes back a message Send queued, if the agent hasn't read it yet (false: it has, or it can't).
+func (l *Live) Unsend(id string) (bool, error) {
+	u, ok := l.be.(Unsender)
+	if !ok {
+		return false, nil
+	}
+	return u.Unsend(id)
 }
 
 // Respond answers the open ask rid (an approval or questions).

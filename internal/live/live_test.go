@@ -100,7 +100,7 @@ func TestExitedWithStdoutHeld(t *testing.T) {
 	if l.Alive() {
 		t.Fatal("card still alive after its process exited")
 	}
-	if l.Send("") == nil {
+	if l.Send("", "") == nil {
 		t.Fatal("write to an exited process should fail")
 	}
 }
@@ -138,13 +138,13 @@ func TestTrimKeepsOpenMsg(t *testing.T) {
 	push(`{"type":"a"}`)
 	push(`{"type":"result"}`) // index 1
 	push(`{"type":"b"}`)
-	l.Send("")
+	l.Send("", "")
 	if s := l.Snapshot(); s.Base != 1 || s.End != 3 {
 		t.Fatalf("after next message: base %d end %d, want 1 3", s.Base, s.End)
 	}
 	push(`{"type":"stream_event","event":{"type":"message_start"}}`) // index 3
 	push(`{"type":"result"}`)                                        // an open message outlives it here
-	l.Send("")
+	l.Send("", "")
 	if s := l.Snapshot(); s.Base != 3 || *s.OpenMsg != 3 {
 		t.Fatalf("trim passed the open message: base %d", s.Base)
 	}
@@ -160,7 +160,7 @@ func TestTrimKeepsOpenMsg(t *testing.T) {
 // nopBackend takes everything and does nothing.
 type nopBackend struct{}
 
-func (nopBackend) Send(any) error                       { return nil }
+func (nopBackend) Send(any, string) error               { return nil }
 func (nopBackend) Respond(string, string, Answer) error { return nil }
 func (nopBackend) SetMode(string) error                 { return nil }
 func (nopBackend) SetModel(string) error                { return nil }
