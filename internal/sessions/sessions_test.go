@@ -141,3 +141,25 @@ func TestLongLineAndBigInts(t *testing.T) {
 		t.Fatalf("big int rounded: %s", b)
 	}
 }
+
+func TestQueuedHandback(t *testing.T) {
+	root := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(root, "s.jsonl"))
+	prompt := "<agent-message from=\"a1\">\n  report\n</agent-message>"
+	for _, a := range []map[string]any{
+		{"type": "queued_command", "prompt": prompt},
+		{"type": "queued_command", "prompt": "a message you typed"}, // has its own user line
+	} {
+		b, _ := json.Marshal(map[string]any{"type": "attachment", "attachment": a})
+		f.Write(append(b, '\n'))
+	}
+	f.Close()
+
+	msgs := Load("s", "")
+	if len(msgs) != 1 || msgs[0]["role"] != "user" || msgs[0]["isMeta"] != true {
+		t.Fatalf("want the hand-back as one meta user message: %#v", msgs)
+	}
+	if text := msgs[0]["content"].([]any)[0].(map[string]any)["text"]; text != prompt {
+		t.Fatalf("text changed: %q", text)
+	}
+}

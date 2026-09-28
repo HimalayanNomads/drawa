@@ -106,6 +106,10 @@ type line struct {
 		Content any `json:"content"`
 		Usage   any `json:"usage"`
 	} `json:"message"`
+	Attachment struct {
+		Type   string `json:"type"`
+		Prompt string `json:"prompt"`
+	} `json:"attachment"`
 }
 
 // Clip trims what the page never shows before sending a transcript or a live line: long tool outputs and tool
@@ -423,6 +427,11 @@ func Load(sid, agent string) []map[string]any {
 	defer f.Close()
 	for _, d := range decodeAll(f) {
 		t, content := d.Type, d.Message.Content
+		// an agent's hand-back that arrived while Claude was busy is kept only as the queued command Claude read (typed
+		// messages queued the same way also get a user line of their own): pass it on as the report it is
+		if a := d.Attachment; t == "attachment" && a.Type == "queued_command" && strings.HasPrefix(a.Prompt, "<agent-message ") {
+			t, content, d.IsMeta = "user", []any{map[string]any{"type": "text", "text": a.Prompt}}, true
+		}
 		if (t != "user" && t != "assistant") || d.IsSidechain {
 			continue
 		}
