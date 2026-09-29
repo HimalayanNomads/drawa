@@ -168,7 +168,7 @@ const draw = async (into: HTMLElement, src: string) => {
  *  Edit opens the source under the drawing; it redraws as you type and keeps the last good drawing on errors. */
 const setSource = new WeakMap<HTMLElement, (src: string) => Promise<void>>()
 
-export function pin(src: string, title: string, r: Rect, id: string = uuid()) {
+export function pin(src: string, title: string, r: Rect, id: string = uuid(), draft?: string) {
   const view = make('div', 'dnode-b'), ed = make('div', 'dnode-ed'), ta = make('textarea'), status = make('p', 'dnode-st')
   const edit = iconButton(ICON.pencil, 'Edit source', () => {
     ed.hidden = !ed.hidden
@@ -213,26 +213,32 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid()) {
         await draw(view, text)
         if (mine !== n) return // a newer keystroke already won
         node.dataset.src = text
+        delete node.dataset.state
         status.textContent = 'Saved'
         status.className = 'dnode-st'
         changed() // persist with the canvas layout
       } catch (e) {
         if (mine !== n) return
-        status.textContent = bareError(e).replace('Diagram not drawn: ', '')
+        // the draft is kept (saved with the layout, and canvas_update won't overwrite it) until it draws
+        node.dataset.state = 'editing'
+        status.textContent = `${bareError(e).replace('Diagram not drawn: ', '')} Draft kept; the drawing is the last version that worked.`
         status.className = 'dnode-st bad'
+        changed()
       }
     }, 250)
   })
   ta.addEventListener('keydown', e => e.stopPropagation()) // typing here isn't a canvas shortcut
 
   draw(view, src).catch(e => { view.prepend(make('p', 'mmd-err', parseError(e))); ed.hidden = false; edit.classList.add('on') })
+  if (draft != null && draft !== src) { ta.value = draft; ed.hidden = false; edit.classList.add('on'); ta.dispatchEvent(new Event('input')) } // says why it isn't drawn
   changed()
   return node
 }
 
+const draftOf = (n: HTMLElement) => n.dataset.state === 'editing' ? n.querySelector<HTMLTextAreaElement>('.dnode-ed textarea')!.value : undefined
 persist('diagrams',
-  () => items('diagram').map(n => ({ id: n.dataset.id!, src: n.dataset.src!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n) })),
-  (list: (Rect & { src: string; title: string; id?: string })[]) => each(list, d => pin(d.src, d.title, d, d.id)))
+  () => items('diagram').map(n => ({ id: n.dataset.id!, src: n.dataset.src!, title: n.querySelector('.t')!.textContent ?? '', ...savedRect(n), draft: draftOf(n) })),
+  (list: (Rect & { src: string; title: string; id?: string; draft?: string })[]) => each(list, d => pin(d.src, d.title, d, d.id, d.draft)))
 creatable('diagram', {
   size: () => ({ w: 440, h: 320 }),
   create: async (a, r) => {
