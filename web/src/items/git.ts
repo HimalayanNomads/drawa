@@ -18,6 +18,7 @@ interface GitState { repo: boolean; missing?: boolean; error?: string; branch?: 
 
 let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; msg: HTMLTextAreaElement; out: HTMLElement; gh: number; poll: number; delay: number; stop: AbortController; open: Set<string>; last: string } | undefined
 
+let draft = '' // the commit message being written: kept when the window closes, and saved with the layout
 const FAST = 4000, SLOW = 30_000 // git status polling: FAST after a change, doubling up to SLOW while nothing changes
 
 type GitReply = { ok?: boolean; out?: string; message?: string; error?: string }
@@ -41,7 +42,9 @@ export function openGit(r?: Rect) {
   msg.rows = 2
   msg.placeholder = 'Commit message'
   msg.setAttribute('aria-label', 'Commit message')
+  msg.value = draft
   msg.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit() })
+  msg.addEventListener('input', () => setDraft(msg.value))
   foot.append(msg, out)
   body.append(strip, list, foot)
   // refresh while it's visible and expanded: git status is cheap; GitHub is slow and rate-limited, so its own much
@@ -73,6 +76,7 @@ export function openGit(r?: Rect) {
   changed()
 }
 
+function setDraft(text: string) { draft = text; changed() }
 function say(text: string, bad = false) { if (!win) return; win.out.textContent = text; win.out.classList.toggle('bad', bad) }
 
 const UNREAD = 'Could not read git status: '
@@ -176,8 +180,15 @@ function row(f: GitFile, isStaged: boolean) {
     name.setAttribute('aria-expanded', String(!open))
     if (open) { open.remove(); win!.open.delete(key); return }
     win!.open.add(key)
-    const { diff } = await api<{ diff: string }>(`git/diff?path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
-    wrap.append(unified(diff))
+    try {
+      const { diff } = await api<{ diff: string }>(`git/diff?path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
+      wrap.append(unified(diff))
+    } catch (e) { // not an empty open row: closed again, and why
+      wrap.classList.remove('open')
+      name.setAttribute('aria-expanded', 'false')
+      win?.open.delete(key)
+      say(`Couldn't load the diff of ${f.path}: ${(e as Error).message}`, true)
+    }
   }
   if (folder) return wrap
   name.onclick = toggle
@@ -207,7 +218,7 @@ async function commit() {
   const w = win!, message = w.msg.value.trim()
   if (!message) { w.msg.focus(); return say(`Write a commit message first (or let ${who(writer())} write one).`, true) }
   const r = await gitPost({ op: 'commit', message })
-  if (r.ok) { w.msg.value = ''; say(r.out?.split('\n')[0] ?? 'Committed.'); ghRefresh() } else say(r.out ?? 'Commit failed', true)
+  if (r.ok) { w.msg.value = ''; setDraft(''); say(r.out?.split('\n')[0] ?? 'Committed.'); ghRefresh() } else say(r.out ?? 'Commit failed', true)
   refresh()
 }
 
@@ -239,7 +250,7 @@ async function writeMessage(b: HTMLButtonElement, agent: string) {
   const r = await gitPost({ op: 'message', backend: agent })
   b.textContent = label
   b.disabled = false
-  if (r.message) { win!.msg.value = r.message; win!.msg.style.height = 'auto'; win!.msg.style.height = Math.min(160, win!.msg.scrollHeight) + 'px'; say('') }
+  if (r.message) { win!.msg.value = r.message; setDraft(r.message); win!.msg.style.height = 'auto'; win!.msg.style.height = Math.min(160, win!.msg.scrollHeight) + 'px'; say('') }
   else say(r.error ?? `${who(agent)} could not write a message.`, true)
 }
 
@@ -346,7 +357,12 @@ function buildForm(st: GhState) {
   }
 }
 
-persist('git', () => (win ? savedRect(win.el) : null), (r: Rect | null) => { if (r) openGit(r) })
+// the window's place (older layouts: that alone), and the commit message being written, even with the window closed
+persist('git', () => (win || draft ? { ...(win ? savedRect(win.el) : {}), ...(draft ? { msg: draft } : {}) } : null),
+  (r: (Partial<Rect> & { msg?: string }) | null) => {
+    draft = r?.msg ?? ''
+    if (r?.w) openGit(r as Rect)
+  })
 
 // drop the Git window on a card: Claude gets the branch and what's changed (it can run git diff itself for details)
 referable('git', {
