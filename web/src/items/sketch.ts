@@ -33,12 +33,13 @@ const excalidraw = () => (lib ??= (async () => {
 const dark = isDark
 
 /* ---------- the node on the canvas ---------- */
-let count = 0
+/** "Whiteboard 4" after the highest number in use (a reload must not start again at 1). */
+const nextName = () => `Whiteboard ${Math.max(0, ...items('sketch').map(n => Number(/^Whiteboard (\d+)$/.exec(n.querySelector('.t')?.textContent ?? '')?.[1] ?? 0))) + 1}`
 export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: boolean } = {}) {
   const id = opts.id ?? uuid()
   const c = viewCenter()
   const { el: node, body } = makeWindow({
-    kind: 'sketch', cls: 'snode', title: opts.title ?? `Whiteboard ${++count}`, minW: 220, minH: 160,
+    kind: 'sketch', cls: 'snode', title: opts.title ?? nextName(), minW: 220, minH: 160,
     rect: opts.rect ?? freeSpot({ x: c.x - 210, y: c.y - 150, w: 420, h: 300 }),
     actions: [
       iconButton(ICON.pencil, 'Edit whiteboard', () => edit(node)),
@@ -108,11 +109,13 @@ const nameInput = dialog.querySelector<HTMLInputElement>('input')!
 const status = dialog.querySelector<HTMLElement>('.status')!
 // isNew: created by this editing session (Cancel, or Done with nothing drawn, removes it again)
 let open: { node: HTMLElement; scene: Scene; original: string; isNew: boolean; unmount: () => void } | undefined
-let timer = 0
+let timer = 0, loading = false
 
 async function edit(node: HTMLElement, isNew = false) {
+  if (open || loading) return // a second Edit while Excalidraw loads would mount a second editor into the dialog
+  loading = true
   const id = node.dataset.id!
-  const [{ Excalidraw }, React, { createRoot }] = await Promise.all([excalidraw(), import('react'), import('react-dom/client')])
+  const [{ Excalidraw }, React, { createRoot }] = await Promise.all([excalidraw(), import('react'), import('react-dom/client')]).finally(() => { loading = false })
   const scene = loadScene(id)
   nameInput.value = node.querySelector('.t')!.textContent ?? ''
   status.textContent = ''
@@ -146,12 +149,17 @@ function close(keep: boolean) {
   if (!open) return
   clearTimeout(timer)
   const { node, scene, original, isNew, unmount } = open
+  const empty = !scene.elements.some(e => !e.isDeleted)
+  // storage full: stay open with the drawing rather than close and lose the new strokes
+  if (keep && !(isNew && empty) && !saveScene(node.dataset.id!, scene)) {
+    status.textContent = 'Not saved: browser storage is full. Remove a pasted picture from the drawing and press Done again, or Cancel.'
+    return
+  }
   open = undefined
   unmount()
   dialog.close()
-  const empty = !scene.elements.some(e => !e.isDeleted)
   if (isNew && (!keep || empty)) return discard(node) // nothing to keep: no leftover empty sketch
-  saveScene(node.dataset.id!, keep ? scene : JSON.parse(original)) // Cancel: back to how it was before this edit
+  if (!keep) saveScene(node.dataset.id!, JSON.parse(original)) // Cancel: back to how it was before this edit
   if (!keep) return preview(node)
   node.querySelector('.t')!.textContent = nameInput.value.trim() || 'Whiteboard'
   preview(node)
