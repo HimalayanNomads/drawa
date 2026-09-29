@@ -4,7 +4,7 @@
 import { make, ICON, iconButton, button, confirmBox, ping, project } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { persist } from '../lib/store'
-import { savedRect, centerOn, spotBeside, changed, type Rect } from '../canvas/canvas'
+import { savedRect, centerOn, spotBeside, changed, watched, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
@@ -50,8 +50,7 @@ export function openGit(r?: Rect) {
   // refresh while it's visible and expanded: git status is cheap; GitHub is slow and rate-limited, so its own much
   // slower loop (and after pushes and commits)
   // poll only while you can see it: page visible, window open, and on screen (each poll runs git status on the server)
-  const seen = () => { const r = el.getBoundingClientRect(); return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight }
-  const showing = () => !document.hidden && !el.classList.contains('min') && seen()
+  const showing = () => watched(el)
   const tick = async () => {
     if (win?.el !== el) return
     if (showing()) await refresh()
@@ -67,7 +66,7 @@ export function openGit(r?: Rect) {
   document.addEventListener('turnend', wake, { signal }) // ponytail: nothing dispatches this yet; the session's result handler should
   el.addEventListener('pointerdown', wake, { signal })
   el.addEventListener('collapse', wake, { signal })
-  win = { el, meta, body: list, msg, out, gh: setInterval(() => { if (showing()) ghRefresh() }, 60_000), poll: 0, delay: FAST, stop, open: new Set(), last: '' }
+  win = { el, meta, body: list, msg, out, gh: setInterval(() => { if (showing() && (ghPending() || ++ghTicks % 4 === 0)) ghRefresh() }, 15_000), poll: 0, delay: FAST, stop, open: new Set(), last: '' }
   refresh()
   win.poll = setTimeout(tick, FAST)
   if (!strip.childElementCount) strip.replaceChildren(make('p', 'ghnote', 'Checking GitHub…'))
@@ -257,6 +256,9 @@ async function writeMessage(b: HTMLButtonElement, agent: string) {
 /* ---------- GitHub: the pull request for this branch (through gh), or a form to open one ---------- */
 const strip = make('div', 'ghstrip')
 let ghLast = '', ghSt: GhState | undefined, ghAsk = 0
+// GitHub is asked every minute, every 15s while this branch's checks are still running (they settle on their own)
+let ghTicks = 0
+const ghPending = () => !!ghSt?.pr?.checks.some(c => c.state === 'pending')
 const form = make('form', 'ghform')
 form.hidden = true
 

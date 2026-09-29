@@ -97,6 +97,12 @@ export const placed = () => [...world.children].filter((el): el is HTMLElement =
 /** Inside a collapsed group (items/group.ts sets data-hidden-in): out of sight, so placement, arrows, Ctrl+K and the
  *  selection leave it alone. */
 export const hidden = (el: HTMLElement) => !!el.dataset.hiddenIn
+/** Can you see this window now: page visible, not collapsed, on screen. For polling only while it's watched. */
+export function watched(el: HTMLElement) {
+  if (document.hidden || el.classList.contains('min') || !el.isConnected) return false
+  const r = el.getBoundingClientRect()
+  return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight
+}
 /** Canvas items by their data-id: one pass, for restoring many saved references at once. */
 export const byIds = () => new Map(items().map(el => [el.dataset.id!, el]))
 /** An id as Claude sees it: UUIDs cut to 8 characters, readable ids (git, f:path, l:card…) kept whole. */
