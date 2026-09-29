@@ -1,7 +1,7 @@
 // Plan review. In plan mode Claude presents its plan through ExitPlanMode, which needs your approval: the plan
 // becomes a document node on the canvas where you can comment on any block, draw on it (Draw mode), then approve
 // or send the feedback back so Claude revises it (same node, next version).
-import { make, ICON, iconButton, button, ping } from '../lib/dom'
+import { make, ICON, iconButton, button, ping, confirmBox } from '../lib/dom'
 import { post } from '../lib/api'
 import { imageBlock } from '../lib/blobs'
 import { persist } from '../lib/store'
@@ -16,6 +16,7 @@ import { referable } from '../canvas/refs'
 import { renderCard, type Session } from '../session/session'
 import { send } from '../session/live'
 import { setMode } from '../session/mode'
+import { removable } from '../canvas/select'
 import { who } from '../lib/agents'
 
 interface Comment { excerpt: string; text: string; el: HTMLElement }
@@ -40,8 +41,11 @@ const current = new Map<Session, Plan>()
 const dismissed = new Set<string>()
 const all: Plan[] = []
 persist('dismissed', () => [...dismissed], (ids: string[]) => ids.forEach(id => dismissed.add(id)), 0)
-// each plan's place, and its name if you renamed it (older layouts saved the place alone)
-persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}) }])), v => Object.assign(savedPos, v), 0)
+// each plan's place, its name if you renamed it, and the review you're writing (older layouts saved the place alone)
+interface Review { v: number; general?: string; comments: { i: string; excerpt: string; text: string }[] }
+const review = (p: Plan): Review | undefined => p.done || (!p.comments.length && !p.general.value.trim()) ? undefined
+  : { v: p.version, general: p.general.value || undefined, comments: p.comments.map(c => ({ i: c.el.dataset.for ?? '', excerpt: c.excerpt, text: c.text })) }
+persist('plans', () => Object.fromEntries(all.map(p => ['p:' + p.key, { ...savedRect(p.el), ...(p.el.dataset.name ? { name: p.el.dataset.name } : {}), review: review(p) }])), v => Object.assign(savedPos, v), 0)
 referable('plan', {
   icon: '▤',
   content: (el, label) => ({ text: `Plan "${label}":\n\n${all.find(p => p.el === el)?.md ?? ''}` }),
@@ -52,7 +56,10 @@ function create(S: Session, key: string): Plan {
   const body = make('div', 'pnode-b md'), foot = make('div', 'pnode-f')
   const state = make('span', 'pstate'), general = make('textarea'), row = make('div', 'row')
   const c = rect(S.card)
-  const close = iconButton(ICON.x, `Remove plan from canvas (rejects it if ${who(S.backend)} is still waiting)`, () => remove(p), 'closebtn')
+  const close = iconButton(ICON.x, `Remove plan from canvas (rejects it if ${who(S.backend)} is still waiting)`, async () => {
+    if (p.req && !await confirmBox('Reject this plan?', `${who(S.backend)} is waiting for your review. Removing the plan rejects it.`, 'Reject and remove')) return
+    remove(p)
+  }, 'closebtn')
   const { el, head } = makeWindow({
     kind: 'plan', cls: 'pnode', title: 'Plan', minW: 320, minH: 280, actions: [close],
     rect: { ...freeSpot({ x: c.x + c.w + 150, y: c.y - 20, w: 560, h: 680 }), ...savedPos['p:' + key] },
@@ -65,6 +72,7 @@ function create(S: Session, key: string): Plan {
   general.rows = 2
   general.placeholder = 'General feedback (optional). Hover a paragraph and click + to comment on it.'
   general.setAttribute('aria-label', 'General feedback')
+  general.addEventListener('input', () => changed()) // saved with the layout
   body.dataset.ink = 'p:' + key // drawing over the plan belongs to (and scrolls with) its text
   const p: Plan = { S, key, ids: [], el, body, general, state, buttons: [], version: 0, comments: [], md: '', prev: '', done: false }
   p.buttons = [
@@ -103,7 +111,10 @@ export function showPlan(S: Session, toolId: string, markdown: string): Plan | n
   p.prev = p.md
   p.done = false
   p.ids.push(toolId)
+  p.comments = [] // a new version: the notes were about the last one
+  p.general.value = ''
   render(p, markdown)
+  restoreReview(p)
   setState(p, 'Drafted', 'draft')
   changed()
   return p
@@ -112,14 +123,25 @@ export function showPlan(S: Session, toolId: string, markdown: string): Plan | n
 function render(p: Plan, markdown: string) {
   if (p.md && p.md !== markdown) clearInk(p.body) // marks were about the previous text
   p.md = markdown
-  p.comments = []
-  p.general.value = ''
   const overlay = p.body.querySelector(':scope > svg.ink-local') // keep the ink layer across re-renders
   p.body.innerHTML = markdown.trim() ? md(markdown) : '<p class="none">Waiting for the plan text…</p>'
   if (p.prev && markdown.trim()) changes(p)
   if (overlay) p.body.append(overlay)
   enhance(p.body)
   for (const [i, blk] of [...p.body.children].filter(c => !c.matches('svg.ink-local, .pgone, .pchanges')).entries()) { (blk as HTMLElement).dataset.i = String(i); blk.classList.add('pblk') }
+  for (const c of p.comments) placeNote(p, c) // the same version drawn again (its text arrived with the request): notes stay
+}
+/** A comment's note, after the block it's about (at the end if that block is gone). */
+function placeNote(p: Plan, c: Comment) {
+  const blk = p.body.querySelector<HTMLElement>(`:scope > .pblk[data-i="${c.el.dataset.for}"]`)
+  if (blk) lastNoteAfter(p, blk).after(c.el); else p.body.append(c.el)
+}
+/** The review you were writing on this version before a reload. */
+function restoreReview(p: Plan) {
+  const r = (savedPos['p:' + p.key] as { review?: Review } | undefined)?.review
+  if (r?.v !== p.version) return
+  p.general.value = r.general ?? ''
+  for (const c of r.comments) addComment(p, c.i, c.excerpt, c.text)
 }
 
 /** A revision: a line on top says how much changed since the version before, with a switch to hide the marks. */
@@ -195,15 +217,19 @@ function editor(p: Plan, blk: HTMLElement) {
   ok.onclick = () => {
     const text = ta.value.trim()
     if (!text) return ta.focus()
-    const excerpt = plain(blk).replace(/\s+/g, ' ').trim().slice(0, 140)
-    const note = make('div', 'pnote')
-    const c: Comment = { excerpt, text, el: note }
-    note.append(make('span', '', text), iconButton(ICON.x, 'Remove comment', () => { note.remove(); p.comments.splice(p.comments.indexOf(c), 1); countComments(p) }))
-    note.dataset.for = blk.dataset.i
-    box.replaceWith(note)
-    p.comments.push(c)
-    countComments(p)
+    box.remove()
+    addComment(p, blk.dataset.i ?? '', plain(blk).replace(/\s+/g, ' ').trim().slice(0, 140), text)
   }
+}
+function addComment(p: Plan, i: string, excerpt: string, text: string) {
+  const note = make('div', 'pnote')
+  const c: Comment = { excerpt, text, el: note }
+  note.append(make('span', '', text), iconButton(ICON.x, 'Remove comment', () => { note.remove(); p.comments.splice(p.comments.indexOf(c), 1); countComments(p); changed() }))
+  note.dataset.for = i
+  p.comments.push(c)
+  placeNote(p, c)
+  countComments(p)
+  changed()
 }
 /** A block's current text, without the words marked as removed. */
 function plain(blk: HTMLElement) {
@@ -318,3 +344,5 @@ export function dropPlans(S: Session) {
   for (const p of all.filter(p => p.S === S)) { p.el.remove(); all.splice(all.indexOf(p), 1) }
   current.delete(S)
 }
+// a deleted selection has asked already (its confirm says what that means for a waiting plan)
+removable('plan', el => { const p = all.find(p => p.el === el); if (p) remove(p) }, 'A plan still waiting for your review is rejected.')
