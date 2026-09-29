@@ -49,16 +49,18 @@
 
 /* resize grip: an invisible corner hit area; hovering it draws the corner it resizes */
 .grip{position:absolute;z-index:var(--z-grip);touch-action:none}
-/* the edges: a thin band just inside the body's sides (below the tab), the corners: a small square */
-.grip[data-edge=e],.grip[data-edge=w]{top:var(--tab-h);bottom:14px;width:7px;cursor:ew-resize}
-.grip[data-edge=e]{right:-3px}.grip[data-edge=w]{left:-3px}
-.grip[data-edge=s]{left:14px;right:14px;bottom:-3px;height:7px;cursor:ns-resize}
-.grip[data-edge=se],.grip[data-edge=sw]{bottom:0;width:18px;height:18px}
+/* the edges: a thin band across the body's sides (below the tab), the corners: a small square. --gs (window.ts)
+   widens them at low zoom and for fingers, so they stay easy to hit; what they draw on hover stays put */
+.grip{--g:var(--gs,1)}
+.grip[data-edge=e],.grip[data-edge=w]{top:var(--tab-h);bottom:14px;width:calc(7px*var(--g));cursor:ew-resize}
+.grip[data-edge=e]{right:calc(-3px*var(--g))}.grip[data-edge=w]{left:calc(-3px*var(--g))}
+.grip[data-edge=s]{left:14px;right:14px;bottom:calc(-3px*var(--g));height:calc(7px*var(--g));cursor:ns-resize}
+.grip[data-edge=se],.grip[data-edge=sw]{bottom:0;width:calc(18px*var(--g));height:calc(18px*var(--g))}
 .grip[data-edge=se]{right:0;cursor:nwse-resize}.grip[data-edge=sw]{left:0;cursor:nesw-resize}
 /* shown on hover: the edge (or corner) you're about to pull */
 .grip::after{content:"";position:absolute;opacity:0;transition:opacity .15s;border:solid var(--accent);border-width:0}
-.grip[data-edge=e]::after{inset:0 3px 0 auto;border-right-width:2px}.grip[data-edge=w]::after{inset:0 auto 0 3px;border-left-width:2px}
-.grip[data-edge=s]::after{inset:auto 0 3px;border-bottom-width:2px}
+.grip[data-edge=e]::after{inset:0 calc(3px*var(--g)) 0 auto;border-right-width:2px}.grip[data-edge=w]::after{inset:0 auto 0 calc(3px*var(--g));border-left-width:2px}
+.grip[data-edge=s]::after{inset:auto 0 calc(3px*var(--g));border-bottom-width:2px}
 .grip[data-edge=se]::after{right:-1px;bottom:-1px;width:12px;height:12px;border-width:0 2px 2px 0;border-bottom-right-radius:var(--r-box)}
 .grip[data-edge=sw]::after{left:-1px;bottom:-1px;width:12px;height:12px;border-width:0 0 2px 2px;border-bottom-left-radius:var(--r-box)}
 .grip:hover::after,.grip:active::after{opacity:.9}
