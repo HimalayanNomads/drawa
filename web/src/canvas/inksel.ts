@@ -1,7 +1,8 @@
 // Questions about the drawing, and handles on it: which strokes overlap an area (snapshots, what Claude reads,
 // the selection box), drawn objects under the pointer, and moving strokes with the canvas selection.
-import { view, type Mover } from './canvas'
-import { strokes, fits, FIT, unitsPerHostPx, paint, type Stroke } from './ink'
+import { view, changed, type Mover } from './canvas'
+import { uuid } from '../lib/dom'
+import { strokes, fits, FIT, unitsPerHostPx, paint, inkPlaced, type Stroke } from './ink'
 import { SHAPE_NAME } from './shapegeom'
 import { changing } from './inkundo'
 
@@ -67,14 +68,15 @@ export function unitsPerPx(s: Stroke) {
 /* ---------- for the canvas selection (canvas/select.ts): drawings on the canvas itself ---------- */
 /** Canvas-level strokes, shapes and text overlapping a world-space box (all of them without one); `from`: only
  *  among these (a selection box takes the list once, then narrows it each frame). */
-export const canvasStrokes = (r?: Box, from = strokes) => from.filter(s => !s.host && s.el && (!r || over(s, r)))
+export const canvasStrokes = (r?: Box, from = strokes) => from.filter(s => !s.host && s.el && !s.el.dataset.hiddenIn && (!r || over(s, r))) // (not in a collapsed group)
 /** Its box in canvas units: x, y, w, h. */
 export const strokeRect = (s: Stroke): Box => { const [x0, y0, x1, y1] = bbox(s); return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } }
 export const markStroke = (s: Stroke, on: boolean) => { s.sel = on; s.el?.classList.toggle('ink-sel', on) }
 /** A mover for these strokes, given the total offset from where they are now in canvas units (a stroke on a window
  *  converts it to its window's units). While moving it only shifts their elements (a transform: no re-tracing of
- *  hundreds of pen outlines per frame); `end()` writes the new points and repaints once. */
-export function strokeMover(list: Stroke[]): Mover {
+ *  hundreds of pen outlines per frame); `end()` writes the new points and repaints once. `record`: the move is one step
+ *  undo can take back (off when they only ride along with something undo doesn't track: a window, a settling group). */
+export function strokeMover(list: Stroke[], record = true): Mover {
   const f = list.map(s => view.k * unitsPerPx(s)), base = list.map(s => s.el?.getAttribute('transform') ?? '')
   let dx = 0, dy = 0
   const move = (x: number, y: number) => {
@@ -82,13 +84,37 @@ export function strokeMover(list: Stroke[]): Mover {
     list.forEach((s, i) => s.el?.setAttribute('transform', `${base[i]} translate(${x * f[i]} ${y * f[i]})`.trim()))
   }
   return Object.assign(move, { end: () => {
-    const done = dx || dy ? changing(list) : null
+    const moved = !!(dx || dy), done = moved && record ? changing(list) : null
     list.forEach((s, i) => {
       if (base[i]) s.el?.setAttribute('transform', base[i]); else s.el?.removeAttribute('transform')
-      if (!done) return
+      if (!moved) return
       s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r])
       paint(s)
     })
     done?.()
+    if (moved) inkPlaced(list)
   } })
 }
+
+/** A drawing and the others in its frameless group (Excalidraw's grouping: they're selected, moved and deleted as
+ *  one). ponytail: one level; a group inside a group would need a list of ids per stroke, like Excalidraw's groupIds. */
+export const siblings = (s: Stroke) => (s.g ? strokes.filter(o => o.g === s.g) : [s])
+/** Group these drawings without a frame (they leave any frameless group they were in). */
+export function groupStrokes(list: Stroke[]) {
+  const id = uuid()
+  for (const s of list) s.g = id
+  changed()
+}
+export function ungroupStrokes(list: Stroke[]) {
+  for (const s of list) delete s.g
+  changed()
+}
+/** Are these all one frameless group already? */
+export const oneGroup = (list: Stroke[]) => !!list[0]?.g && list.every(s => s.g === list[0].g) && siblings(list[0]).length === list.length
+
+/** Drawings that move along with an item. Each function answers for one item: canvas/select.ts (the selection's
+ *  drawings, for a selected item), items/group.ts (a group's drawings). */
+const inkFns: ((el: HTMLElement) => Stroke[])[] = []
+export const inkWith = (f: (el: HTMLElement) => Stroke[]) => { inkFns.push(f) }
+/** The drawings that move with these items, each once. */
+export const inkOf = (els: HTMLElement[]) => [...new Set(els.flatMap(el => inkFns.flatMap(f => f(el))))]

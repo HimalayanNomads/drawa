@@ -22,6 +22,7 @@ export const ICON = {
   pin: svg('<path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/>'),
   copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-3h-8v8h3"/>'),
   check: svg('<path d="M3.5 8.5l3 3 6-7"/>'),
+  crop: svg('<path d="M4.5 1.5v10h10M1.5 4.5h10v10"/>'),
   float: svg('<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>'),
   full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
   collapse: svg('<path d="M3.5 8h9"/>'),

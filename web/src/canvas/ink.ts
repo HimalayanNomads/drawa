@@ -20,11 +20,17 @@ import { added, erase, changing, undo } from './inkundo'
 // `rid` is the row's own id when it has one (tool rows): the surest way back to it after a reload.
 // A stroke with `sh` is a shape (canvas/shapes.ts): p holds its two corners (a line's two ends), `f` fills it.
 // `row` and `bb` (bounding box) are only kept in memory.
-export interface Stroke { c: string; s: number; sim: boolean; p: number[][]; t?: string; sh?: Shape; f?: boolean; a?: number; o?: number; k?: string; rid?: string; h?: string
+// `id`: given the first time a canvas-level stroke joins a group (items/groupink.ts), so the group can name it.
+// `g`: the id of the frameless group it's in (Excalidraw's kind: selecting one selects all; canvas/inksel.ts).
+export interface Stroke { c: string; s: number; sim: boolean; p: number[][]; t?: string; sh?: Shape; f?: boolean; a?: number; o?: number; k?: string; rid?: string; h?: string; id?: string; g?: string
   host?: HTMLElement; el?: SVGPathElement | SVGTextElement | SVGGElement; row?: HTMLElement; bb?: [number, number, number, number]; sel?: boolean }
 const NS = 'http://www.w3.org/2000/svg'
 const svg = $<SVGSVGElement>('#ink'), capture = $('#ink-capture'), bar = $('#inkbar'), btn = $('#btn-draw')
 export const strokes: Stroke[] = []
+const placedFns: ((list: Stroke[]) => void)[] = []
+/** Called with strokes just drawn, written or dragged to a new spot (groups take in what lands in their frame). */
+export const onInkPlaced = (f: (list: Stroke[]) => void) => { placedFns.push(f) }
+export const inkPlaced = (list: Stroke[]) => placedFns.forEach(f => f(list))
 export const FIT = 1000
 export const fits = (host?: HTMLElement) => !!host && 'inkFit' in host.dataset
 /** Stored units per host px: FIT across a fitted host (a picture, a diagram), otherwise its own pixels. */
@@ -147,7 +153,7 @@ capture.addEventListener('pointerdown', e => {
     if (at.off(ev)) pt = toCanvas(s, at)
     for (const c of ev.getCoalescedEvents?.() ?? [ev]) s.p.push(pt(c))
     repaint()
-  }, () => { thin(s); paint(s); added(s); changed() })
+  }, () => { thin(s); paint(s); added(s); inkPlaced([s]); changed() })
 })
 
 /** Follow a press on the capture layer until it ends, released or cancelled (a touch the browser takes over):
@@ -172,6 +178,7 @@ function drawShape(e: PointerEvent, sh: Shape, at: Place) {
     if (Math.hypot(x1 - x0, y1 - y0) / scale < 4) return remove(s) // a click, not a drag
     paint(s)
     added(s)
+    inkPlaced([s])
     changed()
   })
 }
@@ -254,6 +261,7 @@ function writeAt(e: PointerEvent) {
     if (!old) { strokes.push(s); added(s) }
     paint(s)
     done?.()
+    if (!old) inkPlaced([s])
     changed()
   }
   requestAnimationFrame(() => { fitSize(); ta.focus() })
@@ -319,7 +327,7 @@ export function clearInk(host: HTMLElement) {
 type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>
 const ink = () => [
   ...strokes.filter(s => !s.host || s.host.isConnected) // a closed window's ink goes with it
-    .map(({ c, s, sim, p, h, t, sh, f, a, o, k, rid }): Saved => ({ c, s: +s.toFixed(2), sim, h, p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}), ...(sh ? { sh, ...(f ? { f } : {}) } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}) })),
+    .map(({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }): Saved => ({ c, s: +s.toFixed(2), sim, h, ...(id ? { id } : {}), ...(g ? { g } : {}), p: p.map(q => q.map(n => +n.toFixed(1))), ...(t != null ? { t } : {}), ...(sh ? { sh, ...(f ? { f } : {}) } : {}), ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}) })),
   ...waiting,
 ]
 // strokes whose window isn't on the canvas (yet): kept and written back, so a window that loads late (or failed to

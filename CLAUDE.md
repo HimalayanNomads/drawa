@@ -17,7 +17,7 @@ web/src/
   lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), tabs (which tab owns the stream and the saving), update (the update-available dialog), theme, tooltip, keys (the shortcut registry), help (the ? sheet and launch tips), sendkey (which key sends a message)
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
-  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (the window and its lists; + gh.ts, its data, Send to Claude and `publish()`; ghpr.ts, ghissue.ts, ghruns.ts: a pull request, an issue, Actions and checks), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows; + groupgeom.ts, its geometry)
+  items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (the window and its lists; + gh.ts, its data, Send to Claude and `publish()`; ghpr.ts, ghissue.ts, ghruns.ts: a pull request, an issue, Actions and checks), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows and drawings; + groupgeom.ts, its geometry, groupink.ts, the drawings it holds, and groupselect.ts, grouping from the selection)
   panels/      side panels: file tree + inspector, diffs
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
@@ -48,6 +48,8 @@ The app scales through these registration points. A new feature should plug into
 | A keyboard shortcut or action users can find (the `?` sheet, Ctrl+K commands, launch tips) | `command({ label, group, keys?, run?, tip? })`, registered beside the handler (`run`: runnable from Ctrl+K; `tip`: a launch tip, backticked keys become key caps) | `lib/keys.ts` |
 | Let go of an item when it leaves the canvas (a message box drops its reference chip) | `onForget(fn)` (`fn(el)` runs from `forget(el)`, which every removal already calls) | `canvas/graph.ts` |
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
+| Drawings that move along when an item is dragged (the selection's, a group's) | `inkWith(fn)` (`fn(el)` returns canvas strokes; `inkOf(els)` gathers them, each once) | `canvas/inksel.ts` |
+| React to drawings just drawn, written or dragged (a group taking in what lands in its frame) | `onInkPlaced(fn)` | `canvas/ink.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.

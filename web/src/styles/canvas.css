@@ -11,6 +11,7 @@
 #world.glide{transition:transform .45s var(--ease)}
 .item{position:absolute}
 #world>.item[data-hidden-in]{visibility:hidden} /* inside a collapsed group (items/group.ts): keeps its size, so saving still has it */
+#ink [data-hidden-in]{display:none} /* a collapsed group's drawings (items/groupink.ts) */
 /* every element that carries a kind (canvas items, Ctrl+K rows, reference chips) takes its color from one map */
 [data-kind=session]{--kind:var(--k-session)}[data-kind=run]{--kind:var(--k-run)}[data-kind=diagram]{--kind:var(--k-diagram)}[data-kind=sketch]{--kind:var(--k-sketch)}[data-kind=plan]{--kind:var(--k-plan)}[data-kind=note]{--kind:var(--k-note)}[data-kind=file]{--kind:var(--k-file)}[data-kind=files]{--kind:var(--k-file)}[data-kind=git]{--kind:var(--k-git)}[data-kind=github]{--kind:var(--k-github)}[data-kind=snippet]{--kind:var(--k-snippet)}[data-kind=image]{--kind:var(--k-image)}[data-kind=agent]{--kind:var(--k-agent)}[data-kind=doc]{--kind:var(--k-doc)}[data-kind=group]{--kind:var(--k-group)}[data-kind=preview]{--kind:var(--k-preview)}
 

@@ -2,15 +2,19 @@
 // their ids in data-members, brings them along when its tab is dragged (moveWith), always wraps them (auto-fit,
 // frozen while anything is dragged), and never overlaps another group (groupgeom.ts settles that). A window joins
 // by being dropped into a frame, and leaves by being dropped outside it or through its tab's Remove from group button.
-import { make, ICON, iconButton, confirmBox, shortcutOk, uuid, perFrame } from '../lib/dom'
+// Drawings on the canvas belong to groups too (groupink.ts).
+import { make, ICON, iconButton, confirmBox, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
-import { command } from '../lib/keys'
 import { world, items, byIds, rect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, type Rect } from '../canvas/canvas'
-import { makeWindow, winTitle, titleOf, expand } from '../canvas/window'
+import { makeWindow, winTitle, titleOf } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { setToggle } from '../canvas/dock'
 import { redraw, forget } from '../canvas/graph'
-import { selected, removable, removeItem, clearSelection, selectionAction, onSelect } from '../canvas/select'
+import { removable, removeItem, onSelect } from '../canvas/select'
+import { erase } from '../canvas/inkundo'
+import { strokeMover, inkWith } from '../canvas/inksel'
+import { inkIds, setInkIds, groupInk, hideInk, inkRects } from './groupink'
+import './groupselect' // Ctrl+G and the selection bar's Group / Ungroup
 import { frameAround, settle, inner, scaleInto, placeIn, compact, PAD, GAP, type Frame } from './groupgeom'
 
 const MIN = { w: 320, h: 200 } // an empty group: room to drop windows into
@@ -25,9 +29,9 @@ referable('group', {
 })
 
 export const groups = () => items('group')
-const isGroup = (el: HTMLElement) => el.dataset.kind === 'group'
+export const isGroup = (el: HTMLElement) => el.dataset.kind === 'group'
 /** Windows only: bare items (notes, file nodes) have no tab to carry the Remove from group button. */
-const groupable = (el: HTMLElement) => el.classList.contains('win') && !isGroup(el)
+export const groupable = (el: HTMLElement) => el.classList.contains('win') && !isGroup(el)
 // member ids, kept even for windows that haven't shown up yet (a card rebuilt from its process after a reload)
 const ids = (g: HTMLElement): string[] => JSON.parse(g.dataset.members || '[]')
 let index: Map<string, HTMLElement> | null = null // window id → its group, rebuilt after any change (setIds)
@@ -51,11 +55,14 @@ function adopt(g: HTMLElement, found: Map<string, HTMLElement>) {
     if (head && !head.querySelector(':scope > .leavebtn')) head.insertBefore(iconButton(ICON.ungroup, 'Remove from group', () => takeOut(m), 'leavebtn'), head.querySelector(':scope > .minbtn'))
     if (min && onCanvas(m) && !m.dataset.hiddenIn) { m.dataset.hiddenIn = g.dataset.id!; m.inert = true }
   }
+  hideInk(g, min)
 }
+/** Nothing left in it: no windows, no drawings. */
+export const empty = (g: HTMLElement) => !ids(g).length && !inkIds(g).length
 /** A group's windows that exist now (`found`: one byIds() pass for many groups). */
-const members = (g: HTMLElement, found = byIds()) => ids(g).map(id => found.get(id)).filter((el): el is HTMLElement => !!el)
+export const members = (g: HTMLElement, found = byIds()) => ids(g).map(id => found.get(id)).filter((el): el is HTMLElement => !!el)
 /** Where an item is from its styles alone (no layout read): safe between writes. */
-const styleRect = (el: HTMLElement): Rect => ({ x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0,
+export const styleRect = (el: HTMLElement): Rect => ({ x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0,
   w: parseFloat(el.style.width) || 0, h: parseFloat(el.style.height) || 0 })
 /** Same, measured only where a size isn't set (a note's height follows its text). */
 const sizeOf = (el: HTMLElement): Rect => { const r = styleRect(el); return { ...r, w: r.w || el.offsetWidth, h: r.h || el.offsetHeight } }
@@ -64,7 +71,7 @@ const tabH = () => (tab ||= parseFloat(getComputedStyle(document.documentElement
 
 /** Make a group. `members`: ids of the windows it holds; `rect` a saved frame (else an empty one at the view center);
  *  `locked` pinned in place. */
-export function group(o: { id?: string; title?: string; members?: string[]; rect?: Rect; locked?: boolean } = {}) {
+export function group(o: { id?: string; title?: string; members?: string[]; ink?: string[]; rect?: Rect; locked?: boolean } = {}) {
   const c = viewCenter()
   const lock = iconButton(ICON.pin, '', () => setLocked(el, !el.dataset.locked), 'lockbtn')
   const { el, head } = makeWindow({
@@ -76,6 +83,7 @@ export function group(o: { id?: string; title?: string; members?: string[]; rect
     onChange: () => { if (el.classList.contains('resizing')) scaleMembers(el); redraw() },
   })
   el.dataset.id = o.id ?? uuid()
+  setInkIds(el, o.ink ?? [])
   setIds(el, o.members ?? [])
   setLocked(el, !!o.locked)
   head.addEventListener('pointerenter', outlinesSoon)
@@ -110,7 +118,7 @@ function scaleMembers(g: HTMLElement) {
 // Which windows are in a group: a dotted outline with corner squares round the frame and a thin one round each of
 // its windows, while its tab is hovered, while it's selected or dragged, and for a moment after it changes.
 const flashing = new Set<HTMLElement>()
-function flash(g: HTMLElement) {
+export function flash(g: HTMLElement) {
   flashing.add(g)
   outlinesSoon()
   setTimeout(() => { flashing.delete(g); outlinesSoon() }, 1500)
@@ -129,7 +137,7 @@ const outlinesSoon = perFrame(() => {
 onSelect(outlinesSoon)
 
 /** Add a window to a group (out of any other: a window is in at most one). */
-function join(el: HTMLElement, g: HTMLElement) {
+export function join(el: HTMLElement, g: HTMLElement) {
   if (groupOf(el) === g) return // (leaving first would empty a one-window group and take its frame away)
   leave(el)
   setIds(g, [...ids(g), el.dataset.id!])
@@ -139,12 +147,13 @@ function leave(el: HTMLElement) {
   const g = groupOf(el)
   if (!g) return
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
-  if (!ids(g).length) ungroup(g)
+  if (empty(g)) ungroup(g)
 }
 
 /** Take the frame away and leave the windows where they are. */
-function ungroup(g: HTMLElement) {
+export function ungroup(g: HTMLElement) {
   if (g.classList.contains('min')) hide(g, false)
+  setInkIds(g, [])
   setIds(g, []) // (takes the windows' Remove from group buttons away)
   forget(g)
   g.remove()
@@ -162,6 +171,7 @@ function hide(g: HTMLElement, on: boolean) {
     else delete m.dataset.hiddenIn
     m.inert = on
   }
+  hideInk(g, on)
   redraw()
   changed()
 }
@@ -171,14 +181,16 @@ document.addEventListener('collapse', ev => {
 })
 
 async function deleteGroup(g: HTMLElement) {
-  const ms = members(g), n = ms.length
-  if (n && !await confirmBox(`Delete "${winTitle(g)}" and its ${n} window${n === 1 ? '' : 's'}?`, 'To keep the windows, use Ungroup instead.', 'Delete all')) return
+  const ms = members(g), ink = groupInk(g), n = ms.length, d = ink.length
+  const what = [n && `${n} window${n === 1 ? '' : 's'}`, d && `${d} drawing${d === 1 ? '' : 's'}`].filter(Boolean).join(' and ')
+  if (what && !await confirmBox(`Delete "${winTitle(g)}" and its ${what}?`, 'To keep them, use Ungroup instead.', 'Delete all')) return
   ungroup(g) // shows hidden windows first, so each one's own remove path finds it
   ms.forEach(removeItem)
+  erase(...ink) // (Undo brings them back)
 }
 
 /** Slide other groups out of the way of these (just moved, grown or made), each with its windows. */
-function settleFrom(first: HTMLElement[]) {
+export function settleFrom(first: HTMLElement[]) {
   const all = groups().filter(onCanvas)
   const frames: Frame[] = all.map(g => ({ id: g.dataset.id!, r: g.classList.contains('min') ? { ...styleRect(g), h: tabH() } : styleRect(g) }))
   const pushes = settle(frames, first.map(g => g.dataset.id!), all.filter(g => g.dataset.locked).map(g => g.dataset.id!))
@@ -188,6 +200,9 @@ function settleFrom(first: HTMLElement[]) {
     const g = found.get(id)
     if (!g) continue
     for (const el of [g, ...members(g, found)]) { const r = styleRect(el); place(el, r.x + d.dx, r.y + d.dy) }
+    const ink = strokeMover(groupInk(g), false) // settling isn't something the user did: nothing to undo
+    ink(d.dx, d.dy)
+    ink.end()
   }
   redraw()
   changed()
@@ -195,6 +210,7 @@ function settleFrom(first: HTMLElement[]) {
 
 // dragging a group's tab brings its windows (hidden ones too, so they're in place when it opens again)
 moveWith(el => (el.dataset.kind === 'group' ? members(el) : []))
+inkWith(el => (el.dataset.kind === 'group' ? groupInk(el) : [])) // and its drawings
 
 /** Where a pinned window will come back to: a dashed placeholder in the frame, named after it. */
 function ghosts(g: HTMLElement, frame: Rect, pinned: { el: HTMLElement; r: Rect }[]) {
@@ -220,7 +236,7 @@ onChange(viewOnly => {
   const fits = gs.filter(g => onCanvas(g) && !g.classList.contains('min')).map(g => {
     // pinned windows (sidebar, floating) count too: rect() gives their spot on the canvas, kept for their return
     const ms = members(g, found).map(el => ({ el, r: rect(el) }))
-    const r = frameAround(ms.map(m => m.r), PAD, tabH())
+    const r = frameAround([...ms.map(m => m.r), ...inkRects(g)], PAD, tabH())
     return { g, r, pinned: ms.filter(m => !onCanvas(m.el)) }
   })
   for (const f of fits) ghosts(f.g, f.r ?? styleRect(f.g), f.pinned)
@@ -240,48 +256,9 @@ onChange(viewOnly => {
   changed() // the new frames get saved (and fit again: nothing changes, so it stops there)
 })
 
-/** Group the selected windows (Ctrl+G); nothing selected: an empty group to drop windows into. A selection that
- *  touches groups (a selected group, or windows already in one) merges into the first of them: never a second group. */
-/** What grouping these would involve: the windows, and the groups they touch (selected, or holding one of them). */
-function touched(els: HTMLElement[]) {
-  const wins = els.filter(groupable)
-  return { wins, gs: [...new Set([...els.filter(isGroup), ...wins.map(groupOf).filter((g): g is HTMLElement => !!g)])] }
-}
-/** Would grouping these change anything (not all in one group already)? */
-const changes = ({ wins, gs }: ReturnType<typeof touched>) =>
-  gs.length > 1 || (gs.length ? wins.some(el => groupOf(el) !== gs[0]) : wins.length > 0) // (no group touched: any window makes one)
-function groupSelection() {
-  const picked = selected()
-  if (!picked.length) { settleFrom([group()]); changed(); return }
-  const t = touched(picked), { wins } = t, touchedGs = t.gs
-  if (!changes(t)) return
-  const g = touchedGs[0] ?? group()
-  expand(g) // a collapsed target opens: what joins it stays in sight
-  for (const other of touchedGs.slice(1)) { const ms = members(other); ungroup(other); ms.forEach(m => join(m, g)) }
-  for (const el of wins) join(el, g)
-  clearSelection() // the group holds them together now (and the selection bar would sit on the group's tab)
-  flash(g)
-  changed() // the next frame fits it around them, then settles
-}
-/** Ctrl+Shift+G (and the bar's Ungroup): selected groups lose their frame, their windows stay. A single window
- *  leaves its group by being dragged out, or through its own tab's button. */
-function ungroupSelection() {
-  for (const el of selected()) if (isGroup(el)) ungroup(el)
-  changed()
-}
-addEventListener('keydown', e => {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'g' || !shortcutOk(e)) return
-  e.preventDefault() // the browser's Ctrl+G is "find next"
-  if (e.shiftKey) ungroupSelection(); else groupSelection()
-})
-
-command({ label: 'Group the selected windows', group: 'Selection', keys: ['Ctrl+G'] })
-command({ label: 'Ungroup the selected groups', group: 'Selection', keys: ['Ctrl+Shift+G'] })
 removable('group', g => ungroup(g), 'A group\'s windows stay unless they are selected too.')
-selectionAction('Group', 'Group the selected windows (Ctrl+G); groups in the selection merge', groupSelection, els => changes(touched(els)))
-selectionAction('Ungroup', 'Remove the selected groups, keep their windows (Ctrl+Shift+G)', ungroupSelection, els => els.some(isGroup))
 
-const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
+export const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 
 // after a drag: a group pushes others aside; a window that's in no group joins the one its center landed in
 document.addEventListener('moved', ev => {
@@ -342,10 +319,10 @@ function takeOut(m: HTMLElement) {
   changed() // the frame fits the windows left, then settles
 }
 
-interface Saved { id: string; title: string; members: string[]; rect: Rect; locked?: boolean }
+interface Saved { id: string; title: string; members: string[]; ink?: string[]; rect: Rect; locked?: boolean }
 // phase 2: after the windows (phase 1). Ids of windows not there yet stay (see adopt); removed windows leave (below).
 persist('groups',
-  () => groups().map((g): Saved => ({ id: g.dataset.id!, title: winTitle(g), members: ids(g), rect: savedRect(g), ...(g.dataset.locked ? { locked: true } : {}) })),
+  () => groups().map((g): Saved => ({ id: g.dataset.id!, title: winTitle(g), members: ids(g), ...(inkIds(g).length ? { ink: inkIds(g) } : {}), rect: savedRect(g), ...(g.dataset.locked ? { locked: true } : {}) })),
   (list: Saved[]) => {
     each(list, s => { const g = group(s); if (s.rect.min) hide(g, true) })
     redraw()
@@ -359,7 +336,7 @@ function gone(el: HTMLElement) {
   const g = groupOf(el)
   if (!g || g === el) return
   setIds(g, ids(g).filter(id => id !== el.dataset.id))
-  if (!ids(g).length) ungroup(g)
+  if (empty(g)) ungroup(g) // (its drawings keep it)
 }
 new MutationObserver(recs => {
   recs.flatMap(r => [...r.removedNodes]).filter((n): n is HTMLElement => n instanceof HTMLElement && !n.isConnected && !!n.dataset.id && !parked(n)).forEach(gone)

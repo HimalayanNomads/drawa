@@ -8,11 +8,12 @@ import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, 
 import { redraw } from './graph'
 import { drawing, type Stroke } from './ink'
 import { erase } from './inkundo'
-import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
+import { canvasStrokes, strokeRect, markStroke, strokeMover, inkWith, inkOf, siblings, objectAt } from './inksel'
 import { handDrag } from './mode'
 import { anyFull } from './fullview'
 
 const sel = new Set<HTMLElement>()
+let picks = 0 // bumped on every selection change, windows or drawings (the bar's Group depends on both)
 const removers = new Map<string, (el: HTMLElement) => void>(), notes = new Map<string, string>()
 /** How items of this kind are removed when a selection is deleted, without asking again (the selection asks once).
  *  Kinds that don't register are removed by clicking their own × button; kinds with neither are left alone.
@@ -35,14 +36,23 @@ export function removeItem(el: HTMLElement) {
 
 // drawings on the canvas itself (shapes, text, pen strokes) join the selection too; ink on a window moves with it
 const inkSel = new Set<Stroke>()
-function setInk(s: Stroke, on: boolean) { if (on) inkSel.add(s); else inkSel.delete(s); markStroke(s, on) }
+// the frameless group double-clicked into (Excalidraw's way to pick one drawing of a group): until the selection
+// is cleared, its drawings are picked one by one
+let inside: string | undefined
+const whole = (s: Stroke) => (s.g && s.g !== inside ? siblings(s) : [s]) // a group comes whole, unless we're inside it
+function setInk(s: Stroke, on: boolean) {
+  for (const o of whole(s)) { if (on) inkSel.add(o); else inkSel.delete(o); markStroke(o, on) }
+  picks++
+}
 export const selected = () => [...sel]
 export const selectedInk = () => [...inkSel]
 /** Is this drawing in the selection? (canvas/shapes.ts drags the whole selection when you drag one.) */
 export const inkSelected = (s: Stroke) => inkSel.has(s)
 /** Click on a drawing (shape or text): select just it, or with `add` (Shift) add it to the selection. */
 export function selectInk(s: Stroke, add = false) {
+  const stay = !!s.g && s.g === inside // another drawing of the group we're in: still inside
   if (!add) clearSelection()
+  if (stay) inside = s.g
   setInk(s, true)
   sync()
 }
@@ -52,7 +62,7 @@ export const onSelect = (f: () => void) => watchers.push(f)
 /** Move everything selected together, windows and drawings, by a total offset in canvas units; `end()` when done.
  *  Whatever moves with a selected item comes too (a group's windows). */
 export function selectionMover(): Mover {
-  const els = [...new Set([...sel].filter(el => !el.dataset.locked).flatMap(movesWith))], starts = els.map(rect), ink = strokeMover([...inkSel])
+  const els = [...new Set([...sel].filter(el => !el.dataset.locked).flatMap(movesWith))], starts = els.map(rect), ink = strokeMover([...new Set([...inkSel, ...inkOf(els)])], !els.length) // with windows: no undo step (moving windows has none)
   const move = (dx: number, dy: number) => { els.forEach((el, i) => place(el, starts[i].x + dx, starts[i].y + dy)); ink(dx, dy); if (els.length) redraw() }
   // a move like a drag's: 'moved' on each, so what reacts to drags (groups pushing each other aside) reacts to this too
   return Object.assign(move, { end: () => { ink.end(); changed(); els.forEach(el => el.dispatchEvent(new CustomEvent('moved', { bubbles: true }))) } })
@@ -61,14 +71,32 @@ export function selectionMover(): Mover {
 function selectAll() { for (const el of placed()) set(el, true); for (const s of canvasStrokes()) setInk(s, true); sync() }
 function set(el: HTMLElement, on: boolean) {
   if (on) sel.add(el); else sel.delete(el)
+  picks++
   el.classList.toggle('selected', on)
 }
-export function clearSelection() { for (const el of [...sel]) set(el, false); for (const s of [...inkSel]) setInk(s, false); sync() }
+export function clearSelection() {
+  for (const el of [...sel]) set(el, false)
+  for (const s of [...inkSel]) setInk(s, false)
+  inside = undefined
+  sync()
+}
 /** Make `el` the whole selection (W steps through windows, so Delete, the arrows and Ctrl+G act on the one it lands on). */
 export function selectOnly(el: HTMLElement) { clearSelection(); set(el, true); sync() }
+// double-click a grouped drawing: into its group, with just that drawing selected
+document.addEventListener('dblclick', e => {
+  const s = objectAt(e.target as Element)
+  if (!s?.g) return
+  e.stopPropagation()
+  clearSelection()
+  inside = s.g
+  setInk(s, true)
+  sync()
+}, true)
 
 moveWith(el => (sel.has(el) ? [...sel] : []))
-setMoveAlong(el => (sel.has(el) && inkSel.size ? strokeMover([...inkSel]) : null))
+inkWith(el => (sel.has(el) ? [...inkSel] : []))
+// drawings carried by a dragged window or group: no undo step of their own, or Ctrl+Z would move them out from under it
+setMoveAlong(el => { const ink = inkOf(movesWith(el)); return ink.length ? strokeMover(ink, false) : null })
 
 /* ---------- the bar by the selection: how many, delete, clear ---------- */
 const count = make('span', 'n')
@@ -79,7 +107,7 @@ const del = button('Delete', '', () => { removeSelected() })
 bar.append(count, del, iconButton(ICON.x, 'Clear selection (Esc)', clearSelection))
 bar.hidden = true
 const actions: { b: HTMLButtonElement; when: (els: HTMLElement[]) => boolean }[] = []
-let shownFor = '' // the selection the actions were last shown for
+let shownFor = -1 // the selection the actions were last shown for (its `picks`)
 /** A button on the bar by the selection, before Delete (items/group.ts: Group, Ungroup). `when`: shown only for
  *  selections it applies to. */
 export function selectionAction(label: string, tip: string, fn: () => void, when: (els: HTMLElement[]) => boolean = () => true) {
@@ -94,6 +122,8 @@ export function selectionAction(label: string, tip: string, fn: () => void, when
 const selbox = stage.appendChild(make('div', 'selbox'))
 selbox.hidden = true
 
+/** Show the bar's actions again for the same selection whose meaning changed (its drawings were just grouped). */
+export function refreshActions() { picks++; sync() }
 function sync() {
   for (const el of [...sel]) if (!el.isConnected || !onCanvas(el) || hidden(el)) set(el, false) // removed, pinned, in full view, in a collapsed group
   for (const s of [...inkSel]) if (!s.el?.isConnected) setInk(s, false) // erased or undone
@@ -103,8 +133,7 @@ function sync() {
   selbox.hidden = n < 2
   if (!n) return
   count.textContent = `${n} selected`
-  const key = [...sel].map(el => el.dataset.id).join()
-  if (key !== shownFor) { shownFor = key; for (const a of actions) a.b.hidden = !a.when([...sel]) } // not on every pan frame
+  if (picks !== shownFor) { shownFor = picks; for (const a of actions) a.b.hidden = !a.when([...sel]) } // not on every pan frame
   // above the selection's top-left (on screen), kept on screen; a drawing on a window is measured where it shows
   const screen = (r: Rect) => ({ x: r.x * view.k + view.x, y: r.y * view.k + view.y, w: r.w * view.k, h: r.h * view.k })
   const rs = [...[...sel].map(el => screen(rect(el))), ...[...inkSel].map(s => {
@@ -192,7 +221,7 @@ stage.addEventListener('pointerdown', e => {
       const on = before.has(el) || hits(r, m, 0)
       if (on !== sel.has(el)) { set(el, on); changes++ } // only what crossed the box's edge
     }
-    const inBox = new Set(canvasStrokes(m, drawings))
+    const inBox = new Set(canvasStrokes(m, drawings).flatMap(whole)) // one drawing of a group in the box: all of it
     for (const s of new Set([...inkSel, ...inBox])) {
       const on = inkBefore.has(s) || inBox.has(s)
       if (on !== inkSel.has(s)) { setInk(s, on); changes++ }

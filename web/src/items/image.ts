@@ -3,7 +3,7 @@
 // server (a file named by its hash, `src`), so every browser and address sees them; pictures from before that live
 // in this browser's IndexedDB (lib/blobs) and move to the server the first time they're shown. Draw on it to point at things, then @ it or drop it on a
 // card: Claude gets the picture, with your drawing when there is one.
-import { make, ping, toast, typing, uuid, button } from '../lib/dom'
+import { make, ping, toast, typing, uuid, button, iconButton, confirmBox, ICON } from '../lib/dom'
 import { openZoom } from '../lib/zoom'
 import { post } from '../lib/api'
 import { persist, each } from '../lib/store'
@@ -15,7 +15,8 @@ import { toggleFull, isFull } from '../canvas/fullview'
 import { referable } from '../canvas/refs'
 import { creatable } from '../canvas/tools'
 import { snapshot } from '../canvas/snapshot'
-import { hasInk, strokesIn, inkBox } from '../canvas/ink'
+import { hasInk, strokesIn, inkBox, clearInk } from '../canvas/ink'
+import { cropArea } from './crop'
 import { readImages } from '../session/images'
 
 interface Saved { id: string; title: string; rect: Rect; src?: string }
@@ -41,14 +42,17 @@ function imageWindow(o: Saved) {
   const img = make('img', 'inode-img')
   img.alt = o.title
   img.draggable = false
+  const box = inkBox('im:' + o.id) // drawing on the picture stays on the same spot at any size
   const { el, body } = makeWindow({
     kind: 'image', cls: 'inode', title: o.title, rect: o.rect, minW: 160, minH: 100,
-    actions: [removeButton('Remove from canvas', () => { dropBlob(o.id).catch(() => {}); if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src) })],
+    actions: [
+      iconButton(ICON.crop, 'Crop picture', () => crop(el, box, img), 'crop-btn'),
+      removeButton('Remove from canvas', () => { dropBlob(o.id).catch(() => {}); if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src) }),
+    ],
   })
   el.dataset.id = o.id
   if (o.src) el.dataset.src = o.src
   el.dataset.ink = 'i:' + o.id // drawing on the window around the picture moves and saves with it
-  const box = inkBox('im:' + o.id) // drawing on the picture stays on the same spot at any size
   img.onload = () => inkBox('im:' + o.id, box, img.naturalWidth, img.naturalHeight)
   el.addEventListener('rename', e => { img.alt = (e as CustomEvent<string>).detail })
   body.classList.add('inode-b')
@@ -57,17 +61,21 @@ function imageWindow(o: Saved) {
   img.onclick = () => (isFull(el) ? openZoom(img) : toggleFull(el)) // click: full size (Esc to come back); again: zoom and pan
   const gone = () => body.replaceChildren(make('p', 'none', "This picture isn't stored anymore (it was kept in another browser, or its data was cleared)."))
   if (o.src) {
-    const url = '/api/images/' + o.src
     // missing (404): gone for good. No answer (server down, restarting): try again once it's back. Any other answer:
-    // the server is there, so waiting for it to come back would wait forever; say so, with a Retry
-    img.onerror = () => fetch(url).then(r => r.status, () => 0).then(status => {
-      if (status === 404) return gone()
-      if (status) return body.replaceChildren(make('p', 'none', `This picture couldn't be loaded (${status === 200 ? 'not a readable image' : `the server answered ${status}`}).`),
-        button('Retry', '', () => { body.replaceChildren(box); img.src = url + '?r=' + Date.now() }))
-      img.alt = `${o.title} (couldn't load; retrying when the server is back)`
-      retry.set(img, url)
-    })
-    img.src = url
+    // the server is there, so waiting for it to come back would wait forever; say so, with a Retry. The address is
+    // read when it fails, not when the window is made: a crop gives the window a new picture
+    img.onerror = () => {
+      if (!el.dataset.src) return // cropped while the server was away: a picture kept in this browser, not on the server
+      const url = '/api/images/' + el.dataset.src
+      fetch(url).then(r => r.status, () => 0).then(status => {
+        if (status === 404) return gone()
+        if (status) return body.replaceChildren(make('p', 'none', `This picture couldn't be loaded (${status === 200 ? 'not a readable image' : `the server answered ${status}`}).`),
+          button('Retry', '', () => { body.replaceChildren(box); img.src = url + '?r=' + Date.now() }))
+        img.alt = `${o.title} (couldn't load; retrying when the server is back)`
+        retry.set(img, url)
+      })
+    }
+    img.src = '/api/images/' + o.src
   }
   else getBlob(o.id).catch(() => undefined).then(async b => {
     if (!b) return gone() // not in this browser, or IndexedDB couldn't be read
@@ -76,6 +84,33 @@ function imageWindow(o: Saved) {
     if (key) { el.dataset.src = key; dropBlob(o.id).catch(() => {}); changed() }
   }).catch(() => {})
   return el
+}
+
+/** Crop a picture window to an area the user picks. The cut picture is stored like a new one and replaces it. */
+async function crop(el: HTMLElement, box: HTMLElement, img: HTMLImageElement) {
+  if (!img.naturalWidth || el.dataset.state === 'crop') return // not loaded (or gone), or already cropping
+  const inked = hasInk(box) // only what's drawn on the picture; the frame's ink doesn't depend on its pixels
+  if (inked && !await confirmBox('Crop picture', 'The drawing on this picture will be removed.', 'Crop')) return
+  const a = await cropArea(box, img)
+  if (!a) return
+  try {
+    const type = (await fetch(img.src).then(r => r.blob())).type // cached; keeps JPEG and WebP from growing into PNG
+    const c = Object.assign(document.createElement('canvas'), { width: a.w, height: a.h })
+    c.getContext('2d')!.drawImage(img, a.x, a.y, a.w, a.h, 0, 0, a.w, a.h)
+    const blob = await new Promise<Blob | null>(res => c.toBlob(res, /^image\/(jpeg|webp)$/.test(type) ? type : 'image/png'))
+    if (!blob) throw new Error('empty picture')
+    const key = await upload(await base64(blob))
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src)
+    if (key) { el.dataset.src = key; img.src = '/api/images/' + key; dropBlob(el.dataset.id!).catch(() => {}) }
+    else { await putBlob(el.dataset.id!, blob); delete el.dataset.src; img.src = URL.createObjectURL(blob) } // server away: this browser keeps it
+  } catch {
+    return toast("Couldn't crop the picture.")
+  }
+  if (inked) clearInk(box)
+  const s = fit(a.w, a.h) // img.onload reshapes the ink box to the new picture
+  el.style.width = s.w + 'px'
+  el.style.height = s.h + 'px'
+  changed()
 }
 
 /** Put a picture on the canvas. `at`: its top-left corner in canvas pixels (default: a free spot in view). */

@@ -26,6 +26,8 @@
   --del:oklch(from var(--c-red) var(--text-l) c h);--del-bg:color-mix(in oklab,var(--c-red) 13%,var(--c-bg));
   --warn:var(--run);--warn-bg:color-mix(in oklab,var(--c-yellow) 12%,var(--c-bg));--danger:var(--del);--on-danger:oklch(from var(--danger) var(--on-l) 0 0);
   --backdrop:color-mix(in oklab,var(--c-text) 42%,transparent); /* behind modal dialogs */
+  --scrim:oklch(0 0 0 / 0.55); /* what a crop cuts away: darker in both themes, like a photo editor */
+  --on-scrim:oklch(1 0 0); /* marks drawn over a picture being cropped (grid, handles): light in both themes */
   --shadow:0 1px 2px oklch(0.2 0.02 255 / 0.06),0 8px 28px oklch(0.2 0.02 255 / 0.1);
   --shadow-lift:0 2px 4px oklch(0.2 0.02 255 / 0.08),0 18px 48px oklch(0.2 0.02 255 / 0.18);
   --shadow-sm:0 1px 2px oklch(0.2 0.02 255 / 0.1); /* a control raised off its track (segmented tabs) */
