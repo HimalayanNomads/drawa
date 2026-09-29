@@ -66,7 +66,9 @@ function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
   const arrows = forget(el), links = dropLinks(el), put = park(el)
   changed()
   if (!undo) {
-    undo = { toast: notice(''), timer: 0, items: [] } // stacks with the other notices (lib/dom.ts)
+    const toast = notice('') // stacks with the other notices (lib/dom.ts)
+    toast.classList.add('undo')
+    undo = { toast, timer: 0, items: [] }
   }
   undo.items.push({ el, also, back: () => { put(); arrows(); links() } })
   const n = undo.items.length

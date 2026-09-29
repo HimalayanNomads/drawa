@@ -74,6 +74,7 @@
 /* a state that lasts (another tab owns the canvas, storage full, a new version): information, not an error */
 .toast.notice{flex-wrap:wrap;row-gap:6px;color:var(--ink)}
 .toast.notice>span{flex:1 1 220px}
+.toast.undo{flex-wrap:nowrap}.toast.undo>span{flex:none} /* "Deleted · Undo": one short line */
 .toast .btn{flex:none}
 #conn i{width:8px;height:8px;border-radius:50%;flex:none}
 #conn[data-state=down]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
