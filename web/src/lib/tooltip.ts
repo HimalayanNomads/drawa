@@ -58,7 +58,7 @@ document.addEventListener('pointerover', e => {
 })
 document.addEventListener('focusin', e => {
   const el = (e.target as Element).closest?.<HTMLElement>('[title], [data-tip]')
-  if (el?.matches(':focus-visible')) { hide(); target = el; show(el) }
+  if (el?.matches(':focus-visible') && !el.isContentEditable) { hide(); target = el; show(el) } // a field being typed in: its tip would cover it (editable text always counts as focus-visible)
 })
 for (const t of ['pointerdown', 'focusout', 'wheel', 'keydown']) addEventListener(t, hide, { capture: true, passive: true })
 addEventListener('scroll', hide, { capture: true, passive: true })
