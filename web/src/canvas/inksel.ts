@@ -3,6 +3,7 @@
 import { view, type Mover } from './canvas'
 import { strokes, fits, FIT, unitsPerHostPx, paint, type Stroke } from './ink'
 import { SHAPE_NAME } from './shapegeom'
+import { changing } from './inkundo'
 
 export type Box = { x: number; y: number; w: number; h: number }
 /** A stroke's bounding box (x0, y0, x1, y1), measured once after it changes. */
@@ -80,10 +81,14 @@ export function strokeMover(list: Stroke[]): Mover {
     dx = x; dy = y
     list.forEach((s, i) => s.el?.setAttribute('transform', `${base[i]} translate(${x * f[i]} ${y * f[i]})`.trim()))
   }
-  return Object.assign(move, { end: () => list.forEach((s, i) => {
-    if (base[i]) s.el?.setAttribute('transform', base[i]); else s.el?.removeAttribute('transform')
-    if (!dx && !dy) return
-    s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r])
-    paint(s)
-  }) })
+  return Object.assign(move, { end: () => {
+    const done = dx || dy ? changing(list) : null
+    list.forEach((s, i) => {
+      if (base[i]) s.el?.setAttribute('transform', base[i]); else s.el?.removeAttribute('transform')
+      if (!done) return
+      s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r])
+      paint(s)
+    })
+    done?.()
+  } })
 }

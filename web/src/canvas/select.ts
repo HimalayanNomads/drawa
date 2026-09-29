@@ -6,7 +6,8 @@ import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepO
 import { command } from '../lib/keys'
 import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
 import { redraw } from './graph'
-import { drawing, remove, type Stroke } from './ink'
+import { drawing, type Stroke } from './ink'
+import { erase } from './inkundo'
 import { canvasStrokes, strokeRect, markStroke, strokeMover } from './inksel'
 import { handDrag } from './mode'
 import { anyFull } from './fullview'
@@ -125,9 +126,9 @@ const plural = (n: number) => `${n} item${n === 1 ? '' : 's'}`
 async function removeSelected() {
   const all = [...sel], gone = all.filter(canRemove), kept = all.length - gone.length, ink = [...inkSel]
   if (!gone.length && !ink.length) return
-  const drop = () => { ink.forEach(s => setInk(s, false)); remove(...ink) }
-  if (!gone.length) { // drawings only: one goes like the eraser; more ask first (undo can't bring them back)
-    if (ink.length === 1 || await confirmBox(`Delete ${ink.length} drawings?`, "Undo can't bring them back.", 'Delete')) drop()
+  const drop = () => { ink.forEach(s => setInk(s, false)); erase(...ink) }
+  if (!gone.length) { // drawings only: one goes like the eraser; more ask first
+    if (ink.length === 1 || await confirmBox(`Delete ${ink.length} drawings?`, 'Undo in Draw mode (Ctrl+Z) brings them back.', 'Delete')) drop()
     sync()
     return
   }

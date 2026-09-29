@@ -11,6 +11,7 @@ import { command } from '../lib/keys'
 import { follow, watchRows, unwatch, rowAt, adopt, onHost } from './inkrows'
 import { startLink } from './links'
 import { SHAPES, outlinePoints, fillPath, constrain, type Shape } from './shapegeom'
+import { added, erase, changing, undo } from './inkundo'
 
 // a stroke with `t` is text: p[0] is its top-left corner, s its font size (both in the same units as a stroke's)
 // In a host marked data-ink-rows (a chat log), `a` is the row the stroke was drawn over and `o` that row's offsetTop
@@ -133,18 +134,20 @@ capture.addEventListener('pointerdown', e => {
   if (tool !== 'text') editor?.blur() // finish text being written before anything else
   if (tool === 'arrow') return startLink(e, color, capture)
   if (tool === 'text') { e.preventDefault(); return writeAt(e) }
-  if (tool === 'eraser') { eraseAt(e); return listen(e, eraseAt, () => {}) }
-  const { host, pt, scale } = placeAt(e)
-  if (isShape(tool)) return drawShape(e, tool, host, pt, scale)
+  if (tool === 'eraser') { const gone: Stroke[] = []; eraseAt(e, gone); return listen(e, ev => eraseAt(ev, gone), () => erase(...gone)) }
+  const at = placeAt(e), { host, scale } = at
+  if (isShape(tool)) return drawShape(e, tool, at)
   // size is in screen px at the moment of drawing, so a stroke looks the same weight at any zoom (or in full view)
-  const s: Stroke = { c: color, s: size * scale, sim: e.pointerType !== 'pen', p: [pt(e)], host, h: host?.dataset.ink, ...rowAt(host, e) }
+  const s: Stroke = { c: color, s: size * scale, sim: e.pointerType !== 'pen', p: [at.pt(e)], host, h: host?.dataset.ink, ...rowAt(host, e) }
   strokes.push(s)
   paint(s)
   const repaint = perFrame(() => paint(s))
+  let pt = at.pt
   listen(e, ev => {
+    if (at.off(ev)) pt = toCanvas(s, at)
     for (const c of ev.getCoalescedEvents?.() ?? [ev]) s.p.push(pt(c))
     repaint()
-  }, () => { thin(s); paint(s); changed() })
+  }, () => { thin(s); paint(s); added(s); changed() })
 })
 
 /** Follow a press on the capture layer until it ends, released or cancelled (a touch the browser takes over):
@@ -153,15 +156,22 @@ const listen = (e: PointerEvent, mv: (ev: PointerEvent) => void, up: () => void)
   track(capture, e, (_x, _y, ev) => mv(ev), () => up(), { keep: true, every: true })
 
 /** Drag out a shape from the press; Shift makes it a square / circle, or snaps a line to 45°. Too small: dropped. */
-function drawShape(e: PointerEvent, sh: Shape, host: HTMLElement | undefined, pt: (ev: PointerEvent) => number[], scale: number) {
-  const a = pt(e).slice(0, 2)
+function drawShape(e: PointerEvent, sh: Shape, at: Place) {
+  const { host } = at
+  let { pt, scale } = at, a = pt(e).slice(0, 2)
   const s: Stroke = { c: color, s: size * scale, sim: false, p: [a, a], sh, ...(fill && sh !== 'line' ? { f: true } : {}), host, h: host?.dataset.ink, ...rowAt(host, e) }
   strokes.push(s)
   const redraw = perFrame(() => paint(s))
-  listen(e, ev => { const b = pt(ev).slice(0, 2); s.p = [a, ev.shiftKey ? constrain(sh, a, b) : b]; redraw() }, () => {
+  listen(e, ev => {
+    if (at.off(ev)) { pt = toCanvas(s, at); a = s.p[0]; scale = 1 / view.k }
+    const b = pt(ev).slice(0, 2)
+    s.p = [a, ev.shiftKey ? constrain(sh, a, b) : b]
+    redraw()
+  }, () => {
     const [[x0, y0], [x1, y1]] = s.p
     if (Math.hypot(x1 - x0, y1 - y0) / scale < 4) return remove(s) // a click, not a drag
     paint(s)
+    added(s)
     changed()
   })
 }
@@ -175,19 +185,38 @@ function thin(s: Stroke) {
   s.p = out
 }
 
+type Pt = { clientX: number; clientY: number; pressure?: number }
 /** Where a press lands: over a window, the ink is the window's, in its content coordinates (with its scroll
- *  position); otherwise the canvas's, in world coordinates. `scale`: stored units per screen px. */
-function placeAt(e: { clientX: number; clientY: number }) {
+ *  position); otherwise the canvas's, in world coordinates. `scale`: stored units per screen px; `off(ev)`: has the
+ *  pointer left the window; `back(q)`: a stored point on screen again. */
+function placeAt(e: Pt) {
   const host = closestAt(e.clientX, e.clientY, '[data-ink]') ?? undefined
   const fit = fits(host), b = host?.getBoundingClientRect()
   const k = host && b ? b.width / host.offsetWidth : view.k // screen px per host px (or world px)
   const u = unitsPerHostPx(host)
-  const pt = (ev: { clientX: number; clientY: number; pressure?: number }) => {
-    if (!host || !b) { const w = toWorld(ev.clientX, ev.clientY); return [w.x, w.y, ev.pressure || 0.5] }
+  const pt = (ev: Pt) => {
+    if (!host || !b) return worldPt(ev)
     if (fit) return [(ev.clientX - b.left) / k * u, (ev.clientY - b.top) / k * u, ev.pressure || 0.5]
     return [(ev.clientX - b.left) / k + host.scrollLeft, (ev.clientY - b.top) / k + host.scrollTop, ev.pressure || 0.5]
   }
-  return { host, pt, scale: u / k }
+  // only a window on the canvas hands its strokes over: past a pinned or full-view one's edge the canvas isn't where
+  // the ink shows (ponytail: those still clip)
+  const off = (ev: Pt) => !!b && !!host!.closest('#world') && (ev.clientX < b.left || ev.clientX > b.right || ev.clientY < b.top || ev.clientY > b.bottom)
+  const back = ([x, y]: number[]) => (fit ? [b!.left + x / u * k, b!.top + y / u * k] : [b!.left + (x - host!.scrollLeft) * k, b!.top + (y - host!.scrollTop) * k])
+  return { host, pt, scale: u / k, off, back }
+}
+type Place = ReturnType<typeof placeAt>
+const worldPt = (ev: Pt) => { const w = toWorld(ev.clientX, ev.clientY); return [w.x, w.y, ev.pressure || 0.5] }
+/** A stroke drawn past its window's edge moves to the canvas, whole: the window would clip it there (an arrow from a
+ *  card to something else), and the clipped part couldn't be erased. Returns the canvas's point mapping. */
+function toCanvas(s: Stroke, at: Place) {
+  at.off = () => false // once is enough
+  s.p = s.p.map(q => { const [x, y] = at.back(q); return [...worldPt({ clientX: x, clientY: y }).slice(0, 2), ...q.slice(2)] })
+  s.s = s.s / at.scale / view.k // same weight on screen
+  s.el?.remove()
+  for (const f of ['el', 'host', 'h', 'a', 'o', 'k', 'rid', 'row'] as const) delete s[f]
+  paint(s)
+  return worldPt
 }
 
 /* ---------- text: click to write; click your text again (Text tool) to change it ---------- */
@@ -219,25 +248,28 @@ function writeAt(e: PointerEvent) {
     ta.remove()
     const text = ta.value.replace(/\s+$/, '')
     if (old?.el) old.el.style.visibility = ''
-    if (!text) { if (old) remove(old); return }
+    if (!text) { if (old) erase(old); return }
+    const done = old && text !== old.t ? changing([old]) : null
     s.t = text
-    if (!old) strokes.push(s)
+    if (!old) { strokes.push(s); added(s) }
     paint(s)
+    done?.()
     changed()
   }
   requestAnimationFrame(() => { fitSize(); ta.focus() })
 }
 
-function eraseAt(e: PointerEvent) {
+/** Rub out what's under the pointer at once; `gone` collects it, so the whole rub undoes as one action. */
+function eraseAt(e: PointerEvent, gone: Stroke[]) {
   for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
     const s = strokes.find(s => s.el === el || s.el?.contains(el)) // a shape's parts are inside its group
-    if (s) remove(s)
+    if (s) { remove(s); gone.push(s) }
   }
 }
 
 addEventListener('keydown', e => {
   if (!drawing || e.defaultPrevented || !shortcutOk(e)) return
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); const s = strokes.at(-1); if (s) remove(s) }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo() }
   else if (e.key === 'Escape') { e.preventDefault(); setDrawing(false) }
   else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   const t = toolKey(e)
@@ -259,9 +291,9 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
     else if (kind === 'text') return pick('text')
     else if (isShape(kind as Tool)) return pick(kind as Shape)
     else if (kind === 'fill') { fill = !fill; b.classList.toggle('on', fill); b.setAttribute('aria-pressed', String(fill)); return }
-    else if (kind === 'undo') { const s = strokes.at(-1); if (s) remove(s); return }
+    else if (kind === 'undo') return undo()
     else if (kind === 'clear') {
-      if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo can\'t bring them back.', 'Erase all').then(ok => { if (ok) remove(...strokes) })
+      if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo (Ctrl+Z) brings them back.', 'Erase all').then(ok => { if (ok) erase(...strokes) })
       return
     }
     else if (kind === 'done') return setDrawing(false)

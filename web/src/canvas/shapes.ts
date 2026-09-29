@@ -10,6 +10,7 @@ import { onChange, changed, track, view } from './canvas'
 import { handDrag } from './mode'
 import { drawing, paint, type Stroke } from './ink'
 import { objectAt, unitsPerPx } from './inksel'
+import { changing } from './inkundo'
 
 /* ---------- Select mode: a lone selected shape gets a frame and corner handles to resize it ---------- */
 const box = document.body.appendChild(make('div', 'shape-sel'))
@@ -45,7 +46,11 @@ document.addEventListener('pointerdown', e => {
   if (corner && picked?.sh) { // resize: move whichever point is extreme on this corner's sides
     const i = Number(corner.dataset.c), cx = i === 1 || i === 2, cy = i >= 2, s = picked, orig = s.p.map(q => [...q]), k = unitsPerPx(s)
     const ix = orig[0][0] <= orig[1][0] === !cx ? 0 : 1, iy = orig[0][1] <= orig[1][1] === !cy ? 0 : 1
-    track(corner, e, (dx, dy) => { s.p[ix][0] = orig[ix][0] + dx * k; s.p[iy][1] = orig[iy][1] + dy * k; paint(s); place() }, () => changed())
+    const done = changing([s])
+    track(corner, e, (dx, dy) => { s.p[ix][0] = orig[ix][0] + dx * k; s.p[iy][1] = orig[iy][1] + dy * k; paint(s); place() }, () => {
+      if (s.p.some((q, j) => q[0] !== orig[j][0] || q[1] !== orig[j][1])) done()
+      changed()
+    })
     return
   }
   const s = handDrag() ? null : objectAt(t)
