@@ -148,9 +148,23 @@ export function confirmBox(title: string, body: string, action: string): Promise
 
 /** A short message at the bottom of the screen that goes away by itself: for failures nobody would otherwise see. */
 export function toast(text: string) {
-  const t = document.body.appendChild(make('p', 'float toast', text))
-  t.setAttribute('role', 'status')
+  const t = stacked(make('p', 'toast', text))
   setTimeout(() => t.remove(), 6000)
+}
+
+/** A message that stays until the caller removes it (or hides it and shows it again): for states that last, like
+ *  "not saving". `actions` are its buttons. Toasts and notices stack instead of covering each other. */
+export function notice(text: string, ...actions: HTMLElement[]) {
+  const n = stacked(make('p', 'toast notice'))
+  n.append(make('span', '', text), ...actions)
+  return n
+}
+let stack: HTMLElement | undefined
+function stacked(el: HTMLElement) {
+  stack ??= document.body.appendChild(make('div', 'float notices'))
+  el.setAttribute('role', 'status')
+  stack.append(el)
+  return el
 }
 
 /** `f`, run at most once per frame, with the latest arguments: for pointermove, scroll and wheel handlers. */

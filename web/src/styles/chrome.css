@@ -48,10 +48,18 @@
 #hint.gone{opacity:0;pointer-events:none}
 
 /* server connection notice: bottom center, above the hint */
-#conn,.toast{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%);display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;white-space:nowrap;animation:enter .2s var(--ease)}
-.toast{bottom:58px;color:var(--danger);white-space:normal;max-width:min(520px,calc(100vw - 32px))}
-/* another tab of this server is streaming (session/live.ts): information, not an error */
-.toast.elsewhere{color:var(--ink)}
+#conn,.toast{display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;animation:enter .2s var(--ease)}
+#conn{max-width:min(560px,calc(100vw - 32px))}
+#conn,.notices{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%)}
+/* toasts and notices (lib/dom.ts) stack above the connection notice, newest at the bottom, never on top of each other */
+.notices{bottom:58px;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:min(560px,calc(100vw - 32px));pointer-events:none}
+.notices:empty{display:none}
+.toast{color:var(--danger);pointer-events:auto}
+.toast[hidden]{display:none}
+/* a state that lasts (another tab owns the canvas, storage full, a new version): information, not an error */
+.toast.notice{flex-wrap:wrap;row-gap:6px;color:var(--ink)}
+.toast.notice>span{flex:1 1 220px}
+.toast .btn{flex:none}
 #conn i{width:8px;height:8px;border-radius:50%;flex:none}
 #conn[data-state=down]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
 #conn[data-state=down] i{background:var(--danger);animation:pulse .8s ease-in-out infinite alternate}

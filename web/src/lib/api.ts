@@ -1,4 +1,5 @@
 // JSON endpoints served by the Go server.
+import { takeOver } from './tabs'
 
 export interface TreeItem { name: string; dir: boolean; more?: number } // more: a folder's last row, standing for N entries not sent
 export interface SessionInfo { id: string; title: string; mtime: number; backend?: string }
@@ -25,7 +26,10 @@ async function answer(r: Response) {
 
 export const api = <T>(path: string): Promise<T> => fetch('/api/' + path).then(answer)
 
-export const post = (path: string, body: object) =>
-  fetch('/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(answer)
+export async function post(path: string, body: object) {
+  if (path === 'send') takeOver() // replies stream to the tab that owns this server: sending from here takes over
+  return fetch('/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(answer)
+}
 
 export const q = encodeURIComponent
