@@ -9,7 +9,9 @@ export const stage = $('#stage')
 export const world = $('#world')
 const inkworld = $('#inkworld') // drawing layer: same transform, stacked above every item
 export const view = { x: 0, y: 0, k: 1 }
-const MIN = 0.15, MAX = 2
+// Fit may go below MIN, so a canvas spread past ~9000px shows whole; from there the wheel can zoom in but not out.
+// ponytail: FIT_MIN still cuts off a canvas wider than ~45000px (its middle shows)
+const MIN = 0.15, MAX = 2, FIT_MIN = 0.03
 const clamp = (k: number) => Math.min(MAX, Math.max(MIN, k))
 
 const listeners: ((viewOnly: boolean) => void)[] = []
@@ -37,7 +39,7 @@ export function apply(glide = false) {
   if (glide) setTimeout(() => { for (const el of [world, inkworld, stage]) el.classList.remove('glide') }, 460)
   world.style.transform = inkworld.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`
   const g = 24 * view.k, mod = (a: number) => ((a % g) + g) % g - g
-  if (g !== gridG) { grid.style.backgroundSize = `${g}px ${g}px`; gridG = g; zLabel.textContent = Math.round(view.k * 100) + '%' }
+  if (g !== gridG) { grid.style.backgroundSize = `${g}px ${g}px`; gridG = g; zLabel.textContent = Math.round(view.k * 100) + '%'; grid.hidden = view.k < MIN } // (under MIN the dots are a grey haze)
   grid.style.transform = `translate(${mod(view.x)}px, ${mod(view.y)}px)`
   changed(true)
 }
@@ -45,7 +47,7 @@ export function apply(glide = false) {
 export const applySoon = perFrame(() => apply())
 
 export function zoomView(k: number, cx: number, cy: number) {
-  k = clamp(k)
+  k = Math.min(MAX, Math.max(Math.min(MIN, view.k), k)) // under MIN (a fit): no further out
   view.x = cx - (cx - view.x) * (k / view.k)
   view.y = cy - (cy - view.y) * (k / view.k)
   view.k = k
@@ -365,7 +367,7 @@ export function fit(glide = true, rs = placed().map(rect)) {
   const x0 = Math.min(...rs.map(r => r.x)), y0 = Math.min(...rs.map(r => r.y))
   const x1 = Math.max(...rs.map(r => r.x + r.w)), y1 = Math.max(...rs.map(r => r.y + r.h))
   const pad = 80, top = 64 // keep clear of the toolbar
-  const k = clamp(Math.min((innerWidth - pad * 2) / (x1 - x0), (innerHeight - top - pad * 2) / (y1 - y0), 1))
+  const k = Math.max(FIT_MIN, Math.min((innerWidth - pad * 2) / (x1 - x0), (innerHeight - top - pad * 2) / (y1 - y0), 1))
   view.k = k
   view.x = (innerWidth - (x1 - x0) * k) / 2 - x0 * k
   view.y = top + (innerHeight - top - (y1 - y0) * k) / 2 - y0 * k
