@@ -24,6 +24,8 @@ export { winTitle } // its home is refs.ts
 export const titleOf = (el: HTMLElement) => (winTitle(el) || refOf(el)?.label || tipText(el)).trim()
 /** Open a collapsed window. */
 export const expand = (el: HTMLElement) => { if (el.classList.contains('min')) el.querySelector<HTMLElement>('.minbtn')?.click() }
+/** Collapse an open window to its tab. */
+export const collapse = (el: HTMLElement) => { if (!el.classList.contains('min')) el.querySelector<HTMLElement>('.minbtn')?.click() }
 /** Put the cursor in a window's message box, if it has one. */
 export const focusInput = (el: HTMLElement) => el.querySelector<HTMLTextAreaElement>('.compose textarea')?.focus({ preventScroll: true })
 /** Rename a window: its tab, plus a `rename` event for kinds that keep their title elsewhere (a session's title, a
