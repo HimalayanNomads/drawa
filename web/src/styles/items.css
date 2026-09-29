@@ -270,7 +270,7 @@ button.ghti:hover{text-decoration:underline}
 .anode .abox textarea{display:block;width:100%;min-height:34px;max-height:120px;padding:7px 9px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none;cursor:text}
 .anode .abox textarea:focus{border-color:var(--focus)}
 .anode .abox textarea:disabled{opacity:.6;cursor:not-allowed}
-.anode .alog>.me{margin:12px 0 6px;padding-top:10px;font-size:13px}
+.anode .alog>.me{margin:12px 0 6px;padding:6px 10px 6px 0;font-size:13px}
 /* its status on the tab: a dot and one short word, never cut off (the title gives way instead) */
 .anode>.win-h .m{flex:none;display:inline-flex;align-items:center;gap:5px;font:500 11px var(--sans)}
 .anode>.win-h .m::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}

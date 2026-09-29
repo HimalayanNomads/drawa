@@ -86,6 +86,7 @@ const PAIRS = [
   ['focus/bg', FOCUS, '--bg', 3], ['focus/canvas', FOCUS, '--canvas', 3], ['field/bg', FIELD, '--bg', 3],
   ...['read', 'edit', 'write', 'run', 'add', 'del', 'warn', 'danger', 'accent-text'].map(k => [`${k}/bg`, `--${k}`, '--bg', 4.5]),
   ...['key', 'str', 'num', 'fn', 'com'].map(k => [`syn-${k}`, `--syn-${k}`, '--code', 4.5]),
+  ['me-edge/bg', '--accent', '--bg', 3], ['me-mark/sel', '--accent-text', '--sel', 3],
   ['add/add-bg', '--add', '--add-bg', 4.5], ['del/del-bg', '--del', '--del-bg', 4.5], ['warn/warn-bg', '--warn', '--warn-bg', 4.5],
 ]
 
