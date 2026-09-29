@@ -3,7 +3,7 @@
 import { make, ICON, ping } from '../lib/dom'
 import { api, post, q as enc } from '../lib/api'
 import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
-import { link, unlink } from '../canvas/graph'
+import { link, unlink, onForget } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, type Session } from './session'
 import { send, editLast } from './live'
@@ -17,6 +17,8 @@ import { who, metaNow } from '../lib/agents'
 import { enhance } from '../lib/select'
 import { isSend, sendCombo, onSendKey } from '../lib/sendkey'
 import { command } from '../lib/keys'
+import { saveSoon } from '../lib/store'
+import { keepImages } from './drafts'
 
 command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Appearance (Aa)' })
 command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] })
@@ -108,13 +110,8 @@ export function composer(S: Session, body: HTMLElement) {
     const files = [...e.dataTransfer?.files ?? []]
     if (files.length) { e.preventDefault(); attachAny(files) }
   })
-  const fit = () => {
-    ta.style.height = 'auto'
-    ta.style.height = ta.scrollHeight + 'px'
-    ta.style.overflowY = ta.scrollHeight > 180 ? 'auto' : 'hidden' // scroll only past the max height
-    form.classList.toggle('shell', ta.value.startsWith('!')) // shell mode: amber field, $ prompt
-  }
-  ta.oninput = fit
+  const fit = () => fitBox(ta)
+  ta.oninput = () => { fit(); saveSoon() } // the draft is saved with the layout (drafts.ts)
   commandMenu(S, form)
   // after the menu's handler: when the "/" or "@" menu is open, it takes Up/Down (and prevents the default)
   const step = recall(ta, S.log)
@@ -124,6 +121,13 @@ export function composer(S: Session, body: HTMLElement) {
     if (plainUp && !ta.value && editLast(S)) e.preventDefault() // the last message is still queued: take it back to edit
     else if (step(e)) { e.preventDefault(); fit() }
   })
+}
+
+function fitBox(ta: HTMLTextAreaElement) {
+  ta.style.height = 'auto'
+  ta.style.height = ta.scrollHeight + 'px'
+  ta.style.overflowY = ta.scrollHeight > 180 ? 'auto' : 'hidden' // scroll only past the max height
+  ta.form?.classList.toggle('shell', ta.value.startsWith('!')) // shell mode: amber field, $ prompt
 }
 
 /* ---------- "/" menu: skills and slash commands; "@" menu: canvas items ---------- */
@@ -249,26 +253,45 @@ export function chip(r: Ref, remove?: () => void) {
   return c
 }
 
-/** Puts a message back in the box (not sent, or taken back to edit), after whatever you've typed since. */
-export function putBack(S: Session, p: string, refs: Ref[], images: Pasted[]) {
-  S.ta.value = S.ta.value ? S.ta.value + '\n' + p : p
+/** Puts a message back in the box (not sent, taken back to edit, or restored as a draft), after whatever you've typed since. */
+export function putBack(S: Session, p: string, refs: Ref[], images: Pasted[], focus = true) {
+  S.ta.value = S.ta.value && p ? S.ta.value + '\n' + p : S.ta.value || p
   S.refs.push(...refs.filter(r => !S.refs.some(x => x.el === r.el)))
+  for (const r of refs) if (r.el.isConnected) link(S, r.el, 'ref') // (a restored draft's arrows)
   S.images.push(...images)
   drawChips(S)
-  S.ta.dispatchEvent(new Event('input')) // fit its height
-  S.ta.focus()
+  fitBox(S.ta)
+  if (focus) S.ta.focus()
+}
+
+/** Take picture n (1-based) off the message: its [ImageN] marker goes, and later ones move down to keep pointing at theirs. */
+function dropImage(S: Session, n: number) {
+  S.images.splice(n - 1, 1)
+  S.ta.value = S.ta.value.replace(new RegExp(`\\[Image${n}\\] ?`, 'g'), '').replace(/\[Image(\d+)\]/g, (m, d) => (+d > n ? `[Image${+d - 1}]` : m))
+  fitBox(S.ta)
+  drawChips(S)
 }
 
 function drawChips(S: Session) {
+  saveSoon()
+  keepImages(S)
   S.chips.hidden = !S.refs.length && !S.images.length
   S.chips.replaceChildren(
-    ...S.images.map(img => thumb(img, () => { S.images.splice(S.images.indexOf(img), 1); drawChips(S) })),
+    ...S.images.map((img, i) => thumb(img, () => dropImage(S, i + 1))),
     ...S.refs.map(r => chip(r, () => {
       S.refs.splice(S.refs.indexOf(r), 1)
       if (!S.sentRefs.has(r.el)) unlink(S, r.el, 'ref') // never sent: the reference link goes too
       drawChips(S)
     })))
 }
+
+// An item deleted from the canvas can't be sent any more: its chip goes (sending would pass its last content)
+onForget(el => {
+  for (const S of cards) {
+    const i = S.refs.findIndex(r => r.el === el)
+    if (i >= 0) { S.refs.splice(i, 1); drawChips(S) }
+  }
+})
 
 // A file dropped anywhere but the message box shouldn't make the browser open it and leave the app.
 for (const t of ['dragover', 'drop']) addEventListener(t, e => { if ((e as DragEvent).dataTransfer?.types.includes('Files')) e.preventDefault() })

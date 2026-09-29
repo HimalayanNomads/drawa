@@ -267,7 +267,12 @@ export function unlink(S: Session, el: HTMLElement, act?: Act) {
   changed()
 }
 
+const forgotten: ((el: HTMLElement) => void)[] = []
+/** Run `fn` for every node that leaves the canvas (a message box drops its reference to it). */
+export const onForget = (fn: (el: HTMLElement) => void) => { forgotten.push(fn) }
+
 /** A node left the canvas: drop every edge pointing at it. */
 export function forget(el: HTMLElement) {
   for (const S of edges.keys()) unlink(S, el)
+  for (const fn of forgotten) fn(el)
 }

@@ -45,6 +45,7 @@ The app scales through these registration points. A new feature should plug into
 | Moves along when another item is dragged (a selection, a group's windows) | `moveWith(fn)` (`fn(el)` returns what comes with `el`; `movesWith(el)` follows every answer through; items with `data-locked` stay put) | `canvas/canvas.ts` |
 | Ctrl+K lists project files, previews the highlighted one and opens a picked one | `fileOpener(open, peek)` (`open(path)` returns the file's window, open or new; `peek(path)` draws its preview) | `canvas/find.ts` |
 | A keyboard shortcut or action users can find (the `?` sheet, Ctrl+K commands, launch tips) | `command({ label, group, keys?, run?, tip? })`, registered beside the handler (`run`: runnable from Ctrl+K; `tip`: a launch tip, backticked keys become key caps) | `lib/keys.ts` |
+| Let go of an item when it leaves the canvas (a message box drops its reference chip) | `onForget(fn)` (`fn(el)` runs from `forget(el)`, which every removal already calls) | `canvas/graph.ts` |
 | A button on the bar by a selection | `selectionAction(label, tip, fn, when?)` (`when(els)`: shown only for selections it applies to) | `canvas/select.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/`, an import in `main.ts`, and CSS in `styles/items.css`. The item file should:

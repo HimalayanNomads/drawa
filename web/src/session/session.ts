@@ -22,6 +22,7 @@ import { setModel, setEffort, renderInfo, seedInfo } from './gen'
 import { loadSessions, resume, sessionPath } from './history'
 import { lastAgent, modesOf, installed, title, who } from '../lib/agents'
 import { sendCombo, onSendKey } from '../lib/sendkey'
+import { hasDraft, keepImages } from './drafts'
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change }
 export interface Block {
@@ -96,10 +97,11 @@ export const meta: {
 
 /* ---------- saved with the canvas: open cards (by transcript id) and which one had focus ---------- */
 // A card still waiting for its first reply has no transcript id yet: it's saved by its process (cid) alone and, after a
-// reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0).
+// reload, rebuilt from the process's output from the start (live.ts reads from line 0 when n is 0). So is a new card
+// with a draft in its box (drafts.ts): it has no process, and reads as such.
 type SavedCard = Rect & { id?: string; title: string; cid?: string; mode?: string; model?: string; effort?: string; backend?: string } // no backend: claude
 persist('cards',
-  () => cards.filter(S => S.sid || S.pending).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend === 'claude' ? undefined : S.backend, ...savedRect(S.card) })),
+  () => cards.filter(S => S.sid || S.pending || hasDraft(S)).map((S): SavedCard => ({ id: S.sid ?? undefined, title: S.title, cid: S.cid, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend === 'claude' ? undefined : S.backend, ...savedRect(S.card) })),
   async (list: SavedCard[], all) => {
     // every transcript is fetched at once; they're replayed in order as they arrive
     if (!Array.isArray(list)) throw new Error('not a list')
@@ -304,6 +306,8 @@ export function focus(S: Session) {
 
 function closeSession(S: Session) {
   post('close', { cid: S.cid }).catch(() => {})
+  S.images = []
+  keepImages(S) // its draft's pictures
   dropSession(S)
   dropPlans(S)
   dropAgents(S)
