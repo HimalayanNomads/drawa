@@ -88,3 +88,8 @@
 #modes{flex:none;height:32px;padding:2px}
 #modes button{height:26px;padding:0 6px}
 #modes button svg{width:15px;height:15px}
+/* a tool's shortcut in its corner, like Excalidraw's toolbar; touch screens have no keys to press */
+[data-key]{position:relative}
+[data-key]::after{content:attr(data-key);position:absolute;right:2px;bottom:1px;font-size:9px;font-weight:500;line-height:1;opacity:.55;pointer-events:none}
+@media (hover:none){[data-key]::after{display:none}}
+@media (hover:hover){#bar .btn[data-key],#modes button[data-key]{padding-right:12px}} /* room for it beside the label or icon */
