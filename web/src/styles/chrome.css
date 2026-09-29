@@ -49,7 +49,7 @@
 
 /* server connection notice: bottom center, above the hint */
 #conn,.toast{display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;animation:enter .2s var(--ease)}
-#conn{max-width:min(560px,calc(100vw - 32px))}
+#conn{width:max-content;max-width:min(560px,calc(100vw - 32px))}
 #conn,.notices{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%)}
 /* toasts and notices (lib/dom.ts) stack above the connection notice, newest at the bottom, never on top of each other */
 .notices{bottom:58px;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:min(560px,calc(100vw - 32px));pointer-events:none}

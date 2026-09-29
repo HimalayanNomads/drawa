@@ -14,7 +14,7 @@ Drawa is a browser canvas around coding agents: the Claude Code CLI, OpenCode fo
 ```
 web/src/
   main.ts      boot, toolbar, keyboard shortcuts; imports features (importing a feature registers it)
-  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), update (the update-available dialog), theme, tooltip, keys (the shortcut registry), help (the ? sheet and launch tips), sendkey (which key sends a message)
+  lib/         no knowledge of the app: api, store (persistence), blobs (IndexedDB), dom helpers, markdown, select, fonts, zoom (the figure zoom/pan dialog), connection (server reachability), tabs (which tab owns the stream and the saving), update (the update-available dialog), theme, tooltip, keys (the shortcut registry), help (the ? sheet and launch tips), sendkey (which key sends a message)
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
   items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git, image, github (+ gh.ts, its data and Send to Claude), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows; + groupgeom.ts, its geometry)
@@ -63,13 +63,14 @@ If you find yourself adding the new kind to a list in `canvas.ts`, the minimap, 
 
 Rules for these registries:
 - **Persistence keys are a public format.** Existing users have saved layouts in localStorage (`drawa:canvas:<root>`). Never rename or reshape a key without a loader that still reads the old shape.
+- **One tab saves:** only the tab that owns the server (`lib/tabs.ts`) streams and saves; `save()` checks it. A layout that fails to parse is never saved over until the user picks Restore previous canvas or Start fresh.
 - **Restore phases:** 0 is settings and positions, 1 is items, 2 is things that attach to items (ink). A loader may be async; the next one waits for it.
 - **Item state goes in `data-state`,** not in ad-hoc classes (`busy`, `edit`, `approved`...). The minimap and CSS both key off `data-kind` + `data-state`.
 - **Two canvas-wide attributes** belong to no kind, so they sit beside `data-state`: `data-hidden-in` (inside a collapsed group: use `hidden(el)` from `canvas.ts`, which placement, arrows, Ctrl+K and the selection skip) and `data-locked` (stays put: `movesWith()` and selection nudges leave it).
 
 ## Code conventions
 
-- **Match the surrounding code:** short functions, early returns, `make()` / `iconButton()` / `button()` from `lib/dom.ts` rather than hand-built buttons, and `confirmBox()` rather than `confirm()`. Reuse the small helpers there before writing another: `shortcutOk(e)` / `typing(t)` for keyboard guards, `keepOnScreen()` for anything floating, `closestAt()` for hit-testing through overlays, `perFrame()` for once-a-frame work; and `edgeGrip()` / `track()` in `canvas.ts` for drag handles. No native browser dialogs or `alert`.
+- **Match the surrounding code:** short functions, early returns, `make()` / `iconButton()` / `button()` from `lib/dom.ts` rather than hand-built buttons, and `confirmBox()` rather than `confirm()`. Messages go through `toast()` (a few seconds) or `notice()` (stays until you remove it: for states that last); both stack, so never position one by hand. Reuse the small helpers there before writing another: `shortcutOk(e)` / `typing(t)` for keyboard guards, `keepOnScreen()` for anything floating, `closestAt()` for hit-testing through overlays, `perFrame()` for once-a-frame work; and `edgeGrip()` / `track()` in `canvas.ts` for drag handles. No native browser dialogs or `alert`.
 - **Keep modules small.** When a file passes about 350 lines or does two jobs, split it by responsibility the way `session/` is split: card, composer, stream, asks and live are separate modules.
 - **No new dependency** for what a few lines or the platform can do. Big libraries (Mermaid, Excalidraw, html-to-image) are loaded with dynamic `import()` on first use. Keep it that way.
 - **Comments say why,** not what. A deliberate shortcut gets a `ponytail:` comment naming its limit and the upgrade path.
