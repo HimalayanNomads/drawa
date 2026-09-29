@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"os/exec"
 	"regexp"
 
 	"drawa/internal/config"
@@ -34,7 +35,7 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 		var err error
 		if lv, err = live.Start(cid, kindName, sid, str(body["mode"]), model, effort); err != nil {
-			http.Error(w, "", 500)
+			sendJSON(w, map[string]any{"error": startError(kind, err)}, 500)
 			return
 		}
 	} else {
@@ -155,4 +156,13 @@ func answer(body map[string]any) live.Answer {
 		}
 	}
 	return a
+}
+
+// startError says why a card's agent didn't start, in words the page can show as is: a missing CLI gets the
+// backend's install hint, anything else the error itself (a bad config, a crash on start).
+func startError(k live.Kind, err error) string {
+	if _, missing := exec.LookPath(k.Bin); missing != nil {
+		return fmt.Sprintf("%s isn't installed (no %s on PATH). To use it, %s, then send again.", k.Title, k.Bin, k.Install)
+	}
+	return fmt.Sprintf("%s didn't start: %v", k.Title, err)
 }

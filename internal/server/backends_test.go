@@ -82,3 +82,15 @@ func TestSessionsThroughHistory(t *testing.T) {
 		t.Errorf("a session not written yet should say missing: %s", body)
 	}
 }
+
+// An agent that can't start answers with why, and a missing CLI with where to get it (not a bare 500).
+func TestStartFailureSaysWhy(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no agent CLI anywhere
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	status, body := call(t, srv, "POST", "/api/send", `{"cid":"55555555-5555-5555-5555-555555555555","p":"hi"}`)
+	var j map[string]string
+	if status != 500 || json.Unmarshal([]byte(body), &j) != nil || !strings.Contains(j["error"], "install it: https://") {
+		t.Fatalf("send with no claude on PATH: %d %s", status, body)
+	}
+}
