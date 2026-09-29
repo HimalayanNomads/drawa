@@ -67,6 +67,7 @@ export interface Session {
   modeSel?: HTMLSelectElement // its picker in the message bar
   confirmedMode?: string // the mode Claude last reported (or the card was restored with)
   reader?: string // this page's reader id on the server stream (canvas tool calls name the page to run them)
+  atEnd: boolean // new output scrolls into view: off once you scroll up to read, on again back at the bottom
   replaying?: boolean // rebuilding a saved transcript: no per-message scroll pinning or header updates (see history.ts)
   asks: Set<string> // approval requests waiting on you
   refs: Ref[] // canvas items attached to the next message
@@ -220,14 +221,29 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   title.after(agentsBtn, make('span', 'm'), ctx)
   const log = make('div', 'log')
   // scrolled up to read: a way back to the latest message (appends while you're up there don't scroll, so it stays shown)
-  const down = iconButton(ICON.open, 'Scroll to the latest message', () => { log.scrollTop = log.scrollHeight }, 'tobottom')
+  const down = iconButton(ICON.open, 'Scroll to the latest message', () => { S.atEnd = true; pinToBottom(S) }, 'tobottom')
   down.hidden = true
-  log.addEventListener('scroll', perFrame(() => { down.hidden = log.scrollHeight - log.scrollTop - log.clientHeight < 200 }), { passive: true })
+  // Scrolling up stops following new output at once (checked per event: a streaming frame would pull you back
+  // first); scrolling back down to where the way-back button hides follows again. (Rows below render at their real
+  // height only once on screen, so "the bottom" moves as you get there.) Content shrinking at the end also moves
+  // scrollTop up, but leaves you at the bottom, so it re-follows on the next frame.
+  let lastTop = 0, wentDown = false
+  const settle = perFrame(() => {
+    const left = log.scrollHeight - log.scrollTop - log.clientHeight
+    if (left < 4 || (wentDown && left < 200)) S.atEnd = true
+    down.hidden = left < 200
+  })
+  log.addEventListener('scroll', () => {
+    wentDown = log.scrollTop > lastTop
+    if (log.scrollTop < lastTop - 1) S.atEnd = false
+    lastTop = log.scrollTop
+    settle()
+  }, { passive: true })
   body.append(log, down)
 
   const S: Session = {
     cid: opts.cid ?? uuid(), sid: null, backend: opts.backend ?? lastAgent(), title: 'New session', reportedModel: '', model: '', effort: '', toolCount: 0, mcpTotal: 0, mcpConnected: 0, cost: 0, done: false,
-    card, log, ta: null!, stopBtn: null!, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
+    card, log, ta: null!, stopBtn: null!, atEnd: true, blocks: {}, tools: {}, pending: 0, bg: 0, queued: [], picked: false, mode: lastMode(), asks: new Set(), refs: [], images: [], sentRefs: new Set(), chips: null!, n: -1, ctx: { used: 0, max: 0 },
   }
   if (!(modesOf(S.backend)?.includes(S.mode) ?? true)) S.mode = 'default' // e.g. Auto, which OpenCode doesn't have
   composer(S, body) // message box, reference chips, / and @ menu
@@ -352,13 +368,10 @@ export function renderCard(S: Session) {
 onSendKey(() => cards.forEach(renderCard)) // the placeholder names the send key
 
 /* ---------- appending to the log ---------- */
-const nearBottom = (S: Session, px: number) => S.log.scrollHeight - S.log.scrollTop - S.log.clientHeight < px
 /** Append to the log, staying pinned to the bottom if you were reading there. */
 export function put<T extends HTMLElement>(S: Session, e: T): T {
-  if (S.replaying) { S.log.append(e); return e } // measuring the log after every append re-lays it out each time
-  const stick = nearBottom(S, 80)
   S.log.append(e)
-  if (stick) S.log.scrollTop = S.log.scrollHeight
+  if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight
   return e
 }
 /** Open at the latest message and stay there while the log settles: rows render at their real height only once
@@ -375,4 +388,4 @@ export function pinToBottom(S: Session) {
   }
   tick()
 }
-export const follow = (S: Session) => { if (!S.replaying && nearBottom(S, 200)) S.log.scrollTop = S.log.scrollHeight }
+export const follow = (S: Session) => { if (!S.replaying && S.atEnd) S.log.scrollTop = S.log.scrollHeight }

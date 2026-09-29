@@ -30,6 +30,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     refs.forEach(r => S.sentRefs.add(r.el))
   }
   S.log.scrollTop = S.log.scrollHeight
+  S.atEnd = true // you sent something: follow its answer
   S.queued.push(bubble)
   if (S.title === 'New session') S.title = prompt.slice(0, 48)
   S.done = false
