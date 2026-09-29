@@ -36,7 +36,6 @@ export function composer(S: Session, body: HTMLElement) {
   ta.setAttribute('aria-label', `Message ${who(S.backend)}`)
   stopBtn.type = 'button'
   stopBtn.innerHTML = ICON.stop
-  stopBtn.title = `Stop what ${who(S.backend)} is doing`
   stopBtn.setAttribute('aria-label', 'Stop')
   sendBtn.type = 'submit'
   sendBtn.innerHTML = ICON.up
@@ -57,7 +56,8 @@ export function composer(S: Session, body: HTMLElement) {
   form.onclick = e => { if (e.target === form) ta.focus() } // the whole field is the click target
   Object.assign(S, { ta, stopBtn, chips })
 
-  stopBtn.onclick = () => post('interrupt', { cid: S.cid }).catch(() => {})
+  // a turn is interrupted; background agents alone can only be stopped by closing the process (the next message resumes it)
+  stopBtn.onclick = () => post(S.pending ? 'interrupt' : 'close', { cid: S.cid }).catch(() => {})
   form.onsubmit = e => {
     e.preventDefault()
     const p = ta.value.trim()

@@ -1,7 +1,7 @@
 // Session cards: each is a live Claude process on the server. You can type any time (messages queue while Claude
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
-import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE } from '../lib/dom'
+import { make, ICON, iconButton, project, ping, uuid, perFrame, EDITABLE, confirmBox } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
 import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
@@ -143,8 +143,8 @@ persist('cards',
     if (bad) throw bad
   })
 persist('focus', () => cur?.sid ?? undefined)
-// a deleted selection clicks the card's own × (it doesn't ask), and says what closing means
-removable('session', null, 'Sessions are closed; their conversations stay in History.')
+// a deleted selection closes cards without the × button's own confirm (its delete confirm covers them), and says what that means
+removable('session', el => { const S = cards.find(s => s.card === el); if (S) closeSession(S) }, 'Sessions are closed, stopping any that are working; their conversations stay in History.')
 // drop a card on another card's message box: that conversation goes along as context (its recent part, as text)
 referable('session', {
   icon: '◆',
@@ -206,7 +206,7 @@ function emptyState(S: Session) {
 
 export function newSession(opts: { rect?: Rect; cid?: string; backend?: string } = {}) {
   const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
-  const close = iconButton(ICON.x, 'Close session', () => closeSession(S), 'closebtn')
+  const close = iconButton(ICON.x, 'Close session', () => askClose(S), 'closebtn')
   const { el: card, head, title, body } = makeWindow({ kind: 'session', cls: 'card', title: 'New session', rect: r, minW: 340, minH: 300, actions: [close] })
   head.prepend(make('span', 'dot'))
   const ctx = make('span', 'ctx') // a span, not a button: the tab's buttons are the window controls at its end
@@ -304,6 +304,13 @@ export function focus(S: Session) {
   saveSoon()
 }
 
+/** The card's ×: closing kills its process, so a card still working (a turn, a question for you, background agents) asks first. */
+async function askClose(S: Session) {
+  const work = [S.pending && 'a reply', S.asks.size && 'a question for you', S.bg && 'background agents'].filter(Boolean)
+  if (work.length && !await confirmBox('Close this session?', `${who(S.backend)} is still working (${work.join(', ')}). Closing stops it; the conversation stays in History.`, 'Close')) return
+  closeSession(S)
+}
+
 function closeSession(S: Session) {
   post('close', { cid: S.cid }).catch(() => {})
   S.images = []
@@ -365,7 +372,9 @@ export function renderCard(S: Session) {
   ctx.title = `Context: ${S.ctx.used.toLocaleString()} of ${S.ctx.max.toLocaleString()} tokens used. Click to write /compact (summarizes the conversation to free space).`
   renderInfo(S)
   S.log.classList.toggle('busy', S.pending > 0)
-  S.stopBtn.hidden = S.pending === 0
+  S.stopBtn.hidden = !busy
+  // with no turn running, what's left to stop is background agents: they end with the process (see composer.ts)
+  S.stopBtn.title = S.pending ? `Stop what ${who(S.backend)} is doing` : 'Stop its background agents'
   S.ta.placeholder = busy ? `${who(S.backend)} is working. Type to queue a message.` : `Message ${who(S.backend)}: / commands, @ files, ! shell · ${sendCombo()} sends`
 }
 
