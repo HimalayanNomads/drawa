@@ -73,6 +73,25 @@ function takeBackButtons(S: Session, bubble: HTMLElement) {
   bubble.append(row)
 }
 
+/** After a reload: the messages the server says are still queued (oldest first) are waiting again, with their
+ *  take-back buttons. Bubbles are found by uuid (the transcript's), else they're the newest ones. */
+function requeue(S: Session, ids: string[]) {
+  const mine = [...S.log.querySelectorAll<HTMLElement>(':scope > .me')]
+  const byId = new Map(mine.map(b => [b.dataset.uuid, b]))
+  let from = mine.length - ids.length
+  for (const id of ids) {
+    const b = byId.get(id) ?? mine[from]
+    from++
+    if (!b || S.queued.includes(b)) continue
+    b.dataset.uuid = id
+    b.classList.add('queued')
+    S.queued.push(b)
+    const text = b.firstChild?.nodeType === Node.TEXT_NODE ? b.firstChild.textContent ?? '' : ''
+    if (text) unsent.set(b, { prompt: text, refs: [], images: [] }) // ponytail: its references and pictures aren't restored for editing
+    if (canUnsend(S.backend)) takeBackButtons(S, b)
+  }
+}
+
 // ponytail: shell runs sent with the message go with it; give them back to takeShell if that's ever missed.
 // ponytail: an error answer (no reply in 5s) leaves the bubble queued, and the card counted busy, if the CLI did drop
 // it; its answers have come back at once so far
@@ -205,8 +224,12 @@ function line(S: Session, m: Msg | undefined, raw: string) {
     S.gen = m.gen // the process these line numbers belong to
     if (S.stale && m.gen !== S.stale) S.stale = undefined
     S.reader = m.reader
-    // mid-turn when this page (re)attached, e.g. after a reload: show it working (and stoppable) until the result
-    if (m.busy && !S.pending) { S.pending = 1; renderCard(S) }
+    // mid-turn when this page (re)attached, e.g. after a reload: show it working (and stoppable) until the result,
+    // with the messages it hasn't read yet queued behind it
+    if (!S.queued.length && m.queued?.length) requeue(S, m.queued)
+    S.picked = !!m.picked
+    S.pending = Math.max(S.pending, S.queued.length + (m.busy && m.picked ? 1 : 0), m.busy ? 1 : 0)
+    renderCard(S)
     return
   }
   if (!m?._r) S.n++ // re-sent on attach (an ask still open), not one of the process's numbered lines
