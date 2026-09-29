@@ -82,6 +82,7 @@ function question(S: Session, id: string, qs: { question: string; header?: strin
     inp.placeholder = 'Other (type your own answer)'
     inp.setAttribute('aria-label', `Other answer: ${q.question}`)
     inp.oninput = () => { other[i] = inp.value; ready() }
+    inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing && !ok.disabled) { e.preventDefault(); ok.click() } } // like a form's submit
     f.append(inp)
     box.append(f)
   })
