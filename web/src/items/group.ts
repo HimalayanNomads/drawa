@@ -5,7 +5,7 @@
 import { make, ICON, iconButton, confirmBox, shortcutOk, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { command } from '../lib/keys'
-import { world, items, byIds, rect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, type Rect } from '../canvas/canvas'
+import { world, items, byIds, rect, savedRect, place, changed, onChange, onCanvas, moveWith, movesWith, viewCenter, parked, onGone, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, titleOf, expand } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { setToggle } from '../canvas/dock'
@@ -352,9 +352,16 @@ persist('groups',
   }, 2)
 
 // a window removed from the canvas (its ×, a delete) leaves its group; one moved to the sidebar or full view is still
-// on the page and stays. ponytail: ids of windows that never show up again stay in the saved list (harmless: nothing
-// resolves them); a periodic prune could drop them if lists get long
+// on the page and stays, and so does one only parked (a finished sub-agent's window, a delete that can still be
+// undone) until it's dropped for good. ponytail: ids of windows that never show up again stay in the saved list
+// (harmless: nothing resolves them); a periodic prune could drop them if lists get long
+function gone(el: HTMLElement) {
+  const g = groupOf(el)
+  if (!g || g === el) return
+  setIds(g, ids(g).filter(id => id !== el.dataset.id))
+  if (!ids(g).length) ungroup(g)
+}
 new MutationObserver(recs => {
-  const gone = recs.flatMap(r => [...r.removedNodes]).filter((n): n is HTMLElement => n instanceof HTMLElement && !n.isConnected && !!n.dataset.id)
-  for (const el of gone) { const g = groupOf(el); if (g && g !== el) { setIds(g, ids(g).filter(id => id !== el.dataset.id)); if (!ids(g).length) ungroup(g) } }
+  recs.flatMap(r => [...r.removedNodes]).filter((n): n is HTMLElement => n instanceof HTMLElement && !n.isConnected && !!n.dataset.id && !parked(n)).forEach(gone)
 }).observe(world, { childList: true })
+onGone(gone)

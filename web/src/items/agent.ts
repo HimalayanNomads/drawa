@@ -2,12 +2,12 @@
 // a box to message it, and its result. The card keeps a compact row that opens the window. Live, the CLI tags a
 // sub-agent's messages with the Agent call's id (parent_tool_use_id); on reload the server replays them from the
 // sub-agent's own transcript with the same tag, so both paths end up in agentMsg(). A finished agent's window leaves
-// the canvas by itself; its row brings it back.
+// the canvas by itself (unless you're using it); its row brings it back.
 import { make, rel, ping, ICON, iconButton, clip } from '../lib/dom'
 import { api, type SavedMessage } from '../lib/api'
 import { persist } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
-import { items, savedRect, spotBeside, centerOn, changed, world, front, type Rect } from '../canvas/canvas'
+import { items, savedRect, spotBeside, centerOn, changed, world, front, park, drop, onCanvas, type Rect } from '../canvas/canvas'
 import { makeWindow, expand, winTitle } from '../canvas/window'
 import { link, savedPos, forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
@@ -20,6 +20,8 @@ import { isSend } from '../lib/sendkey'
 interface Agent {
   call: string; S: Session; el: HTMLElement; log: HTMLElement; state: HTMLElement; ta: HTMLTextAreaElement; res?: HTMLElement
   type: string; prompt: string; result: string; done: boolean; bg: boolean; rows: Map<string, HTMLDetailsElement>
+  back?: () => void // puts its window back where it was, while it's off the canvas
+  moved?: boolean // you dragged it somewhere: you're keeping it around
 }
 const agents = new Map<string, Agent>() // Agent call id -> its agent (kept after its window leaves, so the row can reopen it)
 const ids = new Map<string, string>() // Agent call id -> the agent's own id, which SendMessage addresses
@@ -90,6 +92,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
     const ok = await send(S, relayLabel(winTitle(el), text), [{ type: 'text', text: relayPrompt(id, winTitle(el), text) }])
     if (ok) add(a, make('div', 'me', text)); else ta.value = text
   }
+  el.addEventListener('moved', () => { a.moved = true })
   agents.set(call, a)
   setState(a, 'running')
   syncBox(a, call)
@@ -102,9 +105,11 @@ function hide(call: string) {
   const a = agents.get(call)
   if (!a?.el.isConnected) return
   forget(a.el)
-  a.el.remove()
+  a.back = park(a.el) // parked, not removed: a group it's in keeps it for when its row brings it back
   changed()
 }
+/** Finished while you're using its window (reading, typing, hovering, or you moved or pinned it): it stays. */
+const inUse = (a: Agent) => !!a.ta.value.trim() || a.moved || !onCanvas(a.el) || a.el.matches(':hover, :focus-within')
 
 /** The window title of the agent with this id (what SendMessage and hand-backs address), if it's one of ours. */
 export function agentTitle(id: string) {
@@ -119,6 +124,7 @@ export function dropAgents(S: Session) {
     if (a.S !== S) continue
     forget(a.el)
     a.el.remove()
+    drop(a.el) // (a parked one too: its group lets go)
     agents.delete(call)
     ids.delete(call)
     lazy.delete(call)
@@ -152,7 +158,7 @@ export function showAgent(call: string) {
       .then(msgs => { filling = true; try { msgs.forEach(m => replay(a.S, m)) } finally { filling = false } })
       .catch(() => { lazy.add(call); add(a, make('p', 'note', "Couldn't load what this agent did. Open it again to retry.")) })
   }
-  if (!a.el.isConnected) { world.append(a.el); link(a.S, a.el, 'agent') }
+  if (!a.el.isConnected) { (a.back ?? (() => world.append(a.el)))(); a.back = undefined; link(a.S, a.el, 'agent') }
   expand(a.el)
   front(a.el)
   centerOn(a.el)
@@ -228,7 +234,7 @@ export function agentDone(call: string, text: string, failed: boolean, backgroun
   }
   setState(a, failed ? 'failed' : 'done')
   syncBox(a, call)
-  hide(call)
+  if (a.S.replaying || !inUse(a)) hide(call)
 }
 
 // the saved layout keeps where each agent window on the canvas is; its content comes back from the transcript replay
