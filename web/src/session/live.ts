@@ -32,6 +32,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
   S.log.scrollTop = S.log.scrollHeight
   S.atEnd = true // you sent something: follow its answer
   S.queued.push(bubble)
+  if (!content) unsent.set(bubble, { prompt, refs, images })
   if (S.title === 'New session') S.title = prompt.slice(0, 48)
   S.done = false
   const waits = S.pending > 0 // behind a running turn; otherwise Claude starts on it at once, with nothing to take back
@@ -45,7 +46,7 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
     if (!bubble.isConnected) return false // the card was cleared (/clear) while this was being prepared
     await post('send', { cid: S.cid, sid: S.sid, p, mode: S.mode, model: S.model, effort: S.effort, backend: S.backend, uuid: id })
     attach(S)
-    if (waits && canUnsend(S.backend)) takeBackButtons(S, bubble, content ? null : { prompt, refs, images })
+    if (waits && canUnsend(S.backend)) takeBackButtons(S, bubble)
     return true
   } catch (e) {
     const i = S.queued.indexOf(bubble)
@@ -59,21 +60,17 @@ export async function send(S: Session, prompt: string, content?: object[], refs:
 }
 
 /* ---------- taking back a queued message ---------- */
+// What a bubble was sent with, to put back in the box: when it's taken back to edit, or its process died before
+// reading it. (Commands the page sends itself have none.)
+const unsent = new WeakMap<HTMLElement, { prompt: string; refs: Ref[]; images: Pasted[] }>()
+
 // Until Claude reads a queued message (between tool calls, or when its turn ends) the CLI can drop it from its queue:
 // delete it, or edit it (back into the message box, to fix and send again). CSS hides the buttons once it's read.
-function takeBackButtons(S: Session, bubble: HTMLElement, again: { prompt: string; refs: Ref[]; images: Pasted[] } | null) {
-  const row = make('span', 'unsend')
-  if (again) row.append(iconButton(ICON.pencil, 'Edit (take it back to fix; ↑ in the empty message box edits the last one)', () => unsend(S, bubble).then(ok => { if (ok) putBack(S, again.prompt, again.refs, again.images) }), 'edit'))
+function takeBackButtons(S: Session, bubble: HTMLElement) {
+  const row = make('span', 'unsend'), again = unsent.get(bubble)
+  if (again) row.append(iconButton(ICON.pencil, 'Edit (take it back to fix)', () => unsend(S, bubble).then(ok => { if (ok) putBack(S, again.prompt, again.refs, again.images) }), 'edit'))
   row.append(iconButton(ICON.x, 'Delete (take it back)', () => unsend(S, bubble)))
   bubble.append(row)
-}
-
-/** ↑ in an empty message box: edit the last message you sent, if it's still waiting. False: it isn't (history takes ↑). */
-export function editLast(S: Session): boolean {
-  const last = [...S.log.querySelectorAll<HTMLElement>(':scope > .me')].pop()
-  const edit = last?.classList.contains('queued') ? last.querySelector<HTMLButtonElement>('.unsend .edit') : null
-  edit?.click()
-  return !!edit
 }
 
 // ponytail: shell runs sent with the message go with it; give them back to takeShell if that's ever missed.
@@ -192,7 +189,7 @@ async function read(ctrl: AbortController) {
 /** One line of a card's output. `m` is undefined for a line that isn't valid JSON: it still counts. */
 function line(S: Session, m: Msg | undefined, raw: string) {
   if (m?.type === 'absent') { // no process: a restored agent can't be running, and a turn this page saw start never ends
-    if (S.gen && !S.gone) ended(S)
+    if (S.gen && !S.gone) ended(S, 'the server restarted')
     S.gone = true
     agentsStopped(S)
     return
@@ -217,7 +214,7 @@ function line(S: Session, m: Msg | undefined, raw: string) {
   if (m.type === 'exit') {
     // process ended (closed as idle, crashed, or server restarted): the next message starts a new one resuming this
     // session, and the same stream picks that one up from its first line
-    ended(S)
+    ended(S, m.code ? `exit code ${m.code}` : '')
     return
   }
   // a canvas tool call for this page (older ones replayed after a reconnect name an old reader: skip them)
@@ -225,9 +222,16 @@ function line(S: Session, m: Msg | undefined, raw: string) {
   try { on(S, m) } catch (x) { console.error(x, raw) }
 }
 
-/** The card's process is gone: nothing it was doing will finish, and nothing it asked can be answered. */
-function ended(S: Session) {
-  S.queued.splice(0).forEach(b => b.classList.replace('queued', 'failed'))
+/** The card's process is gone: nothing it was doing will finish, and nothing it asked can be answered. Messages it
+ *  never read go back in the box, to send again. */
+function ended(S: Session, why: string) {
+  if (S.pending > S.queued.length) put(S, make('div', 'err', `Interrupted: ${who(S.backend)} stopped before finishing${why ? ` (${why})` : ''}. Send a message to carry on.`))
+  for (const b of S.queued.splice(0)) {
+    b.classList.replace('queued', 'failed')
+    b.querySelector('.unsend')?.remove()
+    const again = unsent.get(b)
+    if (again) putBack(S, again.prompt, again.refs, again.images, false)
+  }
   agentsStopped(S) // its agents were part of it
   expireAsks(S)
   if (S.pending || S.bg) { S.pending = S.bg = 0; quiet(S) }

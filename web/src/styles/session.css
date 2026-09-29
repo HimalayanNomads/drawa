@@ -116,6 +116,7 @@
 .me.failed{opacity:.55;text-decoration:line-through}
 .me.queued{position:relative}.me>.unsend{position:absolute;right:0;bottom:-5px;display:flex;gap:2px}.me>.unsend .icon{width:24px;height:24px}
 .me:not(.queued)>.unsend{display:none}
+.err>.btn{margin-left:4px;vertical-align:middle}
 .note{margin:8px 0;font-size:12.5px;color:var(--muted)}
 .note::before{content:"\25C6  ";color:var(--write)}
 .err{margin:10px 0;padding:9px 12px;border-radius:var(--r-box);background:var(--warn-bg);color:var(--warn);font-size:13px;white-space:pre-wrap}

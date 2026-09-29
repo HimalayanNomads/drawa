@@ -1,7 +1,7 @@
 // Rendering Claude's stream-json output into a card: text, thinking, tool calls and their results, sub-agent
 // activity, background-agent notifications. Saved transcripts replay through the same path, so the graph rebuilds too.
 import type { ContentBlock, SavedMessage } from '../lib/api'
-import { make, rel, clip } from '../lib/dom'
+import { make, rel, clip, button } from '../lib/dom'
 import { save } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { touch, run, settle, quiet, type Act } from '../canvas/graph'
@@ -10,7 +10,7 @@ import { tree, openInspector, inspecting } from '../panels/files'
 import { liveDiagrams } from '../items/diagram'
 import { showPlan, planResult, focusPlan } from '../items/plan'
 import { agentWindow, agentMsg, agentDone, showAgent, agentId, agentCall, agentMessaged, relayed } from '../items/agent'
-import { put, follow, renderCard, type Session, type ToolRow, type Block } from './session'
+import { put, follow, renderCard, clearSession, type Session, type ToolRow, type Block } from './session'
 import { approval, withdrawAsk } from './asks'
 import { thumb } from './images'
 import { notify } from './notify'
@@ -312,7 +312,9 @@ export function on(S: Session, m: Msg) {
     const text = (m.message.content ?? []).filter((b: ContentBlock) => b.type === 'text').map((b: ContentBlock) => b.text).join('\n')
     if (text) { const el = put(S, make('div', 'md')); el.innerHTML = md(text); enhance(el) }
   } else if (m.type === 'error') {
-    put(S, make('div', 'err', m.text))
+    const e = put(S, make('div', 'err', m.text))
+    // its saved conversation is gone (deleted, or never written): every resume would fail the same way
+    if (S.sid && /No conversation found/i.test(m.text)) e.append(' ', button('Start a new conversation', '', () => clearSession(S)))
   } else if (m.type === 'result') {
     if (m.is_error && m.subtype !== 'error_during_execution') put(S, make('div', 'err', m.result || m.subtype))
     if (m.subtype === 'error_during_execution') put(S, make('p', 'note', 'Stopped.'))
