@@ -133,12 +133,18 @@ new MutationObserver(recs => {
   changed(true) // repaint the boxes' states now, not at the next pan
 }).observe(stage, { subtree: true, attributeFilter: ['data-state'], attributeOldValue: true })
 
+// press to jump there, drag to keep moving: the map's scale is held from the press (moving the view reshapes the
+// map, and the point under the pointer would run away from it)
 minimap.addEventListener('pointerdown', e => {
-  const b = minimap.getBoundingClientRect()
-  const wx = (e.clientX - b.left) / mmScale + mmOrigin.x, wy = (e.clientY - b.top) / mmScale + mmOrigin.y
-  view.x = innerWidth / 2 - wx * view.k
-  view.y = innerHeight / 2 - wy * view.k
-  apply(true)
+  if (e.button !== 0) return
+  const b = minimap.getBoundingClientRect(), k = mmScale, o = mmOrigin
+  const go = (x: number, y: number, glide = false) => {
+    view.x = innerWidth / 2 - ((x - b.left) / k + o.x) * view.k
+    view.y = innerHeight / 2 - ((y - b.top) / k + o.y) * view.k
+    apply(glide)
+  }
+  go(e.clientX, e.clientY, true)
+  track(minimap, e, (dx, dy) => { if (dx || dy) go(e.clientX + dx, e.clientY + dy) }) // (a click keeps its glide)
 })
 
 $('#z-in').onclick = () => zoomAt(view.k * 1.25, undefined, undefined, true)
