@@ -1,7 +1,7 @@
 // Groups (issue #14): a named frame that owns a set of windows. Members stay ordinary canvas items; the group keeps
 // their ids in data-members, brings them along when its tab is dragged (moveWith), always wraps them (auto-fit,
 // frozen while anything is dragged), and never overlaps another group (groupgeom.ts settles that). A window joins
-// by being dropped into a frame and leaves only through its tab's Remove from group button.
+// by being dropped into a frame, and leaves by being dropped outside it or through its tab's Remove from group button.
 import { make, ICON, iconButton, confirmBox, shortcutOk, uuid, perFrame } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { command } from '../lib/keys'
@@ -264,7 +264,7 @@ function groupSelection() {
   changed() // the next frame fits it around them, then settles
 }
 /** Ctrl+Shift+G (and the bar's Ungroup): selected groups lose their frame, their windows stay. A single window
- *  leaves its group only through its own tab's button. */
+ *  leaves its group by being dragged out, or through its own tab's button. */
 function ungroupSelection() {
   for (const el of selected()) if (isGroup(el)) ungroup(el)
   changed()
@@ -289,7 +289,12 @@ document.addEventListener('moved', ev => {
   if (!el.classList?.contains('item') || !onCanvas(el)) return // a pinned window moved on screen: still in its group
   const moving = movesWith(el), moved = moving.filter(isGroup)
   if (moved.length) settleFrom(moved) // groups that moved (dragged, or along with a selection) push others aside
-  if (isGroup(el) || groupOf(el) || moving.length > 1) return // a member stays in (its frame grows); a whole selection doesn't join
+  if (isGroup(el) || moving.length > 1) return // a whole selection doesn't join or leave
+  const from = groupOf(el)
+  // a member dropped with its center outside the frame (still its pre-drag shape: it doesn't refit mid-drag) steps
+  // out; inside, it stays in and the frame grows to wrap it
+  if (from && !inside(styleRect(from), ...center(el))) leave(el)
+  if (groupOf(el)) return
   const into = dropTarget(el)
   if (!into) return
   // it gets a spot of its own among the others: where it was dropped if that's free, else the nearest free one
@@ -304,9 +309,9 @@ document.addEventListener('moved', ev => {
 /** The group a window (in no group yet) would join if dropped now: the open one under its center. */
 function dropTarget(el: HTMLElement) {
   if (!groupable(el) || groupOf(el)) return undefined
-  const r = rect(el), cx = r.x + r.w / 2, cy = r.y + r.h / 2
-  return groups().find(g => onCanvas(g) && !g.classList.contains('min') && inside(styleRect(g), cx, cy))
+  return groups().find(g => onCanvas(g) && !g.classList.contains('min') && inside(styleRect(g), ...center(el)))
 }
+const center = (el: HTMLElement): [number, number] => { const r = rect(el); return [r.x + r.w / 2, r.y + r.h / 2] }
 // while a window is dragged over a group it could join, the frame lights up ("Drop to add to group")
 let over: HTMLElement | null = null
 const light = (g: HTMLElement | null) => {
