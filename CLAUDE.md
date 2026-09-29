@@ -42,6 +42,7 @@ The app scales through these registration points. A new feature should plug into
 | Post-process rendered Markdown (diagrams, anything drawn from a code block) | `onRendered(fn)` | `lib/markdown.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/tools.ts` |
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/select.ts` |
+| Off the page for now, may come back (a finished sub-agent's window, a delete Undo can still reverse) | `park(el)` returns what puts it back; `drop(el)` when it's gone for good; `onGone(fn)` for what holds items by id (a group's members), which must skip `parked(el)` removals | `canvas/canvas.ts` |
 | Moves along when another item is dragged (a selection, a group's windows) | `moveWith(fn)` (`fn(el)` returns what comes with `el`; `movesWith(el)` follows every answer through; items with `data-locked` stay put) | `canvas/canvas.ts` |
 | Ctrl+K lists project files, previews the highlighted one and opens a picked one | `fileOpener(open, peek)` (`open(path)` returns the file's window, open or new; `peek(path)` draws its preview) | `canvas/find.ts` |
 | A keyboard shortcut or action users can find (the `?` sheet, Ctrl+K commands, launch tips) | `command({ label, group, keys?, run?, tip? })`, registered beside the handler (`run`: runnable from Ctrl+K; `tip`: a launch tip, backticked keys become key caps) | `lib/keys.ts` |
@@ -57,6 +58,7 @@ The app scales through these registration points. A new feature should plug into
 - Give it a `data-id` that is the same after a reload: arrows, pins and canvas tools find items by it.
 - Call `referable()` if Claude should be able to receive it (that also makes it readable with `canvas_read`).
 - Call `creatable()` if Claude should be able to create it with `canvas_create` (add the kind to that tool's `enum` in `Tools` in `internal/canvastools/canvastools.go`), with an `update` if Claude should be able to edit it with `canvas_update`.
+- Its × is `removeButton(label, also?)` from `canvas/window.ts`: it offers Undo instead of asking first, and runs `also` (stored data) only once Undo is gone. Don't add a per-kind delete confirm.
 - Windows get renaming, pinning (sidebar or screen) and full view from `makeWindow()`; don't rebuild these per kind. Anything that asks "where is this item on screen" should use `liveRect()` (handles pinned, floating and collapsed windows); `rect()` is the canvas geometry that gets saved.
 - Add a `--k-<kind>` color in `tokens.css` and one `[data-kind=<kind>]` entry in the kind map at the top of `canvas.css` (it colors windows, Ctrl+K rows, chips and minimap boxes alike). The tab's glyph is the kind's `referable` icon; don't add a per-kind `::before` rule.
 
@@ -68,6 +70,7 @@ Rules for these registries:
 - **Restore phases:** 0 is settings and positions, 1 is items, 2 is things that attach to items (ink). A loader may be async; the next one waits for it.
 - **Item state goes in `data-state`,** not in ad-hoc classes (`busy`, `edit`, `approved`...). The minimap and CSS both key off `data-kind` + `data-state`.
 - **Two canvas-wide attributes** belong to no kind, so they sit beside `data-state`: `data-hidden-in` (inside a collapsed group: use `hidden(el)` from `canvas.ts`, which placement, arrows, Ctrl+K and the selection skip) and `data-locked` (stays put: `movesWith()` and selection nudges leave it).
+- **`data-state="editing"`** means the item holds a draft the user hasn't finished (a note being typed, a diagram source that doesn't parse yet); `canvas_update` refuses such items, as it does any item with focus in one of its text fields.
 
 ## Code conventions
 
