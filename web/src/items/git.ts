@@ -10,7 +10,7 @@ import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
 import { unified } from '../panels/diff'
 import { openGitHub, GH_ICON } from './github'
-import { ghPost, tally, dot, stateOf, REVIEW, sendToClaude, type GhState } from './gh'
+import { ghPost, tally, dot, stateOf, REVIEW, sendToClaude, sendLabel, type GhState } from './gh'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 
 interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
@@ -295,7 +295,7 @@ function drawStrip(st: GhState) {
     sum.onclick = () => openGitHub({ tab: 'pr', n: pr.number, sub: 'checks' })
     facts.append(sum)
   }
-  facts.append(make('span', 'spacer'), button('Send to Claude', 'ai', () => sendToClaude('pr', pr.number, pr.title)))
+  facts.append(make('span', 'spacer'), button(sendLabel(), 'ai', () => sendToClaude('pr', pr.number, pr.title)))
   if (t.fail) facts.append(button('Send failing checks', 'ai', () => sendToClaude('checks', pr.number, pr.title)))
   strip.replaceChildren(line, facts)
 }

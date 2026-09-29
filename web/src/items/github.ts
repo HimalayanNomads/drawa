@@ -10,13 +10,13 @@ import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
 import { unified } from '../panels/diff'
-import { ghPost, getPr, getIssue, tally, dot, reviewWord, stateOf, REVIEW, sendToClaude, type Pr, type Issue, type PrRow, type IssueRow, type Check, type Note, type What } from './gh'
+import { ghPost, getPr, getIssue, tally, dot, reviewWord, stateOf, REVIEW, sendToClaude, sendLabel, type Pr, type Issue, type PrRow, type IssueRow, type Check, type Note, type What } from './gh'
 
 export const GH_ICON = '<svg viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><path d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7M8.5 3 7 4.5 8.5 6"/></svg>'
 
 type Tab = 'pr' | 'issue'
 interface View { tab: Tab; state: string; n?: number; sub?: 'conv' | 'files' | 'checks' }
-let win: { el: HTMLElement; body: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow)[] } | undefined
+let win: { el: HTMLElement; body: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow)[]; failed?: boolean } | undefined
 
 /** Open (or bring into view) the GitHub window, optionally at a pull request or issue (and one of its tabs). */
 export function openGitHub(at?: { tab: Tab; n?: number; sub?: View['sub'] }, r?: Rect, saved?: View) {
@@ -39,6 +39,7 @@ export function openGitHub(at?: { tab: Tab; n?: number; sub?: View['sub'] }, r?:
 function show() {
   const w = win!
   w.seen = undefined
+  w.failed = false
   if (w.view.n) return w.view.tab === 'pr' ? prDetail(w.view.n) : issueDetail(w.view.n)
   list()
 }
@@ -49,7 +50,18 @@ async function load<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
   const w = win!, v = w.view
   w.body.replaceChildren(make('p', 'ghnote', `Loading ${what}…`))
   let x: T
-  try { x = await get() } catch (e) { if (win === w && w.view === v) fail(w.body, e); return }
+  try { x = await get() } catch (e) {
+    if (win !== w || w.view !== v) return
+    // not a dead end: back to the list, or try again (a rate limit, a gh login); a reload opens the list, not this
+    w.failed = true
+    const top = make('div', 'ghhead')
+    top.append(button(`← All ${v.tab === 'pr' ? 'pull requests' : 'issues'}`, 'ghback', () => go({ n: undefined })))
+    const again = make('div', 'ghacts')
+    again.append(button('Retry', '', show))
+    w.body.replaceChildren(top, make('p', 'ghnote bad', `Couldn't load ${what}: ${(e as Error).message}`), again)
+    changed()
+    return
+  }
   if (win !== w || w.view !== v) return
   w.seen = x
   return x
@@ -124,7 +136,7 @@ async function prDetail(n: number) {
   const reviews = p.reviews.length + p.inline.length
   const sendReviews = button(`Review comments${reviews ? ` (${reviews})` : ''}`, '', send('reviews'))
   sendReviews.disabled = !reviews && !p.comments.length
-  acts.append(make('span', 'ghsend', 'Send to Claude:'), button('This PR', 'ai', send('pr')), sendChecks, sendReviews,
+  acts.append(make('span', 'ghsend', sendLabel() + ':'), button('This PR', 'ai', send('pr')), sendChecks, sendReviews,
     make('span', 'spacer'), button('Check out', '', () => checkout(p)), ...ghLink(p.url))
   const tabs = make('div', 'ghtabs'), pane = make('div', 'ghpane')
   const subs = [['conv', `Conversation${p.comments.length + p.reviews.length ? ` (${p.comments.length + p.reviews.length})` : ''}`], ['files', `Files (${p.files})`], ['checks', `Checks${p.checks.length ? ` (${t.pass}/${p.checks.length})` : ''}`]] as const
@@ -199,7 +211,7 @@ async function issueDetail(n: number) {
   const i = await load(`issue #${n}`, () => getIssue(n))
   if (!i) return
   const w = win!, acts = make('div', 'ghacts')
-  acts.append(make('span', 'ghsend', 'Send to Claude:'), button('This issue', 'ai', () => sendToClaude('issue', n, i.title)), make('span', 'spacer'), ...ghLink(i.url))
+  acts.append(make('span', 'ghsend', sendLabel() + ':'), button('This issue', 'ai', () => sendToClaude('issue', n, i.title)), make('span', 'spacer'), ...ghLink(i.url))
   const pane = make('div', 'ghpane'), box = make('form', 'ghreply'), ta = make('textarea')
   ta.rows = 3
   ta.placeholder = 'Comment on this issue'
@@ -221,7 +233,7 @@ async function issueDetail(n: number) {
 }
 
 /* ---------- saved, and readable by Claude ---------- */
-persist('github', () => (win ? { rect: savedRect(win.el), view: win.view } : null),
+persist('github', () => (win ? { rect: savedRect(win.el), view: win.failed ? { ...win.view, n: undefined } : win.view } : null),
   (s: { rect: Rect; view: View } | null) => { if (s) openGitHub(undefined, s.rect, s.view) })
 referable('github', {
   icon: '⇄',

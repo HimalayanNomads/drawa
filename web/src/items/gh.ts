@@ -8,6 +8,7 @@ import { centerOn } from '../canvas/canvas'
 import { cur, cards, newSession, focus } from '../session/session'
 import { addRef } from '../session/composer'
 import { openGitHub } from './github'
+import { who, lastAgent } from '../lib/agents'
 
 export interface Check { name: string; state: 'pass' | 'fail' | 'pending' | 'skip'; url: string }
 export interface Note { author: string; body: string; when: string; state?: string }
@@ -93,6 +94,12 @@ referable('gh', {
     e => ({ text: `${el.dataset.label}: could not load it from GitHub (${(e as Error).message}).` })),
 })
 
+/** The card "Send to" goes to: the focused one, else the first, else a new one (made when sending). */
+const target = () => cur ?? cards[0]
+/** "Send to Codex", named after the agent that card runs. ponytail: read when the button is drawn; focusing a card
+ *  of another agent afterwards leaves the old name until the window redraws. */
+export const sendLabel = () => `Send to ${who(target()?.backend ?? lastAgent())}`
+
 /** Attach a pull request (or its checks / reviews) or an issue to the focused card's next message. Its chip opens
  *  it in the GitHub window. */
 export function sendToClaude(what: What, n: number, title: string) {
@@ -100,7 +107,7 @@ export function sendToClaude(what: What, n: number, title: string) {
   const label = { pr: `PR #${n}`, checks: `PR #${n} failing checks`, reviews: `PR #${n} reviews`, issue: `Issue #${n}` }[what]
   Object.assign(el.dataset, { kind: 'gh', what, n: String(n), label: `${label}: ${title}`.slice(0, 60) })
   el.onclick = () => openGitHub({ tab: what === 'issue' ? 'issue' : 'pr', n })
-  const S = cur ?? cards[0] ?? newSession()
+  const S = target() ?? newSession()
   addRef(S, { kind: 'gh', label: el.dataset.label!, el })
   focus(S)
   centerOn(S.card)
