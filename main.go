@@ -14,9 +14,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -245,6 +248,31 @@ func openBrowser(url string) {
 	}
 }
 
+// portTaken explains a failed listen. `same`: the port is held by a drawa already serving this folder (a second
+// `drawa` in the same project), so its tab is the right one to open. Any other holder is never opened: that tab
+// would show another project, or something that isn't drawa at all.
+// Not picking the next free port on our own: the canvas is saved per browser origin (host and port), so a
+// floating port would make a project's canvas seem to vanish on its next start.
+func portTaken(err error, url, root string) (msg string, same bool) {
+	if !errors.Is(err, syscall.EADDRINUSE) {
+		return fmt.Sprintf("Can't listen on port %d: %v", config.Port, err), false
+	}
+	again := strings.TrimSpace(fmt.Sprintf("DRAWA_PORT=%d drawa %s", config.Port+1, strings.Join(os.Args[1:], " ")))
+	c := http.Client{Timeout: 2 * time.Second}
+	var info struct{ Root string }
+	if resp, err := c.Get(url + "/api/info"); err == nil {
+		json.NewDecoder(resp.Body).Decode(&info)
+		resp.Body.Close()
+	}
+	switch info.Root {
+	case root:
+		return fmt.Sprintf("Drawa is already running for %s at %s", root, url), true
+	case "":
+		return fmt.Sprintf("Port %d is taken by another program. Pick another port for drawa, e.g.:\n\n  %s", config.Port, again), false
+	}
+	return fmt.Sprintf("Port %d is taken by drawa for another project (%s). Open this one on another port, e.g.:\n\n  %s\n\nEach port keeps its own canvas in the browser, so use the same port for this project next time.", config.Port, info.Root, again), false
+}
+
 func main() {
 	if slices.Contains(os.Args[1:], "--version") {
 		fmt.Println("drawa", config.Version)
@@ -305,16 +333,29 @@ func main() {
 	}()
 	go live.Reap()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
+	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
+	if config.Net {
+		addr = fmt.Sprintf(":%d", config.Port) // every interface, not just loopback; config.Hosts still keeps DNS rebinding and outside hosts out
+	}
+	// bind before opening a tab: with the port taken, the tab would show whatever project holds it
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		msg, same := portTaken(err, url, config.Root)
+		fmt.Println(msg)
+		if same && os.Getenv("DRAWA_OPENED") == "" {
+			openBrowser(url)
+			return
+		}
+		os.Exit(1)
+	}
 	fmt.Printf("Opening drawa UI for %s\n\n", config.Root)
 	fmt.Printf("  - Local:   %s\n", url)
-	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
 	if config.Net {
 		for _, ip := range config.LocalIPs() {
 			link := fmt.Sprintf("http://%s:%d/?token=%s", ip, config.Port, config.NetToken)
 			fmt.Printf("  - Network: %s\n\n%s", link, qr.Terminal(link))
 		}
 		fmt.Println("\nThat Network link's token lasts until you stop drawa (restarts after code changes keep it), and a browser that opens the link keeps it in a cookie. Anyone who has it can run commands as you, so don't share it beyond people you trust on this network.")
-		addr = fmt.Sprintf(":%d", config.Port) // every interface, not just loopback; config.Hosts still keeps DNS rebinding and outside hosts out
 	} else {
 		fmt.Println()
 	}
@@ -322,7 +363,7 @@ func main() {
 		os.Setenv("DRAWA_OPENED", "1")
 		openBrowser(url)
 	}
-	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
+	if err := http.Serve(ln, server.Handler()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
