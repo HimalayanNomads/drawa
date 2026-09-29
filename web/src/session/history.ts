@@ -62,8 +62,9 @@ export async function resume(s: { id: string; title: string; cid?: string; backe
 }
 
 /** Lines of the card's process were dropped before this page read them (the stream said `_gap`): rebuild its log
- *  from the transcript. ponytail: a reply still streaming shows from its next message on; replaying the live buffer's
- *  open message too would need the server to send it along. */
+ *  from the transcript. Rows the stream adds while it loads are kept after it (see fill). ponytail: a reply still
+ *  streaming shows from its next message on; replaying the live buffer's open message too would need the server to
+ *  send it along. A message completed during the fetch can show twice. */
 export async function reload(S: Session) {
   if (!S.sid) return
   dropSession(S)
@@ -72,13 +73,13 @@ export async function reload(S: Session) {
   clearInk(S.log)
   Object.assign(S, { blocks: {}, tools: {} })
   const asks = [...S.log.querySelectorAll('.ask:not(.done)')] // still waiting on you: not in the transcript
-  await fill(S, api(sessionPath(S.sid, S.backend)), false)
-  S.log.append(...asks)
+  await fill(S, api(sessionPath(S.sid, S.backend)), false, asks)
   redraw()
 }
 
-/** Put a transcript in the card. `restored`: a card reopened on reload, whose transcript may not be written yet. */
-async function fill(S: Session, fetched: Promise<unknown>, restored: boolean) {
+/** Put a transcript in the card. `restored`: a card reopened on reload, whose transcript may not be written yet.
+ *  `keep`: rows to put back after it. */
+async function fill(S: Session, fetched: Promise<unknown>, restored: boolean, keep: Element[] = []) {
   S.log.replaceChildren(make('p', 'none', 'Loading session…'))
   renderCard(S)
   let msgs: SavedMessage[] | undefined
@@ -96,7 +97,11 @@ async function fill(S: Session, fetched: Promise<unknown>, restored: boolean) {
     else S.log.replaceChildren(make('div', 'err', 'Could not load this session: its transcript isn\u2019t written yet.'))
     return
   }
+  // rows the live stream added while the transcript loaded (after the placeholder) are newer: they go after it, and
+  // its replay mustn't take over their blocks still streaming
+  const streamed = [...S.log.children].slice(1), streaming = S.blocks
   S.log.replaceChildren()
+  S.blocks = {}
   // one pass without layout reads (pinning to the bottom, pings, header updates), then settle once
   S.replaying = true
   quietPings(true)
@@ -118,7 +123,8 @@ async function fill(S: Session, fetched: Promise<unknown>, restored: boolean) {
     agents.filter(m => !(m as { aid?: string }).aid).forEach(m => replay(S, m)) // after: their Agent calls made their windows
   } catch (e) {
     live.append(make('div', 'err', `Could not load all of this session: ${(e as Error).message}`))
-  } finally { S.log = live; S.replaying = false; quietPings(false); bulk(false) }
+  } finally { S.log = live; S.blocks = streaming; S.replaying = false; quietPings(false); bulk(false) }
+  live.append(...keep, ...streamed)
   if (older.childElementCount) live.prepend(earlier(live, older))
   if (S.gone) agentsStopped(S) // the stream said so before the transcript arrived
   renderCard(S) // skipped while replaying: its state (a background agent still running) and header
