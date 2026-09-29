@@ -18,6 +18,7 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 #update .ver a{margin-left:auto;font-family:var(--sans);color:var(--accent)}
 #update p{margin:-6px 0 14px;font-size:12.5px}
 #update p code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font:12px var(--mono)}
+#update p .why{display:block;margin-top:6px;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
 #update .row{align-items:center;gap:6px}
 #update .skip{margin-right:auto;color:var(--muted);font-size:12px}
 #update .skip:hover{color:var(--ink)}

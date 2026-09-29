@@ -24,12 +24,18 @@ async function answer(r: Response) {
   return j
 }
 
-export const api = <T>(path: string): Promise<T> => fetch('/api/' + path).then(answer)
+// fetch rejects with the browser's own words ("Failed to fetch", "NetworkError when…") when the server is down
+function unreachable(e: unknown): never {
+  if (e instanceof TypeError) throw new Error('Drawa’s server isn’t reachable. Is drawa still running in its terminal?')
+  throw e
+}
+
+export const api = <T>(path: string): Promise<T> => fetch('/api/' + path).catch(unreachable).then(answer)
 
 export async function post(path: string, body: object) {
   if (path === 'send') takeOver() // replies stream to the tab that owns this server: sending from here takes over
   return fetch('/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    .then(answer)
+    .catch(unreachable).then(answer)
 }
 
 export const q = encodeURIComponent

@@ -26,10 +26,12 @@ function lock(on: boolean) {
 
 const plural = (n: number, one: string, many: string) => n > 1 ? many : one
 
+// The server's error is the detail (a Go error chain: URLs, dial errors); the sentence before it says what it means.
 function failed(e: unknown) {
   lock(false)
   go.textContent = 'Try again'
-  say(`Couldn't update: ${e instanceof Error ? e.message : e}. You can also run `, make('code', '', 'drawa --update'), ' in a terminal.')
+  say(`The update didn’t install, and nothing was changed. Check your internet connection and try again, or run `,
+    make('code', '', 'drawa --update'), ' in a terminal.', make('small', 'why', `(${e instanceof Error ? e.message : e})`))
 }
 
 const mb = (n: number) => (n / 1e6).toFixed(1)
@@ -66,8 +68,15 @@ async function restart() {
       const v = await api<Info>('version').catch(() => null)
       if (v?.current === info.latest) return location.reload()
     }
-    throw new Error("the server didn't come back on the new version")
-  } catch (e) { failed(e) }
+    // installed all the same (Install succeeded before Restart now): only the restart is in doubt
+    lock(false)
+    go.textContent = 'Try again'
+    say(`${info.latest} is installed, but Drawa hasn’t come back yet. If it stays away, start drawa again in its terminal: it runs the new version.`)
+  } catch (e) {
+    lock(false)
+    go.textContent = 'Try again'
+    say(`${info.latest} is installed, but Drawa couldn’t restart (${e instanceof Error ? e.message : e}). Start drawa again in its terminal to use it.`)
+  }
 }
 
 d.querySelector('form')!.addEventListener('submit', e => {
