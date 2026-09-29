@@ -20,6 +20,7 @@ import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
 import { meta, handoff, report } from './notices'
 import { who } from '../lib/agents'
+import { showItem } from '../canvas/tools'
 // what a refused tool call means in each mode, and what to do about it (shown under the turn)
 const REFUSED = 'It was refused. Switch this card to Allow edits, Auto or Allow everything and ask again to let it run.'
 const DENIED_HOW: Record<string, string> = {
@@ -203,11 +204,20 @@ function result(S: Session, r: ContentBlock) {
   const io = d.querySelector('.io') ?? d.appendChild(make('div', 'io'))
   const pre = io.appendChild(make('pre', '', clip(out, 20_000) || '(no output)'))
   pre.dataset.l = r.is_error ? 'Error' : d.classList.contains('agent') ? 'Result' : 'Output'
+  const made = !r.is_error && /^Canvas · (create|update)$/.test(d.querySelector('summary b')?.textContent ?? '') && idIn(t)
+  if (made) { // it may have landed off-screen: the row takes you there
+    const j = make('button', 'jump', 'Show')
+    j.onclick = e => { e.preventDefault(); showItem(made) }
+    d.querySelector('.st')!.before(j)
+  }
   if (d.chg) {
     settleChange(d.chg, !r.is_error)
     if (inspecting === d.chg.file) openInspector(d.chg.file) // refresh the open file
   }
 }
+
+/** The item id in a canvas tool's answer ({"id": …}). */
+const idIn = (t: string): string | undefined => { try { return JSON.parse(t).id } catch {} }
 
 /** An Agent row whose agent can't report back any more (its session's Claude process ended): no longer running. */
 export function rowStopped(S: Session, call: string, why: string) {

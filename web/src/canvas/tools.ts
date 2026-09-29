@@ -2,9 +2,9 @@
 // this page, which carries it out here and posts the answer back. Item kinds register what Claude may create
 // (`creatable`); reading reuses what `referable` already knows about each kind.
 import { post } from '../lib/api'
-import { titleOf, setTitle } from './window'
-import { ping } from '../lib/dom'
-import { items, rect, spotBeside, changed, shortId, type Rect } from './canvas'
+import { titleOf, setTitle, expand } from './window'
+import { ping, toast } from '../lib/dom'
+import { items, rect, spotBeside, changed, shortId, onCanvas, front, centerOn, type Rect } from './canvas'
 import { link } from './graph'
 import { readItem } from './refs'
 import { snapshot } from './snapshot'
@@ -53,6 +53,15 @@ function find(id: unknown): HTMLElement {
 function editing(el: HTMLElement) {
   const f = document.activeElement
   return el.dataset.state === 'editing' || (f instanceof HTMLElement && f !== el && el.contains(f) && (f.isContentEditable || f.matches('textarea, input')))
+}
+
+/** Bring an item the agent made or changed into view (the chat's Canvas row): `id` as the tool answered it. */
+export function showItem(id: string) {
+  let el: HTMLElement
+  try { el = find(id) } catch { return toast("That item isn't on the canvas any more.") }
+  expand(el)
+  if (onCanvas(el)) { front(el); centerOn(el) } else el.scrollIntoView({ block: 'nearest' }) // pinned to the sidebar
+  ping(el)
 }
 
 type Block = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
