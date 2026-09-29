@@ -3,7 +3,7 @@
 // it was on the canvas: pinned windows keep their canvas position and size in their inline styles (see rect()).
 import { $, make } from '../lib/dom'
 import { persist } from '../lib/store'
-import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder, rect, view } from './canvas'
+import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder, rect, view, toWorld, place } from './canvas'
 import { redraw } from './graph'
 import { exitFull } from './fullview'
 
@@ -52,6 +52,29 @@ export function toggleDock(el: HTMLElement) {
   shown() // arrows to a pinned window are hidden while it's pinned
   changed()
 }
+
+// drag a pinned window's tab: along the sidebar to reorder it, or out onto the canvas to unpin it where it's dropped
+dock.addEventListener('pointerdown', e => {
+  const t = e.target as Element, el = t.closest<HTMLElement>('.pinbar > .item'), head = el?.querySelector<HTMLElement>(':scope > .win-h')
+  if (!el || !head || e.button !== 0 || !t.closest('.win-h') || t.closest('button, [contenteditable="plaintext-only"]')) return
+  const r = el.getBoundingClientRect(), grab = { x: e.clientX - r.left, y: e.clientY - r.top }
+  track(head, e, (_dx, _dy, ev) => {
+    el.classList.add('dragging')
+    const others = [...dock.children].filter(c => c !== el && c.classList.contains('item'))
+    const mids = others.map(c => { const b = c.getBoundingClientRect(); return b.top + b.height / 2 }) // every read, then the write
+    const next = others[mids.findIndex(m => ev.clientY < m)] ?? null
+    if (el.nextElementSibling !== next) dock.insertBefore(el, next)
+  }, ev => {
+    el.classList.remove('dragging')
+    if (ev.type === 'pointerup' && ev.clientX < dock.getBoundingClientRect().left) {
+      const p = toWorld(ev.clientX - grab.x, ev.clientY - grab.y)
+      place(el, p.x, p.y)
+      toggleDock(el)
+    }
+    shown()
+    changed()
+  }, { late: true })
+})
 
 /** A window's toggle button (pin, float, full view) shows whether it's on, and says what a click will do. */
 export function setToggle(el: HTMLElement, cls: string, on: boolean, onTitle: string, offTitle: string) {
