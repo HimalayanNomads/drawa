@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,3 +333,25 @@ func TestRefusedSendsBusy(t *testing.T) {
 }
 
 func closed() chan struct{} { c := make(chan struct{}); close(c); return c }
+
+// Messages sent but not echoed back yet are reported as queued to pages that attach; a local command's turn (no
+// echo) answers the oldest.
+func TestQueuedOnAttach(t *testing.T) {
+	l := NewForTest("", "g")
+	l.be = nopBackend{}
+	push := func(s string) { l.Push(l.classify(s) + "\n") }
+	l.Send("one", "u1")
+	l.Send("two", "u2")
+	push(`{"type":"user","message":{"content":"one"},"uuid":"u1"}`)
+	if s := l.Snapshot(); !slices.Equal(s.Queued, []string{"u2"}) || !s.Picked {
+		t.Fatalf("mid-turn: queued %v picked %v", s.Queued, s.Picked)
+	}
+	push(`{"type":"result","subtype":"success"}`)
+	if s := l.Snapshot(); !slices.Equal(s.Queued, []string{"u2"}) || s.Picked {
+		t.Fatalf("after the turn: queued %v picked %v", s.Queued, s.Picked)
+	}
+	push(`{"type":"result","subtype":"success"}`) // u2 was /cost: its turn ended without an echo
+	if s := l.Snapshot(); len(s.Queued) != 0 {
+		t.Fatalf("local command's turn left %v queued", s.Queued)
+	}
+}

@@ -102,6 +102,7 @@ type line struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
 	IsMeta      bool   `json:"isMeta"`
+	UUID        string `json:"uuid"`
 	Message     struct {
 		Content any `json:"content"`
 		Usage   any `json:"usage"`
@@ -412,6 +413,19 @@ func Subagents(sid, only string, skip map[string]bool) []map[string]any {
 	return out
 }
 
+// typed: a message you sent (text, maybe with images), not a tool's result.
+func typed(content any) bool {
+	if _, ok := content.(string); ok {
+		return true
+	}
+	list, _ := content.([]any)
+	if len(list) == 0 {
+		return false
+	}
+	b, _ := list[0].(map[string]any)
+	return b["type"] == "text"
+}
+
 // Load returns a session's transcript for the page. With agent set (an Agent call id): only that sub-agent, which
 // a finished agent's window fetches when it's first opened.
 func Load(sid, agent string) []map[string]any {
@@ -440,6 +454,9 @@ func Load(sid, agent string) []map[string]any {
 		}
 		Clip(content)
 		m := map[string]any{"role": t, "content": content}
+		if t == "user" && !d.IsMeta && typed(content) {
+			m["uuid"] = d.UUID // a message still queued is named by it when a page attaches (live.Snapshot)
+		}
 		if d.IsMeta {
 			m["isMeta"] = true // text the CLI added (a skill's instructions, an agent's report): the page folds it, as it does live
 		}

@@ -135,7 +135,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request) {
 				lv.AddReader(page)
 				h = &heldStream{lv: lv, pos: n}
 				heldMap[cid] = h
-				b, _ := json.Marshal(map[string]any{"type": "attach", "from": n, "gen": lv.Gen, "reader": page, "busy": snap.Busy})
+				b, _ := json.Marshal(map[string]any{"type": "attach", "from": n, "gen": lv.Gen, "reader": page, "busy": snap.Busy, "queued": snap.Queued, "picked": snap.Picked})
 				out = append(out, tag(cid, string(b)+"\n"))
 				if gap {
 					out = append(out, tag(cid, resent(gapLine(n))))

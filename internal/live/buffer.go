@@ -1,6 +1,9 @@
 package live
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // A card's output buffer: lines are pushed as they come, dropped from the front after a turn (never past the
 // message being streamed), and read by pages from any position.
@@ -42,6 +45,8 @@ type Snapshot struct {
 	Busy    bool
 	OpenMsg *int
 	Asks    []string // open approval request lines, in arrival order
+	Queued  []string // uuids of messages sent but not read yet, oldest first
+	Picked  bool     // the current turn already read one of its messages
 }
 
 func (l *Live) Snapshot() Snapshot {
@@ -56,7 +61,7 @@ func (l *Live) Snapshot() Snapshot {
 		v := *l.openMsg
 		openMsg = &v
 	}
-	return Snapshot{Base: l.base, End: l.base + len(l.lines), Busy: l.busy, OpenMsg: openMsg, Asks: asks}
+	return Snapshot{Base: l.base, End: l.base + len(l.lines), Busy: l.busy, OpenMsg: openMsg, Asks: asks, Queued: slices.Clone(l.unread), Picked: l.picked}
 }
 
 // LinesFrom returns lines from n (a global index) onward, plus the buffer's new end index.
