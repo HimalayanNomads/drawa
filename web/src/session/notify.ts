@@ -1,6 +1,6 @@
 // Telling you when Claude needs you while you're looking elsewhere: a count in the tab title, and a system
 // notification (if you allowed them) when a turn finishes or Claude waits for an approval or an answer.
-import { project } from '../lib/dom'
+import { project, make } from '../lib/dom'
 import { centerOn } from '../canvas/canvas'
 import { focus, type Session } from './session'
 import { who } from '../lib/agents'
@@ -20,12 +20,19 @@ export function askPermission() {
   Notification.requestPermission().catch(() => {})
 }
 
+// Screen readers hear an approval or a plan as it arrives, wherever focus is (the finished reply itself is read from
+// the card's role=log). Cleared first: the same words twice in a row wouldn't be read again.
+const live = document.body.appendChild(make('div', 'sr-only'))
+live.setAttribute('aria-live', 'assertive')
+const announce = (text: string) => { live.textContent = ''; setTimeout(() => (live.textContent = text), 50) }
+
 export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
+  const head = why === 'done' ? `${who(S.backend)} finished` : why === 'plan' ? 'Plan ready for review' : `${who(S.backend)} needs your approval`
+  if (why !== 'done') announce(`${head}: ${S.title}`)
   if (!away()) return
   unread++
   title()
   if (!('Notification' in window) || Notification.permission !== 'granted') return
-  const head = why === 'done' ? `${who(S.backend)} finished` : why === 'plan' ? 'Plan ready for review' : `${who(S.backend)} needs your approval`
   const n = new Notification(head, { body: S.title, tag: S.cid + why, silent: why === 'done' })
   n.onclick = () => { window.focus(); focus(S); centerOn(S.card); n.close() }
 }

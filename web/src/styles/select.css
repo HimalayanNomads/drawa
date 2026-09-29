@@ -32,7 +32,7 @@
 .xsel-text{grid-row:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xsel-desc{grid-row:2;margin-top:1px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xsel-item svg{grid-column:2;grid-row:1/span 2;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;visibility:hidden}
-.xsel-item[aria-selected=true]{color:var(--accent)}
+.xsel-item[aria-selected=true]{color:var(--accent-text)}
 .xsel-item[aria-selected=true] svg{visibility:visible}
 .xsel-item[aria-selected=true] .xsel-desc{color:color-mix(in oklab,var(--accent) 55%,var(--muted))}
 .xsel-menu:focus-visible .xsel-item.active{box-shadow:inset 0 0 0 1px var(--line-2)}

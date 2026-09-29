@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,7 +35,7 @@ func netAuthorized(w http.ResponseWriter, r *http.Request) bool {
 	}
 	addr := remoteAddr(r)
 	if lockedOut(addr) {
-		http.Error(w, "", 403)
+		netRefuse(w, r, "Too many wrong Drawa links from this device. Wait 5 minutes, then open the Network link drawa printed in its terminal.")
 		return false
 	}
 	token := r.URL.Query().Get("token")
@@ -44,12 +45,12 @@ func netAuthorized(w http.ResponseWriter, r *http.Request) bool {
 		if c, err := r.Cookie(netCookie); err == nil && validNetToken(c.Value) {
 			return true
 		}
-		http.Error(w, "", 403)
+		netRefuse(w, r, staleLink)
 		return false
 	}
 	if !validNetToken(token) {
 		netFailed(addr)
-		http.Error(w, "", 403)
+		netRefuse(w, r, staleLink)
 		return false
 	}
 	netAuthMu.Lock()
@@ -66,6 +67,19 @@ func netAuthorized(w http.ResponseWriter, r *http.Request) bool {
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.RequestURI(), http.StatusFound)
 	return false
+}
+
+// staleLink: every start of drawa makes a new token, so the usual cause is a link or cookie from an earlier run.
+const staleLink = "This Drawa link is out of date or incomplete: each start of drawa makes a new one. Open the Network link drawa printed in its terminal (or scan its QR code) again."
+
+// netRefuse answers 403 with words to act on: JSON for the page's own requests (connection.ts shows it as signed
+// out), plain text for a page load, which would otherwise be a blank page.
+func netRefuse(w http.ResponseWriter, r *http.Request, msg string) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		sendJSON(w, map[string]any{"error": msg, "signedOut": true}, 403)
+		return
+	}
+	http.Error(w, msg, 403)
 }
 
 func validNetToken(t string) bool {

@@ -8,8 +8,8 @@
 .card>.win-h .t{font-size:13px}
 .card .dot{width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--line-2);flex:none;transition:background .2s}
 .card[data-state=busy] .dot{background:var(--accent);animation:pulse 1s ease-in-out infinite alternate}
-.card[data-state=asking] .dot{background:var(--run);animation:pulse .7s ease-in-out infinite alternate}
-.card[data-state=done] .dot{background:var(--add)}
+.card[data-state=asking] .dot{background:var(--run-hue);animation:pulse .7s ease-in-out infinite alternate}
+.card[data-state=done] .dot{background:var(--add-hue)}
 /* context meter in the tab: fills as the conversation uses up the context window */
 .ctx{flex:none;position:relative;cursor:pointer;height:18px;min-width:40px;margin-right:4px;padding:0 6px;border:1px solid var(--line);border-radius:var(--r-tag);font:600 10.5px/16px var(--mono);color:var(--muted);overflow:hidden;
   background:linear-gradient(90deg,color-mix(in oklab,var(--c,var(--muted)) 22%,transparent) var(--p),transparent var(--p))}
@@ -19,7 +19,7 @@
 .card .log{position:relative;flex:1;min-height:0;overflow-y:auto;padding:16px 18px 24px;cursor:auto}
 /* back to the latest message: floats over the log's bottom edge (a negative margin, so the log keeps its height) */
 .card .tobottom{position:relative;z-index:var(--z-over);align-self:center;flex:none;margin:-40px 0 8px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink)}
-.card .tobottom:hover{border-color:var(--accent);color:var(--accent)}
+.card .tobottom:hover{border-color:var(--accent);color:var(--accent-text)}
 .card .tobottom[hidden]{display:none}
 .log>*{animation:enter .22s var(--ease)}
 .log>.earlier{display:flex;width:100%;justify-content:center;margin:0 0 14px;color:var(--muted)}
@@ -43,14 +43,14 @@
   background:conic-gradient(var(--accent) calc(var(--p,0)*1%),color-mix(in oklab,var(--muted) 25%,transparent) 0)}
 .card .gensel .status .ring::before{content:attr(data-label);position:absolute;inset:4px;display:grid;place-items:center;border-radius:50%;background:var(--rail);font-size:8px;color:var(--muted)}
 .card .gensel .status .pct{font:11px var(--mono);color:var(--ink)}
-.card .compose{display:flex;align-items:flex-end;gap:8px;margin:0;padding:6px 6px 6px 10px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);cursor:text;transition:border-color .15s,box-shadow .15s}
-.card .compose::before{content:"\203A";align-self:flex-start;flex:none;padding-top:3px;color:var(--accent);font:600 16px/1.35 var(--mono)}
-.card .compose:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--line-2))}
-.card .compose:focus-within{border-color:var(--accent)}
+.card .compose{display:flex;align-items:flex-end;gap:8px;margin:0;padding:6px 6px 6px 10px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);cursor:text;transition:border-color .15s,box-shadow .15s}
+.card .compose::before{content:"\203A";align-self:flex-start;flex:none;padding-top:3px;color:var(--accent-text);font:600 16px/1.35 var(--mono)}
+.card .compose:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--field-edge))}
+.card .compose:focus-within{border-color:var(--focus)}
 .card .compose .xsel{flex:none;align-self:flex-end;height:30px;padding:0 6px 0 9px;gap:4px;border-color:transparent;background:none;font-size:12px;color:var(--muted)}
 .card .compose .xsel:hover,.card .compose .xsel[aria-expanded=true]{border-color:var(--line);background:var(--hover)}
 .card .compose .xsel .xsel-label{max-width:120px}
-.card .compose .xsel[data-mode=plan]{color:var(--accent)}.card .compose .xsel[data-mode=acceptEdits]{color:var(--edit)}.card .compose .xsel[data-mode=auto]{color:var(--write)}.card .compose .xsel[data-mode=bypassPermissions]{color:var(--danger)}
+.card .compose .xsel[data-mode=plan]{color:var(--accent-text)}.card .compose .xsel[data-mode=acceptEdits]{color:var(--edit)}.card .compose .xsel[data-mode=auto]{color:var(--write)}.card .compose .xsel[data-mode=bypassPermissions]{color:var(--danger)}
 .card .compose .xsel[data-mode=acceptEdits],.card .compose .xsel[data-mode=auto],.card .compose .xsel[data-mode=bypassPermissions],.card .compose .xsel[data-mode=plan]{border-color:color-mix(in oklab,currentColor 40%,var(--line))}
 .card .compose.shell{border-color:var(--run)}
 /* how to send (the key is a setting): only while typing in the box, so an idle card stays compact */
@@ -67,15 +67,15 @@
 .tasks>summary{position:relative;height:32px;gap:8px;padding:0 10px;border-radius:0;overflow:hidden}
 .tasks>summary b{flex:none;font:600 12px var(--sans);color:var(--ink)}
 .tasks>summary .now{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
-.tasks>summary .bar{position:absolute;left:0;bottom:0;height:2px;width:var(--p);background:var(--add);transition:width .3s var(--ease)}
+.tasks>summary .bar{position:absolute;left:0;bottom:0;height:2px;width:var(--p);background:var(--add-hue);transition:width .3s var(--ease)}
 .tasks ol{margin:0;padding:4px 10px 8px;list-style:none;max-height:180px;overflow:auto;font-size:12.5px}
 .tasks li{display:flex;gap:8px;padding:2px 0;color:var(--ink-2)}
 .tasks li::before{flex:none;width:14px;text-align:center;font:600 12px/1.6 var(--mono);content:"\25CB";color:var(--muted)}
 .tasks li.in_progress{color:var(--ink);font-weight:500}
-.tasks li.in_progress::before{content:"\25D0";color:var(--accent);animation:pulse 1s ease-in-out infinite alternate}
+.tasks li.in_progress::before{content:"\25D0";color:var(--accent-text);animation:pulse 1s ease-in-out infinite alternate}
 .tasks li.completed{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in oklab,var(--muted) 50%,transparent)}
 .tasks li.completed::before{content:"\2713";color:var(--add)}
-.taskrow>summary b{color:var(--accent)}
+.taskrow>summary b{color:var(--accent-text)}
 
 /* "/" and "@" menu, opening upward from the composer */
 .cmds{position:absolute;left:10px;right:10px;bottom:calc(100% - 4px);z-index:var(--z-over);max-height:280px;overflow:auto;padding:4px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
@@ -83,7 +83,7 @@
 .cmd b{font:500 12.5px var(--mono);color:var(--ink)}
 .cmd span{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .cmd.on,.cmd:hover{background:var(--hover)}
-.cmd.on b{color:var(--accent)}
+.cmd.on b{color:var(--accent-text)}
 
 /* references to canvas items: chips above the composer, and inside sent bubbles */
 .card .refs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
@@ -111,7 +111,7 @@
 /* ---------- the conversation ---------- */
 .me{display:grid;grid-template-columns:18px 1fr;margin:22px 0 10px;padding-top:18px;border-top:1px solid var(--line);font-size:14.5px;font-weight:500;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .log>.me:first-child{margin-top:0;padding-top:0;border-top:0}
-.me::before{content:"\203A";color:var(--accent);font:600 16px/1.35 var(--mono)}
+.me::before{content:"\203A";color:var(--accent-text);font:600 16px/1.35 var(--mono)}
 .me.queued{opacity:.55}.me.queued::after{content:"queued";grid-column:2;margin-top:2px;font:500 11px var(--sans);color:var(--muted)}
 .me.failed{opacity:.55;text-decoration:line-through}
 .me.queued{position:relative}.me>.unsend{position:absolute;right:0;bottom:-5px;display:flex;gap:2px}.me>.unsend .icon{width:24px;height:24px}
@@ -132,10 +132,10 @@ summary:hover{background:var(--hover)}
 summary::before{content:"";flex:none;width:5px;height:5px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);opacity:.7;transition:transform .15s var(--ease)}
 details[open]>summary::before{transform:rotate(45deg)}
 summary b{font:500 12.5px var(--mono);color:var(--ink)}
-.tool.canvas>summary b{color:var(--accent)}
+.tool.canvas>summary b{color:var(--accent-text)}
 .tool.act-read>summary b{color:var(--read)}.tool.act-edit>summary b{color:var(--edit)}.tool.act-write>summary b{color:var(--write)}.tool.act-run>summary b{color:var(--run)}
 summary .arg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono)}
-summary .jump{font-size:12px;font-weight:500;color:var(--accent);padding:2px 6px;border-radius:var(--r-ctl)}
+summary .jump{font-size:12px;font-weight:500;color:var(--accent-text);padding:2px 6px;border-radius:var(--r-ctl)}
 summary .jump:hover{background:var(--sel)}
 .st{font-size:11.5px;font-weight:500}
 .run>summary .st{width:12px;height:12px;border:1.5px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
@@ -176,8 +176,8 @@ summary .jump:hover{background:var(--sel)}
 .opt b{font-size:13.5px;font-weight:500}
 .opt span{font-size:12.5px;color:var(--muted)}
 .opt[aria-pressed=true]{border-color:var(--accent);background:var(--sel)}
-.ask input{width:100%;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px var(--sans);outline:none}
-.ask input:focus{border-color:var(--accent)}
+.ask input{width:100%;height:34px;padding:0 10px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px var(--sans);outline:none}
+.ask input:focus{border-color:var(--focus)}
 
 /* permission prompt: compact, neutral surface, amber only as a signal */
 .ask.perm{margin:8px 0;padding:10px 12px;border-color:color-mix(in oklab,var(--run) 50%,var(--line));background:var(--rail)}

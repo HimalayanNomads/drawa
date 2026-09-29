@@ -1,8 +1,10 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +71,13 @@ func TestNetAuth(t *testing.T) {
 	}
 	if lockedOut("10.0.0.10") {
 		t.Error("a stale cookie and missing tokens locked the address out")
+	}
+	// a stale cookie says what to do: text for the page, JSON the page's ping reads as signed out
+	if b, _ := io.ReadAll(get("/", netHost, lan2, stale).Body); !strings.Contains(string(b), "Network link") {
+		t.Errorf("stale cookie, page load: body %q", b)
+	}
+	if b, _ := io.ReadAll(get("/api/info", netHost, lan2, stale).Body); !strings.Contains(string(b), `"signedOut":true`) {
+		t.Errorf("stale cookie, /api/info: body %q", b)
 	}
 
 	for i := 0; i < maxNetAttempts; i++ {

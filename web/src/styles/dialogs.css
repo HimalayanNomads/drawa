@@ -15,9 +15,10 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 #update .ver{display:flex;align-items:center;gap:8px;margin:2px 0 14px;font:12.5px var(--mono);color:var(--ink-2)}
 #update .ver i{font-style:normal;color:var(--muted)}
 #update .ver b{font-weight:600;color:var(--ink)}
-#update .ver a{margin-left:auto;font-family:var(--sans);color:var(--accent)}
+#update .ver a{margin-left:auto;font-family:var(--sans);color:var(--accent-text)}
 #update p{margin:-6px 0 14px;font-size:12.5px}
 #update p code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font:12px var(--mono)}
+#update p .why{display:block;margin-top:6px;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
 #update .row{align-items:center;gap:6px}
 #update .skip{margin-right:auto;color:var(--muted);font-size:12px}
 #update .skip:hover{color:var(--ink)}
@@ -36,7 +37,7 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 
 #sketcher{width:96vw;height:92vh;max-width:none;max-height:none;overflow:hidden}
 #sketcher .bar{padding-left:12px}
-#sketcher input{flex:1;max-width:360px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:500 13.5px var(--sans)}
-#sketcher input:focus-visible{outline:none;border-color:var(--accent)}
+#sketcher input{flex:1;max-width:360px;height:32px;padding:0 10px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:500 13.5px var(--sans)}
+#sketcher input:focus-visible{outline:none;border-color:var(--focus)}
 #sketcher .status{margin-left:auto;font-size:12px;color:var(--muted)}
 #sketcher .host{flex:1;min-height:0;position:relative}

@@ -1,13 +1,24 @@
 // Moving around the canvas: drag the background to pan (Hand mode, Space, the middle button), the wheel pans,
 // Ctrl/Cmd+wheel (and pinch) zooms; the minimap and the zoom buttons in the corner.
 import { $, make } from '../lib/dom'
-import { stage, view, apply, applySoon, zoomView, zoomAt, fit, track, onChange, changed, placed, rect, type Rect } from './canvas'
+import { stage, view, apply, applySoon, zoomView, zoomAt, fit, track, onChange, changed, placed, rect, centerOn, onCanvas, type Rect } from './canvas'
 
 stage.addEventListener('pointerdown', e => {
   if (e.button > 1 || (e.target as Element).closest('.item, .fullview, .pinbar')) return
   const x = view.x, y = view.y
   stage.classList.add('panning')
   track(stage, e, (dx, dy) => { view.x = x + dx; view.y = y + dy; apply() }, () => stage.classList.remove('panning'), { keep: true })
+})
+
+// Tab can move focus into a window that's off-screen: bring the window into view. Only after Tab: a click lands on
+// something already in view, and code that focuses a field decides for itself whether to move the view.
+let tabbed = -1e9
+addEventListener('keydown', e => { if (e.key === 'Tab') tabbed = e.timeStamp }, true)
+document.addEventListener('focusin', e => {
+  const t = e.target as HTMLElement, el = t.closest?.<HTMLElement>('.item')
+  if (!el || !onCanvas(el) || e.timeStamp - tabbed > 500) return
+  const r = t.getBoundingClientRect()
+  if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) centerOn(el)
 })
 
 /** The wheel's deltas, with Shift+wheel turned sideways (some browsers leave it on deltaY). */

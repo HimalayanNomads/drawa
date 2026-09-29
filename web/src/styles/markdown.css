@@ -4,7 +4,7 @@
 .md p,.md ul,.md ol{margin:0 0 .75em}
 .md h1,.md h2,.md h3{margin:1.2em 0 .5em;line-height:1.3;font-weight:600;text-wrap:balance}
 .md h1{font-size:19px}.md h2{font-size:17px}.md h3{font-size:15px}
-.md a{color:var(--accent);text-underline-offset:2px}
+.md a{color:var(--accent-text);text-underline-offset:2px}
 .codeblock{position:relative;margin:.75em 0}
 .codeblock>pre{margin:0!important}
 .cbtools{position:absolute;top:6px;right:6px;display:flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);opacity:0;transition:opacity .15s}
@@ -27,6 +27,7 @@ pre code.hljs{background:none;padding:12px 14px}
 .dtools{position:absolute;top:6px;right:6px;display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl);background:var(--bg);border:1px solid var(--line);opacity:0;transition:opacity .15s}
 .dtools .icon{width:26px;height:26px}
 .mermaid:hover .dtools,.dtools:focus-within{opacity:1}
+@media (hover:none){.cbtools,.dtools{opacity:1}} /* touch: no hover to reveal them, and a see-through button still takes taps */
 
 /* code highlighting (highlight.js classes) from theme tokens, so it follows the toolbar's theme choice */
 .hljs{color:var(--ink)}

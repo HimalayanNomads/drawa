@@ -5,7 +5,7 @@ import './lib/theme'
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
-import { $, project, shortcutOk } from './lib/dom'
+import { $, make, ICON, project, shortcutOk, pressed } from './lib/dom'
 import { command } from './lib/keys'
 import { showHelp, showTip } from './lib/help'
 import { persist, restore, saveSoon } from './lib/store'
@@ -45,6 +45,23 @@ const toggleDrawer = (open = drawer.hidden) => { drawer.hidden = !open; drawerBt
 
 $('#btn-new').onclick = () => newSession()
 
+// Phones: the toolbar's tail folds into a ⋯ menu rather than scrolling off the edge. The wrapper is display:contents
+// on wider screens (chrome.css), so the buttons sit in the bar as before.
+const more = make('button', 'btn'), tail = make('div')
+more.id = 'btn-more'
+tail.id = 'bar-more'
+more.innerHTML = ICON.more
+more.title = 'More'
+more.setAttribute('aria-label', 'More')
+more.setAttribute('aria-controls', 'bar-more')
+const showMore = (open: boolean) => { tail.classList.toggle('open', open); more.setAttribute('aria-expanded', String(open)) }
+showMore(false)
+tail.append(...['#btn-scratch', '#btn-git', '#btn-drawer', '#btn-theme', '#btn-fonts'].map(s => $(s)))
+$('#bar').append(more, tail)
+more.onclick = () => showMore(!tail.classList.contains('open'))
+tail.addEventListener('click', () => showMore(false)) // picking one closes the menu
+addEventListener('pointerdown', e => { if (!more.contains(e.target as Node) && !tail.contains(e.target as Node)) showMore(false) })
+
 /** New session ▾: which agent a new card runs. The button itself (and N) starts the last one picked; with only one
  *  agent installed there's nothing to pick, so no chevron. */
 function newSessionMenu() {
@@ -63,9 +80,10 @@ drawerBtn.onclick = () => toggleDrawer()
 $('#dclose').onclick = () => toggleDrawer(false)
 $('#iclose').onclick = closeInspector
 $('#refresh').onclick = () => { tree(); loadSessions() }
-for (const b of document.querySelectorAll<HTMLElement>('[data-l]')) {
+for (const b of document.querySelectorAll('.seg [data-l], .seg [data-r]')) pressed(b, b.classList.contains('on'))
+for (const b of document.querySelectorAll<HTMLElement>('.seg [data-l]')) {
   b.onclick = () => {
-    for (const o of document.querySelectorAll('[data-l]')) o.classList.toggle('on', o === b)
+    for (const o of document.querySelectorAll('.seg [data-l]')) pressed(o, o === b)
     $('#tree').hidden = b.dataset.l !== 'tree'
     $('#sessions').hidden = b.dataset.l !== 'sessions'
   }
@@ -110,7 +128,8 @@ addEventListener('keydown', e => {
   // mode, full view, the selection) takes it first and calls preventDefault
   if (e.key === 'Escape') {
     if (e.defaultPrevented || !shortcutOk(e)) return
-    if (!inspector.hidden) { e.preventDefault(); closeInspector() }
+    if (tail.classList.contains('open')) { e.preventDefault(); showMore(false); more.focus() }
+    else if (!inspector.hidden) { e.preventDefault(); closeInspector() }
     else if (!drawer.hidden) { e.preventDefault(); toggleDrawer(false) }
     return
   }

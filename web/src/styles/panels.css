@@ -30,7 +30,7 @@
 .sess .t{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
 .sess .d{display:flex;gap:8px;margin-top:2px;font-size:11.5px;color:var(--muted)}
 .sess .d .agent{padding:0 5px;border:1px solid var(--line);border-radius:var(--r-tag);font:11px var(--mono)}
-.sess.open .d::after{content:"on canvas";color:var(--accent);font-weight:500}
+.sess.open .d::after{content:"on canvas";color:var(--accent-text);font-weight:500}
 
 /* file tree */
 #tree,#tree ul{list-style:none;margin:0;padding:0}

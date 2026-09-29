@@ -70,6 +70,7 @@ export function agentWindow(S: Session, call: string, inp: Record<string, any>, 
   el.dataset.id = 'a:' + call
   head.querySelector('.t')!.after(state)
   const log = body.appendChild(make('div', 'log alog'))
+  log.setAttribute('role', 'log')
   const task = log.appendChild(make('details', 'atask')) as HTMLDetailsElement
   task.appendChild(make('summary')).append(make('b', '', type), make('span', 'arg', prompt.split('\n')[0]))
   task.appendChild(make('div', 'io')).appendChild(make('pre', '', prompt)).dataset.l = 'Task'

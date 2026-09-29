@@ -17,18 +17,18 @@
 /* edges: color = action, dashed flow = a tool is running on it right now */
 #edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 .edge{fill:none;stroke-width:1.75;vector-effect:non-scaling-stroke;opacity:.85}
-.edge.read{stroke:var(--read);stroke-dasharray:2 5;stroke-linecap:round;marker-end:url(#m-read)}
-.edge.edit{stroke:var(--edit);marker-end:url(#m-edit)}.edge.write{stroke:var(--write);marker-end:url(#m-write)}.edge.run{stroke:var(--run);marker-end:url(#m-run)}
+.edge.read{stroke:var(--read-hue);stroke-dasharray:2 5;stroke-linecap:round;marker-end:url(#m-read)}
+.edge.edit{stroke:var(--edit-hue);marker-end:url(#m-edit)}.edge.write{stroke:var(--write-hue);marker-end:url(#m-write)}.edge.run{stroke:var(--run-hue);marker-end:url(#m-run)}
 .edge.plan{stroke:var(--accent);stroke-width:2.25;marker-end:url(#m-plan)}
 .edge.ref{stroke:var(--ink-2);stroke-dasharray:6 5;marker-end:url(#m-ref)}
-.edge.agent{stroke:var(--write);stroke-dasharray:1 5;stroke-linecap:round} /* a sub-agent the session started */
+.edge.agent{stroke:var(--write-hue);stroke-dasharray:1 5;stroke-linecap:round} /* a sub-agent the session started */
 .edge.made{stroke:var(--accent);stroke-dasharray:3 4;marker-end:url(#m-plan)} /* Claude put this item on the canvas */
-#m-read path{fill:var(--read)}#m-edit path{fill:var(--edit)}#m-write path{fill:var(--write)}#m-run path{fill:var(--run)}#m-plan path{fill:var(--accent)}#m-ref path{fill:var(--ink-2)}
+#m-read path{fill:var(--read-hue)}#m-edit path{fill:var(--edit-hue)}#m-write path{fill:var(--write-hue)}#m-run path{fill:var(--run-hue)}#m-plan path{fill:var(--accent)}#m-ref path{fill:var(--ink-2)}
 .edge.live{stroke-width:2.25;stroke-dasharray:7 6;animation:flow .7s linear infinite;opacity:1}
 @keyframes flow{to{stroke-dashoffset:-13}}
 /* edge labels: a flat tag in the edge's color, opaque so the line doesn't run through the text */
 .elabel{position:absolute;transform:translate(-50%,-50%);padding:1px 7px;border-radius:var(--r-tag);background:color-mix(in oklab,currentColor 16%,var(--canvas));font:600 10.5px/16px var(--sans);letter-spacing:.02em;white-space:nowrap;pointer-events:none;z-index:var(--z-sticky)}
-.elabel.plan,.elabel.made{color:var(--accent)}.elabel.agent{color:var(--write)}.elabel.ref{color:var(--ink-2)}.elabel.read{color:var(--read)}.elabel.edit{color:var(--edit)}.elabel.write{color:var(--write)}.elabel.run{color:var(--run)}
+.elabel.plan,.elabel.made{color:var(--accent-text)}.elabel.agent{color:var(--write)}.elabel.ref{color:var(--ink-2)}.elabel.read{color:var(--read)}.elabel.edit{color:var(--edit)}.elabel.write{color:var(--write)}.elabel.run{color:var(--run)}
 
 /* ink: drawn above every canvas item; the capture layer takes the pointer only in draw mode */
 #inkworld{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;pointer-events:none}
@@ -43,7 +43,7 @@
 .ink-box{position:relative;aspect-ratio:var(--ar);width:min(100cqw,calc(100cqh * var(--ar)))}
 .ink-box>:not(svg.ink-local){display:block;width:100%;height:100%}
 body.erasing .ink-local path{pointer-events:visiblePainted;stroke:transparent;stroke-width:14px}
-.ink-ink{fill:var(--ink)}.ink-edit{fill:var(--edit)}.ink-write{fill:var(--write)}.ink-run{fill:var(--run)}.ink-danger{fill:var(--danger)}
+.ink-ink{fill:var(--ink)}.ink-edit{fill:var(--edit-hue)}.ink-write{fill:var(--write-hue)}.ink-run{fill:var(--run-hue)}.ink-danger{fill:var(--del-hue)}
 #ink-capture{position:absolute;inset:0;cursor:crosshair;touch-action:none;background:color-mix(in oklab,var(--accent) 3%,transparent)}
 /* Draw mode reaches pinned windows too: the sidebar sits in the stage right before the capture layer, so dropping
    its z-index while you draw puts the capture layer on top of it */
@@ -69,7 +69,7 @@ body.erasing .ink-shape:hover{opacity:.45}
 .shape-sel .h[data-c="2"]{left:calc(100% + 3px);top:calc(100% + 3px);cursor:nwse-resize}.shape-sel .h[data-c="3"]{left:-3px;top:calc(100% + 3px);cursor:nesw-resize}
 body.drawing .shape-sel{display:none}
 .ink-editor{position:fixed;z-index:var(--z-menu);min-width:40px;margin:0;padding:0 2px;border:1px dashed var(--accent);border-radius:var(--r-ctl);background:color-mix(in oklab,var(--bg) 70%,transparent);font-family:var(--sans);font-weight:500;line-height:1.25;resize:none;overflow:hidden;outline:none;white-space:pre;color:var(--ink)}
-.ink-editor.ink-c-edit{color:var(--edit)}.ink-editor.ink-c-write{color:var(--write)}.ink-editor.ink-c-run{color:var(--run)}.ink-editor.ink-c-danger{color:var(--danger)}
+.ink-editor.ink-c-edit{color:var(--edit-hue)}.ink-editor.ink-c-write{color:var(--write-hue)}.ink-editor.ink-c-run{color:var(--run-hue)}.ink-editor.ink-c-danger{color:var(--del-hue)}
 body.erasing #ink path{pointer-events:visiblePainted;stroke:transparent;stroke-width:14px;vector-effect:non-scaling-stroke}
 body.erasing #ink path:hover{opacity:.45}
 
@@ -81,14 +81,14 @@ body.erasing #ink path:hover{opacity:.45}
 #nav[data-state=quiet]:not(:hover) #minimap{opacity:0;margin-top:-134px;pointer-events:none}
 #mm i{position:absolute;display:block;border-radius:var(--r-hair);background:color-mix(in oklab,var(--kind,var(--line-2)) 60%,transparent)}
 #mm i[data-kind=session]{--kind:color-mix(in oklab,var(--ink) 50%,transparent)} /* idle: neutral, so a working one stands out */
-#mm i[data-kind=session][data-s=busy]{--kind:var(--accent)}#mm i[data-kind=session][data-s=asking]{--kind:var(--run)}
-#mm i[data-kind=file][data-s=edit]{--kind:var(--edit)}#mm i[data-kind=file][data-s=write]{--kind:var(--write)}#mm i[data-kind=file][data-s=fail]{--kind:var(--danger)}
+#mm i[data-kind=session][data-s=busy]{--kind:var(--accent)}#mm i[data-kind=session][data-s=asking]{--kind:var(--run-hue)}
+#mm i[data-kind=file][data-s=edit]{--kind:var(--edit-hue)}#mm i[data-kind=file][data-s=write]{--kind:var(--write-hue)}#mm i[data-kind=file][data-s=fail]{--kind:var(--del-hue)}
 #mm i[data-k=vp]{background:none;border:1.5px solid var(--accent)}
 #mm i[data-kind=group]{background:none;border:1px solid var(--kind)} /* a group's frame: outline only, its windows show inside */
 
 /* your arrows between items (Draw mode's Arrow tool); colored like the pen */
 .ulinks{position:absolute;left:-50000px;top:-50000px;width:100000px;height:100000px;overflow:visible;pointer-events:none}
-.ulink{--c:var(--ink)}.ulink.c-edit{--c:var(--edit)}.ulink.c-write{--c:var(--write)}.ulink.c-run{--c:var(--run)}.ulink.c-danger{--c:var(--danger)}
+.ulink{--c:var(--ink)}.ulink.c-edit{--c:var(--edit-hue)}.ulink.c-write{--c:var(--write-hue)}.ulink.c-run{--c:var(--run-hue)}.ulink.c-danger{--c:var(--del-hue)}
 .ulink .line{fill:none;stroke:var(--c);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linecap:round}
 .ulink .tip{fill:var(--c)}
 .ulink .hit{fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer}

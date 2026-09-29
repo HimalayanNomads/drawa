@@ -63,10 +63,16 @@ onChange(() => {
 })
 
 interface Win { el: HTMLElement; head: HTMLElement; title: HTMLElement; body: HTMLElement }
+let titles = 0
 
 export function makeWindow(o: WindowOpts): Win {
   const el = make('div', 'win ' + o.cls), head = make('header', 'win-h'), title = make('span', 't', o.title), body = make('div', 'win-b')
   title.dataset.glyph = refIcon(o.kind) // the tab's glyph is the kind's icon (see referable)
+  // a landmark named by its tab, so a screen reader hears "Scratchpad, region" before its Collapse and Close buttons;
+  // labelledby, not a label: kinds rename the tab directly too (a session's title)
+  title.id = `win-t${++titles}`
+  el.setAttribute('role', 'region')
+  el.setAttribute('aria-labelledby', title.id)
   head.append(title, ...(o.actions ?? []))
   el.append(head, body)
   addItem(el, o.kind)

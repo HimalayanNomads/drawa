@@ -1,6 +1,6 @@
 // The canvas's two pointer modes, like Excalidraw: Select (drag on empty canvas draws a selection box) and Hand
 // (drag pans). Holding Space is a temporary hand. Middle button and wheel always pan, whichever mode.
-import { $, shortcutOk } from '../lib/dom'
+import { $, shortcutOk, pressed } from '../lib/dom'
 import { persist, saveSoon } from '../lib/store'
 import { stage } from './canvas'
 
@@ -15,7 +15,7 @@ export const handDrag = () => mode === 'hand' || space
 
 function sync() {
   stage.classList.toggle('hand', handDrag())
-  for (const [m, b] of Object.entries(buttons)) { b.classList.toggle('on', m === mode); b.setAttribute('aria-pressed', String(m === mode)) }
+  for (const [m, b] of Object.entries(buttons)) pressed(b, m === mode)
 }
 export function setMode(m: Mode) { mode = m; sync(); saveSoon() }
 persist('mode', () => mode, (m: Mode) => { if (m === 'select' || m === 'hand') setMode(m) }, 0)

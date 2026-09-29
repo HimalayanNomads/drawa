@@ -5,10 +5,25 @@
 #bar .newagent .xsel{background:var(--accent);border-color:var(--accent);color:var(--on-accent);border-left-color:color-mix(in oklab,var(--on-accent) 35%,var(--accent))}
 #bar .newagent .xsel:hover,#bar .newagent .xsel[aria-expanded=true]{background:color-mix(in oklab,var(--accent) 88%,var(--ink))}
 .brand{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:40px;overflow:hidden;padding:0 6px}
-#bar>:not(.brand){flex:none} /* buttons keep their size; the project name is what gives way */
+#bar>:not(.brand),#bar-more>*{flex:none} /* buttons keep their size; the project name is what gives way */
+/* the toolbar's tail (main.ts): in the bar, or on phones a menu under the ⋯ button (fixed: the bar clips overflow) */
+#bar-more{display:contents}
+#btn-more{display:none;width:32px;padding:0;justify-content:center}
+#btn-more[aria-expanded=true]{background:var(--sel);border-color:var(--accent)}
+@media (max-width:560px){
+  #btn-more{display:inline-flex}
+  #btn-help{display:none} /* keyboard shortcuts: no use on a phone, and the bar has no room for it */
+  #bar-more{position:fixed;top:64px;right:12px;display:none;flex-direction:column;gap:2px;min-width:200px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
+  #bar-more.open{display:flex;animation:enter .15s var(--ease)}
+  #bar #bar-more .btn{justify-content:flex-start;width:auto;padding:0 10px;border-color:transparent}
+  #bar-more .btn .lbl{display:inline}
+  #btn-theme::after{content:attr(aria-label)} /* an icon alone doesn't say what it does in a list */
+  #btn-fonts::after{content:"Appearance";font-weight:500}
+}
+@media (max-width:340px){#bar{gap:4px}} /* the smallest phones: tighter, rather than scrolling */
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}
 #pname{overflow:hidden;text-overflow:ellipsis}
-.logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit),var(--write),var(--run),var(--read),var(--edit));
+.logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit-hue),var(--write-hue),var(--run-hue),var(--read-hue),var(--edit-hue));
   clip-path:polygon(0 30%,30% 30%,40% 0,100% 0,100% 100%,0 100%)} /* a tiny folder */
 .brand b{min-width:0;font-weight:650;font-size:14px;white-space:nowrap}
 /* narrower windows: the toolbar steps down instead of overlapping (labels stay as aria-labels and tooltips) */
@@ -29,14 +44,14 @@
 #inkbar .sz{display:grid;place-items:center;width:30px;height:30px;border-radius:var(--r-ctl)}
 #inkbar .sz i{width:var(--d);height:var(--d);border-radius:50%;background:var(--ink)}
 #inkbar .sz.on,#inkbar .sz:hover{background:var(--hover)}
-#inkbar .icon.on{background:var(--sel);color:var(--accent)}
+#inkbar .icon.on{background:var(--sel);color:var(--accent-text)}
 
 #fontpanel{top:64px;left:12px;display:flex;flex-direction:column;gap:6px;width:280px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);animation:enter .18s var(--ease)}
 #fontpanel hr{width:100%;margin:8px 0 2px;border:0;border-top:1px solid var(--line)}
 #fontpanel label{margin-top:4px;font-size:12px;font-weight:500;color:var(--muted)}
 #fontpanel .xsel{width:100%;justify-content:space-between}
-#fontpanel input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
-#fontpanel input:focus{border-color:var(--accent)}
+#fontpanel input{height:32px;padding:0 10px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px var(--sans);outline:none}
+#fontpanel input:focus{border-color:var(--focus)}
 #fontpanel .preview{margin:8px 0 0;padding:10px;border-radius:var(--r-box);background:var(--rail);font:15px var(--sans);color:var(--ink)}
 #fontpanel .preview code{font:13px var(--mono);padding:1px 5px;border-radius:var(--r-tag);background:var(--hover)}
 
@@ -48,15 +63,23 @@
 #hint.gone{opacity:0;pointer-events:none}
 
 /* server connection notice: bottom center, above the hint */
-#conn,.toast{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%);display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;white-space:nowrap;animation:enter .2s var(--ease)}
-.toast{bottom:58px;color:var(--danger);white-space:normal;max-width:min(520px,calc(100vw - 32px))}
-/* another tab of this server is streaming (session/live.ts): information, not an error */
-.toast.elsewhere{color:var(--ink)}
+#conn,.toast{display:flex;align-items:center;gap:8px;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);box-shadow:var(--shadow-lift);font-size:12.5px;font-weight:500;animation:enter .2s var(--ease)}
+#conn{width:max-content;max-width:min(560px,calc(100vw - 32px))}
+#conn,.notices{left:50%;bottom:14px;z-index:var(--z-panel);transform:translateX(-50%)}
+/* toasts and notices (lib/dom.ts) stack above the connection notice, newest at the bottom, never on top of each other */
+.notices{bottom:58px;display:flex;flex-direction:column;align-items:center;gap:6px;width:max-content;max-width:min(560px,calc(100vw - 32px));pointer-events:none}
+.notices:empty{display:none}
+.toast{color:var(--danger);pointer-events:auto}
+.toast[hidden]{display:none}
+/* a state that lasts (another tab owns the canvas, storage full, a new version): information, not an error */
+.toast.notice{flex-wrap:wrap;row-gap:6px;color:var(--ink)}
+.toast.notice>span{flex:1 1 220px}
+.toast .btn{flex:none}
 #conn i{width:8px;height:8px;border-radius:50%;flex:none}
 #conn[data-state=down]{color:var(--danger);border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
 #conn[data-state=down] i{background:var(--danger);animation:pulse .8s ease-in-out infinite alternate}
 #conn[data-state=back]{color:var(--add)}
-#conn[data-state=back] i{background:var(--add)}
+#conn[data-state=back] i{background:var(--add-hue)}
 
 /* find a window (Ctrl+K): a command-palette box, top center */
 .finder{position:fixed;left:50%;top:72px;z-index:var(--z-menu);transform:translateX(-50%);display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 100px));background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden;animation:enter .15s var(--ease)}

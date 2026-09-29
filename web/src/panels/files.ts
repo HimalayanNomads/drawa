@@ -1,7 +1,7 @@
 // File tree (in the drawer) and the inspector: a file's diffs from every session, plus the file itself.
 import { tipText } from '../lib/tooltip'
 import { api, q, type TreeItem } from '../lib/api'
-import { $, make, pathEl } from '../lib/dom'
+import { $, make, pathEl, pressed } from '../lib/dom'
 import { md, enhance, enhanceMarked, highlighter } from '../lib/markdown'
 import { files, pin, refreshSelection, setInspector } from '../canvas/sessionwins'
 import type { Change } from './diff'
@@ -94,7 +94,7 @@ foldAll.onclick = () => {
 $('#changes').addEventListener('click', syncFoldAll) // single folds change the label too
 
 export function showTab(which: 'changes' | 'viewer') {
-  for (const b of document.querySelectorAll<HTMLElement>('[data-r]')) b.classList.toggle('on', b.dataset.r === which)
+  for (const b of document.querySelectorAll<HTMLElement>('.seg [data-r]')) pressed(b, b.dataset.r === which)
   $('#changes').hidden = which !== 'changes'
   $('#viewer').hidden = which !== 'viewer'
   syncFoldAll()

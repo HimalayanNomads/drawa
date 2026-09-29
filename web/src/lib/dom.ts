@@ -25,6 +25,7 @@ export const ICON = {
   float: svg('<rect x="2" y="3" width="12" height="10" rx="1"/><rect x="7.5" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/>'),
   full: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
   collapse: svg('<path d="M3.5 8h9"/>'),
+  more: svg('<circle cx="3.5" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12.5" cy="8" r=".9"/>'),
   reload: svg('<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2.5v3h-3"/>'),
   open: svg('<path d="M4 6.5 8 10.5l4-4"/>'),
   sun: svg('<circle cx="8" cy="8" r="2.8"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1"/>'),
@@ -62,6 +63,9 @@ export const typing = (t: EventTarget | null) => t instanceof Element && !!t.clo
 export const shortcutOk = (e: KeyboardEvent) => !typing(e.target) && !document.querySelector('dialog[open]')
 
 /** A square icon button; the click doesn't reach the window under it (no drag, no focus steal). */
+/** A toggle or segmented-tab button's state: .on for the eye, aria-pressed for a screen reader. */
+export const pressed = (b: Element, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)) }
+
 export function iconButton(icon: string, label: string, onClick: () => void, cls = '') {
   const b = make('button', 'icon' + (cls ? ' ' + cls : ''))
   b.innerHTML = icon
@@ -148,9 +152,23 @@ export function confirmBox(title: string, body: string, action: string): Promise
 
 /** A short message at the bottom of the screen that goes away by itself: for failures nobody would otherwise see. */
 export function toast(text: string) {
-  const t = document.body.appendChild(make('p', 'float toast', text))
-  t.setAttribute('role', 'status')
+  const t = stacked(make('p', 'toast', text))
   setTimeout(() => t.remove(), 6000)
+}
+
+/** A message that stays until the caller removes it (or hides it and shows it again): for states that last, like
+ *  "not saving". `actions` are its buttons. Toasts and notices stack instead of covering each other. */
+export function notice(text: string, ...actions: HTMLElement[]) {
+  const n = stacked(make('p', 'toast notice'))
+  n.append(make('span', '', text), ...actions)
+  return n
+}
+let stack: HTMLElement | undefined
+function stacked(el: HTMLElement) {
+  stack ??= document.body.appendChild(make('div', 'float notices'))
+  el.setAttribute('role', 'status')
+  stack.append(el)
+  return el
 }
 
 /** `f`, run at most once per frame, with the latest arguments: for pointermove, scroll and wheel handlers. */

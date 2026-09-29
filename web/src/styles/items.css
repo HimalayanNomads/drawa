@@ -55,10 +55,10 @@
 .glog{margin:8px 0 0;border-top:1px solid var(--line)}
 .glog>summary{padding:0 12px;border-radius:0}
 .gc{display:flex;align-items:baseline;gap:8px;padding:3px 12px;font-size:12px}
-.gc code{flex:none;font-size:11.5px;color:var(--accent)}.gc .gm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gc .gw{flex:none;font-size:11px;color:var(--muted)}
+.gc code{flex:none;font-size:11.5px;color:var(--accent-text)}.gc .gm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gc .gw{flex:none;font-size:11px;color:var(--muted)}
 .gfoot{flex:none;padding:10px;border-top:1px solid var(--line);background:var(--rail)}
-.gfoot textarea{width:100%;min-height:44px;max-height:160px;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none}
-.gfoot textarea:focus{border-color:var(--accent)}
+.gfoot textarea{width:100%;min-height:44px;max-height:160px;padding:7px 9px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none}
+.gfoot textarea:focus{border-color:var(--focus)}
 .gfoot .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px}
 .gfoot .writewith{display:inline-flex;margin-right:auto}
 .gout{margin:6px 0 0;font:11.5px/1.45 var(--mono);color:var(--muted);white-space:pre-wrap;max-height:90px;overflow:auto}
@@ -127,9 +127,9 @@
 .padd{position:absolute;right:8px;z-index:var(--z-over);width:24px;height:24px;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow)}
 .padd:hover{background:color-mix(in oklab,var(--accent) 88%,var(--ink));color:var(--on-accent)}
 .pedit{margin:6px 0 12px;padding:8px;border:1px solid var(--accent);border-radius:var(--r-box);background:var(--bg)}
-.pedit textarea,.pnode-f textarea{width:100%;resize:none;min-height:44px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px/1.5 var(--sans);outline:none}
+.pedit textarea,.pnode-f textarea{width:100%;resize:none;min-height:44px;padding:6px 8px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13.5px/1.5 var(--sans);outline:none}
 .pedit textarea{border:0;padding:2px 4px}
-.pnode-f textarea:focus{border-color:var(--accent)}
+.pnode-f textarea:focus{border-color:var(--focus)}
 .pedit .row,.pnode-f .row{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin-top:6px}
 .pnote{display:flex;align-items:flex-start;gap:8px;margin:4px 0 12px 14px;padding:7px 8px 7px 12px;border-radius:var(--r-box);background:color-mix(in oklab,var(--run) 16%,var(--bg));color:var(--ink);font-size:13px;line-height:1.5}
 .pnote span{flex:1;white-space:pre-wrap}
@@ -171,6 +171,7 @@
 .ndel{top:-1px;left:calc(100% + 6px);width:24px;height:24px;opacity:0;transition:opacity .15s}
 .ndel svg{width:12px;height:12px}
 .nnode:hover .ndel,.ndel:focus-visible{opacity:1}
+@media (hover:none){.grow .icon,.fdel,.ndel{opacity:1}} /* touch: no hover to reveal them, and a see-through button still takes taps */
 
 /* a picture: shown whole, on the page color so transparent screenshots stay legible */
 .inode-b{display:grid;place-items:center;background:var(--bg);overflow:hidden;container-type:size}
@@ -193,7 +194,7 @@
 .ghrow-m{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:11.5px;color:var(--muted)}
 .ghlabel{padding:0 6px;border:1px solid var(--line);border-radius:var(--r-box);font-size:11px;color:var(--ink-2)}
 .ghdot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
-.ghdot[data-state=pass]{background:var(--add)}.ghdot[data-state=fail]{background:var(--del)}.ghdot[data-state=pending]{background:var(--run)}.ghdot[data-state=skip]{background:var(--line-2)}
+.ghdot[data-state=pass]{background:var(--add-hue)}.ghdot[data-state=fail]{background:var(--del-hue)}.ghdot[data-state=pending]{background:var(--run-hue)}.ghdot[data-state=skip]{background:var(--line-2)}
 .ghhead{padding:10px 12px 8px;border-bottom:1px solid var(--line)}
 .ghback{height:24px;padding:0 8px;font-size:12px;margin-bottom:8px}
 .ghhead h3{margin:0 0 6px;font-size:15px;line-height:1.35;text-wrap:balance}
@@ -226,8 +227,8 @@
 .ghcheck .btn{height:24px;padding:0 8px;font-size:11.5px}
 .ghlog{margin:0;max-height:320px;overflow:auto;padding:8px 12px;background:var(--code);font:11.5px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;border-bottom:1px solid var(--line)}
 .ghreply{display:grid;gap:8px;margin:10px 12px 0}
-.ghreply textarea,.ghform input:not([type=checkbox]),.ghform textarea{width:100%;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:vertical;outline:none;cursor:text}
-.ghreply textarea:focus,.ghform input:focus,.ghform textarea:focus{border-color:var(--accent)}
+.ghreply textarea,.ghform input:not([type=checkbox]),.ghform textarea{width:100%;padding:7px 9px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:vertical;outline:none;cursor:text}
+.ghreply textarea:focus,.ghform input:focus,.ghform textarea:focus{border-color:var(--focus)}
 .ghreply .btn{justify-self:end}
 /* the strip at the top of the Git window */
 .ghstrip{flex:none;padding:6px 8px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
@@ -244,6 +245,11 @@ button.ghti:hover{text-decoration:underline}
 .ghform .writewith{display:inline-flex;margin-right:auto}
 .ghbase,.ghdraft{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .ghform .ghbase input{width:110px;padding:4px 7px;font:12px var(--mono)}
+/* the draft checkbox, drawn in the theme (a native one ignores the scheme) */
+.ghdraft input{appearance:none;display:inline-grid;place-content:center;width:15px;height:15px;margin:0;border:1px solid var(--field-edge);border-radius:var(--r-tag);background:var(--bg);cursor:pointer}
+.ghdraft input::before{content:"";width:9px;height:9px;background:var(--on-accent);clip-path:polygon(14% 44%,0 65%,50% 100%,100% 16%,80% 0,43% 62%);visibility:hidden}
+.ghdraft input:checked{background:var(--accent);border-color:var(--accent)}
+.ghdraft input:checked::before{visibility:visible}
 .ghacts a.btn,.ghcheck-n{text-decoration:none;color:var(--ink)}.ghacts a.btn:hover,.ghcheck-n:hover{text-decoration:underline}
 
 /* text that was pinned to the canvas, where it came from (items/pinmarks.ts); click it to jump to the snippet */
@@ -261,8 +267,8 @@ button.ghti:hover{text-decoration:underline}
 .anode[data-state=running]>.win-h .m,.anode[data-state=background]>.win-h .m{color:var(--write)}
 .anode[data-state=failed]>.win-h .m{color:var(--danger)}
 .anode .abox{flex:none;padding:8px 10px;border-top:1px solid var(--line);background:var(--rail)}
-.anode .abox textarea{display:block;width:100%;min-height:34px;max-height:120px;padding:7px 9px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none;cursor:text}
-.anode .abox textarea:focus{border-color:var(--accent)}
+.anode .abox textarea{display:block;width:100%;min-height:34px;max-height:120px;padding:7px 9px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);resize:none;outline:none;cursor:text}
+.anode .abox textarea:focus{border-color:var(--focus)}
 .anode .abox textarea:disabled{opacity:.6;cursor:not-allowed}
 .anode .alog>.me{margin:12px 0 6px;padding-top:10px;font-size:13px}
 /* its status on the tab: a dot and one short word, never cut off (the title gives way instead) */
@@ -274,8 +280,8 @@ button.ghti:hover{text-decoration:underline}
 /* a Markdown doc: rendered like a reply, scrolls inside; editing swaps in its source */
 .mdoc-b{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 18px 16px;cursor:text}
 .mdoc-md{margin:0}
-.mdoc-ed{flex:1;min-height:0;margin:8px;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12.5px/1.55 var(--mono);font-variant-ligatures:none;tab-size:2;resize:none;outline:none;cursor:text}
-.mdoc-ed:focus{border-color:var(--accent)}
+.mdoc-ed{flex:1;min-height:0;margin:8px;padding:9px 11px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12.5px/1.55 var(--mono);font-variant-ligatures:none;tab-size:2;resize:none;outline:none;cursor:text}
+.mdoc-ed:focus{border-color:var(--focus)}
 
 /* ---------- groups (items/group.ts): a frame behind its windows ---------- */
 /* always under its windows; only the tab takes the pointer, the body lets clicks and the selection box through */
@@ -286,7 +292,7 @@ button.ghti:hover{text-decoration:underline}
 .win.group.min>.win-h .t::after{content:" · " attr(data-count);color:var(--ink-2)} /* collapsed: how many windows it holds */
 .win.group .gghost{position:absolute;box-sizing:border-box;padding:8px 10px;border:1px dashed var(--line-2);border-radius:var(--r-box);color:var(--ink-2);font:500 12px/1.4 var(--sans);overflow:hidden} /* a pinned window's spot */
 .win.group[data-state=drop]{--edge:var(--accent)} /* a window dragged over it would join */
-.win.group[data-state=drop]>.win-h .t::after{content:" · drop to add";color:var(--accent)} /* on the tab: its windows never cover it */
+.win.group[data-state=drop]>.win-h .t::after{content:" · drop to add";color:var(--accent-text)} /* on the tab: its windows never cover it */
 /* which windows are in a group (items/group.ts outlines): a dotted frame with corner squares, a thin line round each window */
 .win.group[data-outline]::before,.win.group[data-outline]::after{content:"";position:absolute;pointer-events:none;z-index:var(--z-over)}
 .win.group[data-outline]::before{inset:-4px;border:1px dashed var(--accent)} /* round the whole group, tab included */

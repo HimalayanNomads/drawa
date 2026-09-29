@@ -2,7 +2,8 @@
    <html data-scheme> picks one (lib/theme.ts, and the inline script in index.html before first paint).
    To add a scheme: one block here + one line in SCHEMES in lib/theme.ts.
    --c-canvas  the canvas behind everything      --c-bg     window and panel surfaces
-   --c-text / --c-sub / --c-muted  text, secondary text, quiet labels (muted keeps >= 4.5:1 on --c-bg)
+   --c-text / --c-sub / --c-muted  text, secondary text, quiet labels (muted keeps >= 4.5:1 on --c-bg, and on --sel,
+               the hover tint and code blocks: check with `node scripts/contrast.mjs`)
    --c-accent  focus, primary buttons, sessions  the rest: palette hues used by action colors and syntax */
 
 /* ---------- light ---------- */
@@ -13,15 +14,15 @@
   --c-red:oklch(0.52 0.18 25);--c-orange:oklch(0.56 0.13 65);--c-yellow:oklch(0.55 0.11 85);--c-purple:oklch(0.52 0.17 300);
 }
 [data-scheme=rose-pine-dawn]{
-  --c-canvas:#f2e9e1;--c-bg:#fffaf3;--c-text:#575279;--c-sub:#6e6a8e;--c-muted:#797593;
+  --c-canvas:#f2e9e1;--c-bg:#fffaf3;--c-text:#575279;--c-sub:#6e6a8e;--c-muted:#686481;
   --c-accent:#286983;--c-cyan:#56949f;--c-blue:#286983;--c-green:#56949f;--c-red:#b4637a;--c-orange:#d7827e;--c-yellow:#ea9d34;--c-purple:#907aa9;
 }
 [data-scheme=catppuccin-latte]{
-  --c-canvas:#e6e9ef;--c-bg:#eff1f5;--c-text:#4c4f69;--c-sub:#5c5f77;--c-muted:#6c6f85;
+  --c-canvas:#e6e9ef;--c-bg:#eff1f5;--c-text:#4c4f69;--c-sub:#5c5f77;--c-muted:#5e6176;
   --c-accent:#8839ef;--c-cyan:#179299;--c-blue:#1e66f5;--c-green:#40a02b;--c-red:#d20f39;--c-orange:#fe640b;--c-yellow:#df8e1d;--c-purple:#8839ef;
 }
 [data-scheme=tokyo-night-day]{
-  --c-canvas:#d0d5e3;--c-bg:#e1e2e7;--c-text:#3760bf;--c-sub:#4a5a93;--c-muted:#5a6394;
+  --c-canvas:#d0d5e3;--c-bg:#e1e2e7;--c-text:#3760bf;--c-sub:#4a5a93;--c-muted:#505989;
   --c-accent:#2e7de9;--c-cyan:#007197;--c-blue:#2e7de9;--c-green:#587539;--c-red:#f52a65;--c-orange:#b15c00;--c-yellow:#8c6c3e;--c-purple:#9854f1;
 }
 [data-scheme=gruvbox-light]{
@@ -29,7 +30,7 @@
   --c-accent:#076678;--c-cyan:#427b58;--c-blue:#076678;--c-green:#79740e;--c-red:#9d0006;--c-orange:#af3a03;--c-yellow:#b57614;--c-purple:#8f3f71;
 }
 [data-scheme=solarized-light]{
-  --c-canvas:#eee8d5;--c-bg:#fdf6e3;--c-text:#073642;--c-sub:#586e75;--c-muted:#657b83;
+  --c-canvas:#eee8d5;--c-bg:#fdf6e3;--c-text:#073642;--c-sub:#586e75;--c-muted:#546a71;
   --c-accent:#268bd2;--c-cyan:#2aa198;--c-blue:#268bd2;--c-green:#859900;--c-red:#dc322f;--c-orange:#cb4b16;--c-yellow:#b58900;--c-purple:#6c71c4;
 }
 [data-scheme=github-light]{
@@ -45,11 +46,11 @@
   --c-red:oklch(0.68 0.11 25);--c-orange:oklch(0.74 0.08 70);--c-yellow:oklch(0.78 0.07 90);--c-purple:oklch(0.7 0.09 300);
 }
 [data-scheme=rose-pine]{
-  --c-canvas:#191724;--c-bg:#1f1d2e;--c-text:#e0def4;--c-sub:#b7b4cf;--c-muted:#908caa;
+  --c-canvas:#191724;--c-bg:#1f1d2e;--c-text:#e0def4;--c-sub:#b7b4cf;--c-muted:#9995b3;
   --c-accent:#ebbcba;--c-cyan:#9ccfd8;--c-blue:#31748f;--c-green:#9ccfd8;--c-red:#eb6f92;--c-orange:#f6c177;--c-yellow:#f6c177;--c-purple:#c4a7e7;
 }
 [data-scheme=rose-pine-moon]{
-  --c-canvas:#232136;--c-bg:#2a273f;--c-text:#e0def4;--c-sub:#b7b4cf;--c-muted:#908caa;
+  --c-canvas:#232136;--c-bg:#2a273f;--c-text:#e0def4;--c-sub:#b7b4cf;--c-muted:#a4a0bf;
   --c-accent:#ea9a97;--c-cyan:#9ccfd8;--c-blue:#3e8fb0;--c-green:#9ccfd8;--c-red:#eb6f92;--c-orange:#f6c177;--c-yellow:#f6c177;--c-purple:#c4a7e7;
 }
 [data-scheme=catppuccin-mocha]{
@@ -61,23 +62,23 @@
   --c-accent:#c6a0f6;--c-cyan:#8bd5ca;--c-blue:#8aadf4;--c-green:#a6da95;--c-red:#ed8796;--c-orange:#f5a97f;--c-yellow:#eed49f;--c-purple:#c6a0f6;
 }
 [data-scheme=catppuccin-frappe]{
-  --c-canvas:#292c3c;--c-bg:#303446;--c-text:#c6d0f5;--c-sub:#b5bfe2;--c-muted:#a5adce;
+  --c-canvas:#292c3c;--c-bg:#303446;--c-text:#c6d0f5;--c-sub:#b5bfe2;--c-muted:#a7afd0;
   --c-accent:#ca9ee6;--c-cyan:#81c8be;--c-blue:#8caaee;--c-green:#a6d189;--c-red:#e78284;--c-orange:#ef9f76;--c-yellow:#e5c890;--c-purple:#ca9ee6;
 }
 [data-scheme=tokyo-night]{
-  --c-canvas:#16161e;--c-bg:#1a1b26;--c-text:#c0caf5;--c-sub:#a9b1d6;--c-muted:#8089b3;
+  --c-canvas:#16161e;--c-bg:#1a1b26;--c-text:#c0caf5;--c-sub:#a9b1d6;--c-muted:#868fb9;
   --c-accent:#7aa2f7;--c-cyan:#7dcfff;--c-blue:#7aa2f7;--c-green:#9ece6a;--c-red:#f7768e;--c-orange:#ff9e64;--c-yellow:#e0af68;--c-purple:#bb9af7;
 }
 [data-scheme=tokyo-night-storm]{
-  --c-canvas:#1f2335;--c-bg:#24283b;--c-text:#c0caf5;--c-sub:#a9b1d6;--c-muted:#8089b3;
+  --c-canvas:#1f2335;--c-bg:#24283b;--c-text:#c0caf5;--c-sub:#a9b1d6;--c-muted:#959ec9;
   --c-accent:#7aa2f7;--c-cyan:#7dcfff;--c-blue:#7aa2f7;--c-green:#9ece6a;--c-red:#f7768e;--c-orange:#ff9e64;--c-yellow:#e0af68;--c-purple:#bb9af7;
 }
 [data-scheme=gruvbox-dark]{
-  --c-canvas:#1d2021;--c-bg:#282828;--c-text:#ebdbb2;--c-sub:#d5c4a1;--c-muted:#a89984;
+  --c-canvas:#1d2021;--c-bg:#282828;--c-text:#ebdbb2;--c-sub:#d5c4a1;--c-muted:#ab9c87;
   --c-accent:#83a598;--c-cyan:#8ec07c;--c-blue:#83a598;--c-green:#b8bb26;--c-red:#fb4934;--c-orange:#fe8019;--c-yellow:#fabd2f;--c-purple:#d3869b;
 }
 [data-scheme=nord]{
-  --c-canvas:#2a2f3a;--c-bg:#2e3440;--c-text:#eceff4;--c-sub:#d8dee9;--c-muted:#a3abbb;
+  --c-canvas:#2a2f3a;--c-bg:#2e3440;--c-text:#eceff4;--c-sub:#d8dee9;--c-muted:#a8b0c0;
   --c-accent:#88c0d0;--c-cyan:#8fbcbb;--c-blue:#81a1c1;--c-green:#a3be8c;--c-red:#bf616a;--c-orange:#d08770;--c-yellow:#ebcb8b;--c-purple:#b48ead;
 }
 [data-scheme=kanagawa]{
@@ -85,6 +86,6 @@
   --c-accent:#7e9cd8;--c-cyan:#7aa89f;--c-blue:#7e9cd8;--c-green:#98bb6c;--c-red:#e46876;--c-orange:#ffa066;--c-yellow:#e6c384;--c-purple:#957fb8;
 }
 [data-scheme=everforest]{
-  --c-canvas:#232a2e;--c-bg:#2d353b;--c-text:#d3c6aa;--c-sub:#c5b99d;--c-muted:#9da9a0;
+  --c-canvas:#232a2e;--c-bg:#2d353b;--c-text:#d3c6aa;--c-sub:#c5b99d;--c-muted:#a6b2a9;
   --c-accent:#a7c080;--c-cyan:#83c092;--c-blue:#7fbbb3;--c-green:#a7c080;--c-red:#e67e80;--c-orange:#e69875;--c-yellow:#dbbc7f;--c-purple:#d699b6;
 }

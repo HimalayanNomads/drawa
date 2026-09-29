@@ -84,7 +84,9 @@ func ok(body any, err error) (any, int, error) {
 }
 
 var getRoutes = map[string]routeFunc{
-	"/api/info": func(q url.Values) (any, int, error) { return map[string]any{"root": config.Root}, 200, nil },
+	"/api/info": func(q url.Values) (any, int, error) {
+		return map[string]any{"root": config.Root, "version": config.Version}, 200, nil
+	},
 	"/api/version": func(q url.Values) (any, int, error) {
 		info, _ := update.Check() // offline: no newer release to offer, which is the right answer
 		return info, 200, nil

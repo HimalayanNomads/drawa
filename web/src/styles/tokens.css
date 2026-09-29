@@ -6,17 +6,25 @@
   --canvas:var(--c-canvas);--bg:var(--c-bg);
   --rail:color-mix(in oklab,var(--c-bg) 55%,var(--c-canvas));
   --hover:color-mix(in oklab,var(--c-text) 7%,var(--c-bg));
-  --sel:color-mix(in oklab,var(--c-accent) 16%,var(--c-bg));
+  --sel:color-mix(in oklab,var(--c-accent) 12%,var(--c-bg));
   --line:color-mix(in oklab,var(--c-text) 13%,var(--c-bg));--line-2:color-mix(in oklab,var(--c-text) 25%,var(--c-bg));
   --dot:color-mix(in oklab,var(--c-text) 22%,var(--c-canvas));
   --ink:var(--c-text);--ink-2:var(--c-sub);--muted:var(--c-muted);
-  --accent:var(--c-accent);--on-accent:var(--c-bg);
-  --read:color-mix(in oklab,var(--c-blue) 60%,var(--c-muted));--edit:var(--c-cyan);--write:var(--c-purple);--run:var(--c-orange);
+  --accent:var(--c-accent);--on-accent:oklch(from var(--accent) var(--on-l) 0 0);
+  --field-edge:color-mix(in oklab,var(--muted) 80%,var(--bg)); /* input borders: 3:1 on --bg, where --line-2 is a divider */
+  --accent-text:oklch(from var(--c-accent) var(--text-l) c h);--focus:var(--accent-text); /* accent as text, and the focus ring */
+  /* A palette hue used as text keeps 4.5:1 on --bg: its lightness is capped (floored in dark), hue and chroma kept.
+     The raw hues (--*-hue) are for strokes and fills: arrows, dots, swatches. */
+  --text-l:min(l,0.46);
+  --on-l:clamp(0,(0.58 - l) * 1000,1); /* black or white text on a fill, whichever contrasts more */
+  --read-hue:color-mix(in oklab,var(--c-blue) 60%,var(--c-muted));--edit-hue:var(--c-cyan);--write-hue:var(--c-purple);--run-hue:var(--c-orange);
+  --read:oklch(from var(--read-hue) var(--text-l) c h);--edit:oklch(from var(--c-cyan) var(--text-l) c h);--write:oklch(from var(--c-purple) var(--text-l) c h);--run:oklch(from var(--c-orange) var(--text-l) c h);
   --code:color-mix(in oklab,var(--c-canvas) 55%,var(--c-bg));
-  --syn-key:var(--c-purple);--syn-str:var(--c-green);--syn-num:var(--c-orange);--syn-fn:var(--c-blue);--syn-com:var(--c-muted);
-  --add:var(--c-green);--add-bg:color-mix(in oklab,var(--c-green) 15%,var(--c-bg));
-  --del:var(--c-red);--del-bg:color-mix(in oklab,var(--c-red) 13%,var(--c-bg));
-  --warn:var(--c-orange);--warn-bg:color-mix(in oklab,var(--c-yellow) 14%,var(--c-bg));--danger:var(--c-red);--on-danger:var(--c-bg);
+  --syn-key:var(--write);--syn-str:oklch(from var(--c-green) var(--text-l) c h);--syn-num:var(--run);--syn-fn:oklch(from var(--c-blue) var(--text-l) c h);--syn-com:var(--c-muted);
+  --add-hue:var(--c-green);--del-hue:var(--c-red);
+  --add:oklch(from var(--c-green) var(--text-l) c h);--add-bg:color-mix(in oklab,var(--c-green) 14%,var(--c-bg));
+  --del:oklch(from var(--c-red) var(--text-l) c h);--del-bg:color-mix(in oklab,var(--c-red) 13%,var(--c-bg));
+  --warn:var(--run);--warn-bg:color-mix(in oklab,var(--c-yellow) 12%,var(--c-bg));--danger:var(--del);--on-danger:oklch(from var(--danger) var(--on-l) 0 0);
   --backdrop:color-mix(in oklab,var(--c-text) 42%,transparent); /* behind modal dialogs */
   --shadow:0 1px 2px oklch(0.2 0.02 255 / 0.06),0 8px 28px oklch(0.2 0.02 255 / 0.1);
   --shadow-lift:0 2px 4px oklch(0.2 0.02 255 / 0.08),0 18px 48px oklch(0.2 0.02 255 / 0.18);
@@ -47,6 +55,7 @@
   --shadow-lift:0 2px 6px oklch(0 0 0 / 0.35),0 22px 56px oklch(0 0 0 / 0.5);
   --shadow-sm:0 1px 2px oklch(0 0 0 / 0.3);
   --backdrop:color-mix(in oklab,var(--c-canvas) 72%,transparent); /* dark text would lighten the page: dim with the canvas instead */
+  --text-l:max(l,0.78);
   color-scheme:dark;
 }
 /* canvas engine (canvas.css, window.css, panels.css): the rest of the local stack, and hairline corners on tiny marks */

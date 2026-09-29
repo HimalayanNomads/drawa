@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><!-- maximum-scale: iOS would zoom the page into any input under 16px; pinch zooms the canvas instead (canvas/nav.ts) -->
+<meta name="viewport" content="width=device-width,initial-scale=1"><!-- page zoom stays allowed; pinch on the canvas zooms the canvas (canvas/nav.ts), and fields are 16px on touch screens so iOS doesn't zoom into them (base.css) -->
 <title>Drawa</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <script>/* theme before first paint, no flash of the wrong one (lib/theme.ts owns it after boot; same defaults) */
@@ -73,10 +73,10 @@
 
 <div id="inkbar" class="float" hidden role="toolbar" aria-label="Drawing tools">
   <button data-ink="color:ink" class="sw on" style="--c:var(--ink)" aria-label="Ink color"></button>
-  <button data-ink="color:edit" class="sw" style="--c:var(--edit)" aria-label="Teal"></button>
-  <button data-ink="color:write" class="sw" style="--c:var(--write)" aria-label="Violet"></button>
-  <button data-ink="color:run" class="sw" style="--c:var(--run)" aria-label="Amber"></button>
-  <button data-ink="color:danger" class="sw" style="--c:var(--danger)" aria-label="Red"></button>
+  <button data-ink="color:edit" class="sw" style="--c:var(--edit-hue)" aria-label="Teal"></button>
+  <button data-ink="color:write" class="sw" style="--c:var(--write-hue)" aria-label="Violet"></button>
+  <button data-ink="color:run" class="sw" style="--c:var(--run-hue)" aria-label="Amber"></button>
+  <button data-ink="color:danger" class="sw" style="--c:var(--del-hue)" aria-label="Red"></button>
   <span class="sep"></span>
   <button data-ink="size:2" class="sz" aria-label="Thin pen"><i style="--d:3px"></i></button>
   <button data-ink="size:4" class="sz on" aria-label="Medium pen"><i style="--d:6px"></i></button>
