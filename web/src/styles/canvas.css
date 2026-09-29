@@ -5,6 +5,8 @@
 #stage>.grid{position:absolute;left:0;top:0;width:calc(100% + 96px);height:calc(100% + 96px);pointer-events:none;will-change:transform;
   background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.3px);background-size:24px 24px}
 #stage.hand{cursor:grab}
+#stage.movesel:not(.hand){cursor:grab} /* empty canvas inside a selection's box drags the selection, like a window's tab */
+#stage.movesel:not(.hand):active{cursor:grabbing}
 #stage.panning{cursor:grabbing} /* Hand mode, Space held, or the middle button */
 #stage.glide>.grid{transition:transform .45s var(--ease),background-size .45s var(--ease)}
 #world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;isolation:isolate}

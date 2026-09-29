@@ -1,7 +1,7 @@
 // Selecting several canvas items at once: double-tap and drag on empty canvas (or Shift+drag) draws a selection
-// box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item moves them all; Delete (or the
-// bar by the selection) removes them, each through its own remove path. Only items laid out on the canvas take part:
-// pinned, floating and full-view windows don't.
+// box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item (or, in Select mode, empty canvas
+// inside the selection box) moves them all; Delete (or the bar by the selection) removes them, each through its own
+// remove path. Only items laid out on the canvas take part: pinned, floating and full-view windows don't.
 import { make, ICON, button, iconButton, confirmBox, shortcutOk, EDITABLE, keepOnScreen } from '../lib/dom'
 import { command } from '../lib/keys'
 import { stage, placed, onCanvas, hidden, rect, place, toWorld, view, onChange, moveWith, movesWith, setMoveAlong, changed, swallowNext, hits, track, type Rect, type Mover } from './canvas'
@@ -121,6 +121,7 @@ export function selectionAction(label: string, tip: string, fn: () => void, when
 // crisp at any zoom; moved with the selection bar on every change
 const selbox = stage.appendChild(make('div', 'selbox'))
 selbox.hidden = true
+let boxAt = { x0: 0, y0: 0, x1: 0, y1: 0 } // where selbox is on screen, so hit-testing it reads no layout
 
 /** Show the bar's actions again for the same selection whose meaning changed (its drawings were just grouped). */
 export function refreshActions() { picks++; sync() }
@@ -144,6 +145,7 @@ function sync() {
   const x0 = Math.min(...rs.map(r => r.x)), y0 = Math.min(...rs.map(r => r.y))
   if (n > 1) {
     const x1 = Math.max(...rs.map(r => r.x + r.w)), y1 = Math.max(...rs.map(r => r.y + r.h)), m = 6
+    boxAt = { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m }
     selbox.style.cssText = `left:${x0 - m}px;top:${y0 - m}px;width:${x1 - x0 + 2 * m}px;height:${y1 - y0 + 2 * m}px`
   }
   keepOnScreen(bar, x0, y0 - bar.offsetHeight - 10, 64) // not over the toolbar
@@ -188,6 +190,24 @@ box.hidden = true
 const empty = (t: Element) => t === stage || t.matches('#world, #edges, #inkworld')
 let last = { t: 0, x: 0, y: 0 }
 
+const inSelbox = (e: PointerEvent) => !selbox.hidden && e.clientX >= boxAt.x0 && e.clientX <= boxAt.x1 && e.clientY >= boxAt.y0 && e.clientY <= boxAt.y1
+// the box itself lets clicks through to the windows in it, so the stage shows the move cursor over its empty canvas
+stage.addEventListener('pointermove', e => {
+  if (e.buttons) return
+  stage.classList.toggle('movesel', !drawing && !handDrag() && empty(e.target as Element) && inSelbox(e))
+})
+/** A press on empty canvas inside the selection box drags the whole selection, like a drawing app; a click clears it. */
+function dragSelection(e: PointerEvent) {
+  const move = selectionMover()
+  let moved = false
+  track(stage, e, (dx, dy) => {
+    if (!moved && Math.hypot(dx, dy) < 4) return
+    moved = true
+    move(dx / view.k, dy / view.k)
+    changed() // the box, the bar and other items' arrows follow
+  }, () => { if (moved) move.end(); else clearSelection() })
+}
+
 stage.addEventListener('pointerdown', e => {
   const t = e.target as Element
   if (e.button !== 0 || drawing || !empty(t)) return
@@ -204,6 +224,7 @@ stage.addEventListener('pointerdown', e => {
   // which also cancels the browser's own blur, so a message box would keep focus and take the next shortcut key
   if (document.activeElement instanceof HTMLElement && document.activeElement.matches(EDITABLE)) document.activeElement.blur()
   getSelection()?.removeAllRanges()
+  if (!again && !e.shiftKey && inSelbox(e)) { dragSelection(e); return }
   const start = toWorld(e.clientX, e.clientY), before = e.shiftKey ? new Set(sel) : new Set<HTMLElement>()
   const inkBefore = e.shiftKey ? new Set(inkSel) : new Set<Stroke>()
   const candidates = placed().map(el => ({ el, r: rect(el) })), drawings = canvasStrokes()
