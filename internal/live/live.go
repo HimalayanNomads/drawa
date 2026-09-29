@@ -46,8 +46,10 @@ type Live struct {
 	tasks    map[string]bool // background agents still running: they outlive the turn, so the card isn't idle
 	openMsg  *int            // line where the message being streamed began: a page attaching now reads from there
 	exited   bool            // the process exited, or its input broke: the next send starts a new one (Python: p.poll())
+	effort   string          // the --effort it was started with (the CLI can't change it on a running process)
 	unread   []string        // uuids of sent messages the agent hasn't echoed back yet (queued), oldest first
 	picked   bool            // the agent echoed a message back during the current turn
+	replaced bool            // closed to start another in its place: its exit isn't the card's (see Start)
 }
 
 type ask struct{ rid, line string }
@@ -87,7 +89,7 @@ func New(cid, kind, sid, mode, model, effort string) (*Live, error) {
 		kind = Default
 	}
 	l := &Live{
-		Token: randHex(16), Gen: randHex(3), Kind: kind, Mode: mode, Model: model,
+		Token: randHex(16), Gen: randHex(3), Kind: kind, Mode: mode, Model: model, effort: effort,
 		last: time.Now(), done: make(chan struct{}), calls: map[string]*Call{},
 	}
 	spec := Spec{Cid: cid, Sid: sid, Mode: mode, Model: model, Effort: effort}
@@ -122,8 +124,11 @@ func (l *Live) Ended() {
 	l.mu.Unlock()
 	<-l.done
 	l.mu.Lock()
-	code := l.code
+	code, replaced := l.code, l.replaced
 	l.mu.Unlock()
+	if replaced { // a page still reading it would take the exit for the new process's, and fail its message
+		return
+	}
 	b, _ := json.Marshal(map[string]any{"type": "exit", "code": code})
 	l.Push(string(b) + "\n")
 }
@@ -321,6 +326,21 @@ func (l *Live) Close() {
 		return
 	}
 	l.be.Close()
+}
+
+// otherEffort: idle, and started with another effort than the one asked for now.
+func (l *Live) otherEffort(effort string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return effort != l.effort && !l.working()
+}
+
+// replace closes it quietly, to start another in its place.
+func (l *Live) replace() {
+	l.mu.Lock()
+	l.replaced = true
+	l.mu.Unlock()
+	l.Close()
 }
 
 func (l *Live) PopAsk(rid string) (string, bool) {

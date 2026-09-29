@@ -13,10 +13,13 @@ const ReapCap = 24 * time.Hour
 // Start returns the card's running process, starting one if there is none. Mu is not held while spawning (a
 // fork/exec can be slow): the card is reserved in `starting`, so concurrent sends for it still start only one.
 // Going over config.MaxLive (when set) closes the least recently used idle card. kind names the backend.
+// An idle process started with another effort is replaced (resuming its session): the CLI has no way to change
+// effort on a running process, and a typed "/effort" would show in the chat and could start a turn of its own.
+// ponytail: a working one keeps its effort until a send finds it idle.
 func Start(cid, kind, sid, mode, model, effort string) (*Live, error) {
 	Mu.Lock()
 	for {
-		if l := Registry[cid]; l != nil && l.Alive() {
+		if l := Registry[cid]; l != nil && l.Alive() && !l.otherEffort(effort) {
 			Mu.Unlock()
 			return l, nil
 		}
@@ -30,7 +33,16 @@ func Start(cid, kind, sid, mode, model, effort string) (*Live, error) {
 	}
 	ch := make(chan struct{})
 	starting[cid] = ch
+	old := Registry[cid]
+	if old != nil && old.Alive() {
+		delete(Registry, cid)
+	} else {
+		old = nil
+	}
 	Mu.Unlock()
+	if old != nil {
+		old.replace()
+	}
 
 	l, err := New(cid, kind, sid, mode, model, effort)
 

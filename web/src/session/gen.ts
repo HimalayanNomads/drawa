@@ -1,12 +1,11 @@
 // Model and effort, per session card: which model this card's Claude runs as, and how hard it thinks. Picked in the
-// card's message bar, alongside its permission mode (mode.ts). Model switches silently (bundled into the next
-// send, like mode); the CLI has no such control message for effort, so switching it on an already-running card
-// sends a real "/effort <level>" message instead, visible in the chat exactly like typing it yourself.
+// card's message bar, alongside its permission mode (mode.ts). Both go with the next send: the model switches the
+// running process silently; the CLI can't change effort on a running process, so the server starts a new one
+// (resuming the conversation) once it's idle (live.Start).
 import { make } from '../lib/dom'
 import { saveSoon } from '../lib/store'
 import { cards, meta, type Session } from './session'
 import { meta as agentMeta, metaNow, title } from '../lib/agents'
-import { send } from './live'
 
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts
 const modelsOf = (S: Session) => S.backend === 'claude' ? meta.models : metaNow(S.backend).models
@@ -15,7 +14,7 @@ function fillModel(S: Session, sel: HTMLSelectElement) {
   const models = modelsOf(S)
   if (!models.length) return // not in yet: keep the placeholder (and the card's choice, if restored)
   sel.replaceChildren(...models.map(o => {
-    const opt = make('option', '', o.displayName)
+    const opt = make('option', '', o.value === 'default' ? 'Default model' : o.displayName) // beside the effort picker's "Default effort"
     opt.value = o.value === 'default' ? '' : o.value
     opt.title = o.description
     return opt
@@ -59,7 +58,7 @@ export function setModel(S: Session, model: string) {
 }
 
 export const EFFORTS: [string, string, string][] = [
-  ['', 'Default', "Claude's own default effort for the model"],
+  ['', 'Default effort', "Claude's own default effort for the model"],
   ['low', 'Low', 'Fast, lighter-weight answers'],
   ['medium', 'Medium', 'Handles most tasks'],
   ['high', 'High', 'More thorough, slower'],
@@ -68,21 +67,14 @@ export const EFFORTS: [string, string, string][] = [
   ['auto', 'Auto', 'Claude adjusts effort per turn'],
 ]
 
-/** The effort picker for a card's message bar. Unlike model and mode, there's no silent way to change effort on a
- *  process that's already running (`claude`'s control protocol has no set_effort), so a switch there is sent as a
- *  real "/effort <level>" message. A card with no process yet (or none running right now) just remembers the
- *  choice for its next spawn (see buildArgv in internal/live/live.go); "Default" can't be sent as a live command at
- *  all (the CLI has no way to ask for its own default back), so picking it back never messages a running card. */
+/** The effort picker for a card's message bar. It's sent with every message; the process picks it up at its next
+ *  start (see Start and buildArgv in internal/live). */
 export function effortPicker(S: Session) {
   const sel = make('select', 'effortsel')
   sel.setAttribute('aria-label', 'Effort for this session')
   sel.append(...EFFORTS.map(([value, label, desc]) => Object.assign(make('option', '', label), { value, title: desc })))
   sel.value = S.effort
-  sel.onchange = () => {
-    S.effort = sel.value
-    saveSoon()
-    if (S.effort && S.gen && !S.gone) send(S, `/effort ${S.effort}`)
-  }
+  sel.onchange = () => { S.effort = sel.value; saveSoon() }
   S.effortSel = sel
   return sel
 }

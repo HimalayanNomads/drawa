@@ -355,3 +355,35 @@ func TestQueuedOnAttach(t *testing.T) {
 		t.Fatalf("local command's turn left %v queued", s.Queued)
 	}
 }
+
+type closeCount struct {
+	nopBackend
+	closed *int
+}
+
+func (c closeCount) Close() { *c.closed++ }
+
+// An idle card asked for another effort gets a new process; a working one, or the same effort, keeps its own.
+func TestEffortReplacesIdle(t *testing.T) {
+	closed := 0
+	Register("test-effort", Kind{Spawn: func(Spec, Sink) (Backend, error) { return closeCount{closed: &closed}, nil }})
+	const cid = "22222222-2222-2222-2222-222222222222"
+	t.Cleanup(func() { Mu.Lock(); delete(Registry, cid); Mu.Unlock(); delete(kinds, "test-effort") })
+	a, _ := Start(cid, "test-effort", "", "", "", "high")
+	if b, _ := Start(cid, "test-effort", "", "", "", "high"); b != a || closed != 0 {
+		t.Fatal("same effort: replaced")
+	}
+	a.mu.Lock()
+	a.busy = true
+	a.mu.Unlock()
+	if b, _ := Start(cid, "test-effort", "", "", "", "low"); b != a {
+		t.Fatal("replaced mid-turn")
+	}
+	a.mu.Lock()
+	a.busy = false
+	a.mu.Unlock()
+	b, _ := Start(cid, "test-effort", "", "", "", "low")
+	if b == a || closed != 1 || !a.replaced {
+		t.Fatalf("idle with another effort: same process %v, closed %d", b == a, closed)
+	}
+}
