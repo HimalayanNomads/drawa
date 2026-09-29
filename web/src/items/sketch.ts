@@ -1,16 +1,15 @@
 // Excalidraw sketches. On the canvas a sketch is a node showing a preview; double-click (or Edit) opens the
 // full editor in a dialog. (Excalidraw miscomputes pointer positions inside a CSS-scaled parent, so it can't
 // be edited in place on the zoomable canvas.)
-import { $, make, ICON, iconButton, project, confirmBox, uuid } from '../lib/dom'
+import { $, make, ICON, iconButton, project, uuid } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { isDark, onTheme } from '../lib/theme'
 import { forget } from '../canvas/graph'
 import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
-import { makeWindow } from '../canvas/window'
+import { makeWindow, removeButton } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { inkBox, fitInk } from '../canvas/ink'
 import { base64 } from '../lib/blobs'
-import { removable } from '../canvas/select'
 
 type Excalidraw = typeof import('@excalidraw/excalidraw')
 interface Scene { elements: readonly any[]; files: Record<string, any> }
@@ -43,10 +42,7 @@ export function sketch(opts: { id?: string; title?: string; rect?: Rect; edit?: 
     rect: opts.rect ?? freeSpot({ x: c.x - 210, y: c.y - 150, w: 420, h: 300 }),
     actions: [
       iconButton(ICON.pencil, 'Edit whiteboard', () => edit(node)),
-      iconButton(ICON.x, 'Delete whiteboard', async () => {
-        if (!await confirmBox('Delete this whiteboard?', 'The drawing is removed from this browser and can\'t be recovered.', 'Delete whiteboard')) return
-        discard(node)
-      }),
+      removeButton('Delete whiteboard', n => forgetScene(n.dataset.id!)), // the drawing stays stored while Undo is offered
     ],
   })
   node.dataset.id = id
@@ -137,9 +133,10 @@ async function edit(node: HTMLElement, isNew = false) {
   nameInput.blur() // showModal focuses the name field; tool keys (R, O, A...) should go to the drawing
 }
 
-removable('sketch', node => discard(node)) // its × asks first; a deleted selection has already asked
+const forgetScene = (id: string) => { try { localStorage.removeItem(KEY(id)) } catch {} }
+/** A new whiteboard left empty or cancelled: gone at once, nothing to undo. */
 function discard(node: HTMLElement) {
-  try { localStorage.removeItem(KEY(node.dataset.id!)) } catch {}
+  forgetScene(node.dataset.id!)
   forget(node)
   node.remove()
   changed()

@@ -1,9 +1,10 @@
 // Windows on the canvas (session cards, terminals, diagrams, sketches, plans) share one shape: a folder.
 // The header is a tab on the top-left that carries the title and the window's buttons; the body sits under it.
 // Drag by the tab, double-click it (or its – button) to collapse the window down to the tab, resize from the corner.
-import { make, ICON, iconButton } from '../lib/dom'
-import { addItem, place, front, draggable, resizable, changed, onChange, view, type Rect } from './canvas'
+import { make, ICON, iconButton, button, notice } from '../lib/dom'
+import { addItem, place, front, draggable, resizable, changed, onChange, view, park, drop, type Rect } from './canvas'
 import { redraw, forget } from './graph'
+import { dropLinks } from './links'
 import { toggleDock, toggleFloat, syncPin } from './dock'
 import { toggleFull, syncFull } from './fullview'
 import { refIcon, refOf, winTitle } from './refs'
@@ -38,16 +39,13 @@ export function setTitle(el: HTMLElement, name: string) {
   changed()
 }
 
-/** The × that takes an item off the canvas: its arrows go, it's removed, the layout is saved. `also`: the kind's
- *  own cleanup (stored data). Finds its item when clicked, so it can be made before the window exists. */
+/** The × that takes an item off the canvas: its arrows go, it's removed, the layout is saved, and a toast offers
+ *  Undo for a few seconds. `also`: the kind's own cleanup (stored data), run once Undo is no longer offered. Finds its
+ *  item when clicked, so it can be made before the window exists. */
 export function removeButton(label: string, also?: (el: HTMLElement) => void, cls = '') {
   const b: HTMLButtonElement = iconButton(ICON.x, label, () => {
     const el = b.closest<HTMLElement>('.item')
-    if (!el) return
-    forget(el)
-    el.remove()
-    also?.(el)
-    changed()
+    if (el) removeUndoably(el, also)
   }, 'closebtn' + (cls ? ' ' + cls : '')) // closebtn: how a multi-select delete finds each item's own way out
   return b
 }
@@ -61,6 +59,34 @@ onChange(() => {
   const f = finger.matches ? 2 : 1, g = Math.max(1, Math.round(2 / view.k) / 2) * f
   if (g !== gs) grips.replaceSync(`.grip{--gs:${f}} #world .grip{--gs:${(gs = g)}}`) // floating windows aren't zoomed
 })
+
+// what the Undo toast would bring back: everything removed while it shows (a deleted selection is one undo)
+let undo: { toast: HTMLElement; timer: number; items: { el: HTMLElement; back: () => void; also?: (el: HTMLElement) => void }[] } | null = null
+function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
+  const arrows = forget(el), links = dropLinks(el), put = park(el)
+  changed()
+  if (!undo) {
+    undo = { toast: notice(''), timer: 0, items: [] } // stacks with the other notices (lib/dom.ts)
+  }
+  undo.items.push({ el, also, back: () => { put(); arrows(); links() } })
+  const n = undo.items.length
+  undo.toast.replaceChildren(make('span', '', n === 1 ? 'Deleted' : `Deleted ${n} items`), button('Undo', '', () => settle(true)))
+  clearTimeout(undo.timer)
+  undo.timer = setTimeout(() => settle(false), 8000)
+}
+function settle(back: boolean) {
+  if (!undo) return
+  const { toast, timer, items } = undo
+  undo = null
+  clearTimeout(timer)
+  toast.remove()
+  for (const it of items) {
+    if (back) it.back()
+    else { drop(it.el); it.also?.(it.el) }
+  }
+  changed() // either way: a group dropping a gone member (onGone) saves too
+}
+addEventListener('pagehide', () => settle(false)) // leaving: the deletes stand, so their stored data goes too
 
 interface Win { el: HTMLElement; head: HTMLElement; title: HTMLElement; body: HTMLElement }
 let titles = 0

@@ -85,6 +85,14 @@ function removeLink(l: Link) {
   changed()
 }
 
+/** An item is leaving (maybe for a moment: a delete that can be undone): its arrows go now. Returns what puts them
+ *  back. */
+export function dropLinks(el: HTMLElement) {
+  const mine = links.filter(l => l.from === el || l.to === el)
+  mine.forEach(removeLink)
+  return () => mine.forEach(l => { if (l.from.isConnected && l.to.isConnected) addLink(l.from, l.to, l.label, l.color, l.id) })
+}
+
 /* ---------- selecting: the label becomes editable, with a delete button ---------- */
 const del = iconButton(ICON.x, 'Delete arrow (Delete)', () => { if (selected) removeLink(selected) }, 'udel')
 del.addEventListener('pointerdown', e => e.stopPropagation()) // else the canvas pan captures the pointer and the click never lands here

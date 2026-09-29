@@ -271,8 +271,13 @@ const forgotten: ((el: HTMLElement) => void)[] = []
 /** Run `fn` for every node that leaves the canvas (a message box drops its reference to it). */
 export const onForget = (fn: (el: HTMLElement) => void) => { forgotten.push(fn) }
 
-/** A node left the canvas: drop every edge pointing at it. */
+/** A node left the canvas: drop every edge pointing at it. Returns what brings them back (an undone delete). */
 export function forget(el: HTMLElement) {
+  const had = [...edges.values()].flatMap(m => m.get(el) ?? []).map(e => ({ S: e.S, counts: { ...e.counts } }))
   for (const S of edges.keys()) unlink(S, el)
   for (const fn of forgotten) fn(el)
+  return () => {
+    for (const h of had) if (h.S.card.isConnected) { const e = edge(h.S, el); Object.assign(e.counts, h.counts); paintEdge(e) }
+    redraw()
+  }
 }

@@ -74,6 +74,20 @@ export function addItem<T extends HTMLElement>(el: T, kind: string): T {
   world.append(el)
   return el
 }
+
+const away = new WeakSet<HTMLElement>(), goneFns: ((el: HTMLElement) => void)[] = []
+/** Take an item off the page for now; it may come back (a finished sub-agent's window, a delete that can still be
+ *  undone), so what holds on to it by id (a group's member list) keeps it. Returns what puts it back where it was. */
+export function park(el: HTMLElement) {
+  const parent = el.parentElement, next = el.nextSibling
+  away.add(el)
+  el.remove()
+  return () => { away.delete(el); parent?.insertBefore(el, next?.parentNode === parent ? next : null) }
+}
+export const parked = (el: HTMLElement) => away.has(el)
+/** A parked item isn't coming back after all: whoever kept it lets go (`onGone`). */
+export function drop(el: HTMLElement) { away.delete(el); goneFns.forEach(f => f(el)) }
+export const onGone = (f: (el: HTMLElement) => void) => goneFns.push(f)
 /** Every canvas item, including windows pinned to the sidebar (they still belong to the canvas). */
 export const items = (kind?: string) => holders.flatMap(h => [...h.children]).filter((el): el is HTMLElement =>
   el.classList.contains('item') && (!kind || (el as HTMLElement).dataset.kind === kind))
