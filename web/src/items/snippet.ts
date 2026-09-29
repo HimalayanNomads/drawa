@@ -177,13 +177,26 @@ pinBtn.addEventListener('pointerdown', e => e.preventDefault()) // keep the sele
 /* ---------- saved, and sendable ---------- */
 const text = (el: HTMLElement) => el.querySelector('.xnode-b')?.textContent ?? ''
 const title = winTitle
+const types: SnipType[] = ['code', 'text', 'output']
+/** Claude's text: refused whole rather than cut short, so it hears why (as a doc does). */
+function checked(a: Record<string, any>) {
+  const text = String(a.text)
+  if (text.length > MAX) throw new Error(`A snippet holds at most ${MAX.toLocaleString()} characters; this is ${text.length.toLocaleString()}. Shorten it, or use a doc.`)
+  return text
+}
 creatable('snippet', {
   size: a => sizeFor(String(a.text)),
   create: (a, r) => {
-    const type: SnipType = ['code', 'text', 'output'].includes(a.type) ? a.type : 'code'
-    return snippet({ title: String(a.title ?? (firstLine(String(a.text)) || type)), text: String(a.text), type, lang: type === 'code' ? String(a.lang ?? '') : undefined, rect: r })
+    const type: SnipType = types.includes(a.type) ? a.type : 'code', text = checked(a)
+    return snippet({ title: String(a.title ?? (firstLine(text) || type)), text, type, lang: type === 'code' ? String(a.lang ?? '') : undefined, rect: r })
   },
-  update: (el, a) => fill(el.querySelector('.xnode-b')!, String(a.text), el.dataset.type as SnipType, el.dataset.lang),
+  update: (el, a) => {
+    const text = checked(a), type: SnipType = types.includes(a.type) ? a.type : el.dataset.type as SnipType
+    const lang = type !== 'code' ? undefined : a.lang != null ? String(a.lang) : el.dataset.lang
+    el.dataset.type = type
+    if (lang) el.dataset.lang = lang; else delete el.dataset.lang
+    fill(el.querySelector('.xnode-b')!, text, type, lang)
+  },
 })
 persist('snippets',
   () => items('snippet').map(el => ({ id: el.dataset.id!, title: title(el), text: text(el), type: el.dataset.type as SnipType, lang: el.dataset.lang, rect: savedRect(el), src: markSrcOf(el) })),

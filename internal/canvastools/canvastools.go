@@ -20,7 +20,9 @@ var Tools = []map[string]any{
 	{
 		"name": "canvas_list",
 		"description": "List what's on the user's canvas: the visual workspace this session lives on. Returns each item's id, kind " +
-			"(session, note, doc, diagram, sketch, plan, snippet, image, file, files, run, git, github, agent), title, position and size in canvas " +
+			"(session, note, doc, diagram, sketch, plan, snippet, image, file, files, run, git, github, agent, preview, group; the user " +
+			"calls a doc a scratchpad and a sketch a whiteboard; a preview is a project file they opened; a group is a named frame " +
+			"holding other windows), title, position and size in canvas " +
 			`pixels, and whether it's collapsed. Your own session card is marked "you": true; items the user drew on ` +
 			`(with the pen) are marked "drawnOn": true. Also lists the arrows drawn between items (from, to, label).`,
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
@@ -71,16 +73,19 @@ var Tools = []map[string]any{
 	{
 		"name": "canvas_update",
 		"description": "Change an existing item on the canvas in place: a diagram's Mermaid source (redrawn where it is), a note's " +
-			"text, a doc's Markdown, a snippet's text; and a doc's, diagram's or snippet's title. When the user asks you to change something on the " +
+			"text, a doc's Markdown, a snippet's text (and its type and language); and a doc's, diagram's or snippet's title " +
+			"(notes have none). When the user asks you to change something on the " +
 			"canvas, update it rather than creating a new item. Read it first (canvas_read) to see its current content and " +
 			"anything the user drew on it. Pass the whole new text, not a diff. Invalid Mermaid is refused and the diagram " +
-			"stays as it was.",
+			"stays as it was. An item the user is typing in right now is refused too: tell them what you'd change instead.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"id":    map[string]any{"type": "string", "description": "The item's id from canvas_list (a prefix is enough)"},
 				"text":  map[string]any{"type": "string", "description": "The full new content"},
-				"title": map[string]any{"type": "string", "description": "A new window title (diagram, snippet)"},
+				"title": map[string]any{"type": "string", "description": "A new window title (doc, diagram, snippet)"},
+				"type":  map[string]any{"type": "string", "enum": []string{"code", "text", "output"}, "description": "Snippet only: change its type"},
+				"lang":  map[string]any{"type": "string", "description": "Snippet code language, e.g. ts, py"},
 			},
 			"required": []string{"id"},
 		},

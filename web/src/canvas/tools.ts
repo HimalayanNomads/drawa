@@ -48,6 +48,13 @@ function find(id: unknown): HTMLElement {
   return some[0]
 }
 
+/** Someone is typing in it (a note, a doc's or a diagram's source box, its title), or it holds a draft that isn't
+ *  saved yet (data-state="editing"): Claude's text would replace theirs, and Ctrl+Z can't bring it back. */
+function editing(el: HTMLElement) {
+  const f = document.activeElement
+  return el.dataset.state === 'editing' || (f instanceof HTMLElement && f !== el && el.contains(f) && (f.isContentEditable || f.matches('textarea, input')))
+}
+
 type Block = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 const text = (t: string): Block[] => [{ type: 'text', text: t }]
 
@@ -88,6 +95,10 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     const el = find(a.id), m = makers.get(el.dataset.kind ?? '')
     if (!m?.update) throw new Error(`Can't edit ${el.dataset.kind} items. Editable kinds: ${[...makers].filter(([, v]) => v.update).map(([k]) => k).join(', ')}.`)
     if (a.text == null && a.title == null) throw new Error('Nothing to change: pass text and/or title.')
+    if (a.text != null && !String(a.text).trim()) throw new Error("text can't be empty. To take an item off the canvas, ask the user.")
+    if (a.title != null && !el.querySelector(':scope > .win-h .t')) throw new Error(`A ${el.dataset.kind} has no title; change its text instead.`)
+    if (editing(el)) throw new Error(`The user is editing this ${el.dataset.kind} right now, and your change would replace what they're typing. ` +
+      "Don't retry right away: tell them what you'd change, or put it in a new item with canvas_create.")
     if (a.text != null) await m.update(el, a)
     if (a.title != null) setTitle(el, String(a.title))
     link(S, el, 'edit') // an edit arrow from the session, like a file it changed
