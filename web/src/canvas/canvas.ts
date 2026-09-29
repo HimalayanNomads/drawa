@@ -206,29 +206,36 @@ export function edgeGrip(panel: HTMLElement, minW: number, onMove?: () => void, 
 
 /** Follow one pointer press on `handle`: move(dx, dy, ev) in screen px, end(ev) on release or cancel (check
  *  `ev.type`: a cancelled press's coordinates are 0,0). Options: `keep` leaves the press's default and propagation
- *  alone (a canvas press should still blur what's focused); `every` sees every move, not one per frame (pen ink). */
+ *  alone (a canvas press should still blur what's focused); `every` sees every move, not one per frame (pen ink);
+ *  `late` captures the pointer only once it really drags (a title under the handle can still be double-clicked:
+ *  capturing on press sends the double-click to the handle). */
 export function track(handle: Element, e: PointerEvent, move: (dx: number, dy: number, ev: PointerEvent) => void, end?: (ev: PointerEvent) => void,
-  o: { keep?: boolean; every?: boolean } = {}) {
+  o: { keep?: boolean; every?: boolean; late?: boolean } = {}) {
   if (!o.keep) { e.preventDefault(); e.stopPropagation() }
-  const sx = e.clientX, sy = e.clientY
-  handle.setPointerCapture(e.pointerId)
-  let done = false
-  const step = (ev: PointerEvent) => { if (!done) move(ev.clientX - sx, ev.clientY - sy, ev) }
+  const sx = e.clientX, sy = e.clientY, id = e.pointerId, on: EventTarget = o.late ? window : handle // uncaptured: moves go elsewhere
+  let done = false, held = !o.late
+  if (held) handle.setPointerCapture(id)
+  const step = (ev: PointerEvent) => {
+    if (done || ev.pointerId !== id) return
+    if (!held && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return
+    if (!held) { handle.setPointerCapture(id); held = true }
+    move(ev.clientX - sx, ev.clientY - sy, ev)
+  }
   // once a frame (high-rate mice send several moves per frame); nothing after the end, which applies the last one
   const mv = (o.every ? step : perFrame(step)) as (ev: Event) => void
   const up = (ev: Event) => {
-    if (done) return
     const p = ev as PointerEvent
-    if (ev.type === 'pointerup') move(p.clientX - sx, p.clientY - sy, p) // where it really ended
+    if (done || p.pointerId !== id) return
+    if (ev.type === 'pointerup' && held) move(p.clientX - sx, p.clientY - sy, p) // where it really ended
     done = true
-    handle.removeEventListener('pointermove', mv)
-    handle.removeEventListener('pointerup', up)
-    handle.removeEventListener('pointercancel', up)
+    on.removeEventListener('pointermove', mv)
+    on.removeEventListener('pointerup', up)
+    on.removeEventListener('pointercancel', up)
     end?.(p)
   }
-  handle.addEventListener('pointermove', mv)
-  handle.addEventListener('pointerup', up)
-  handle.addEventListener('pointercancel', up)
+  on.addEventListener('pointermove', mv)
+  on.addEventListener('pointerup', up)
+  on.addEventListener('pointercancel', up)
 }
 
 /** Drag something out of a window onto the canvas. Past a few px, `create(x, y)` makes the new item at the

@@ -112,7 +112,7 @@ floats.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !t.closest('.win-h') || t.closest('button, [contenteditable="plaintext-only"]')) return
   const sx = parseFloat(el.style.getPropertyValue('--fx')), sy = parseFloat(el.style.getPropertyValue('--fy'))
   el.classList.add('dragging')
-  track(el.querySelector<HTMLElement>('.win-h')!, e as PointerEvent, (dx, dy) => { setAt(el, sx + dx, sy + dy); redraw() }, () => { el.classList.remove('dragging'); changed() })
+  track(el.querySelector<HTMLElement>('.win-h')!, e as PointerEvent, (dx, dy) => { setAt(el, sx + dx, sy + dy); redraw() }, () => { el.classList.remove('dragging'); changed() }, { late: true })
 })
 
 // a smaller window (a phone turned, a smaller screen): keep every floating window's tab reachable
