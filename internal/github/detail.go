@@ -1,10 +1,9 @@
 package github
 
 import (
-	"regexp"
+	"cmp"
 	"strings"
 	"sync"
-	"time"
 
 	"drawa/internal/gitx"
 )
@@ -83,6 +82,8 @@ func Pr(n string) (map[string]any, error) {
 			line = c["original_line"]
 		}
 		row["line"] = line
+		row["side"] = cmp.Or(s(c["side"]), "RIGHT")
+		row["outdated"] = c["line"] == nil // its line is gone from the current diff: shown apart, not under a line
 		hunk := s(c["diff_hunk"])
 		if len(hunk) > 600 {
 			hunk = hunk[len(hunk)-600:]
@@ -124,13 +125,18 @@ func Issue(n string) (map[string]any, error) {
 		return nil, err
 	}
 	var i map[string]any
-	if err := GhJSON(0, "", &i, "issue", "view", nn, "--json", "number,title,body,author,state,labels,url,comments,createdAt,updatedAt"); err != nil {
+	if err := GhJSON(0, "", &i, "issue", "view", nn, "--json", "number,title,body,author,state,labels,assignees,url,comments,createdAt,updatedAt"); err != nil {
 		return nil, err
 	}
 	row := IssueRow(i)
 	row["body"] = s(i["body"])
 	row["url"] = i["url"]
 	row["created"] = i["createdAt"]
+	var assignees []string
+	for _, a := range asList(i["assignees"]) {
+		assignees = append(assignees, s(a["login"]))
+	}
+	row["assignees"] = gitx.NonNil(assignees)
 	var comments []map[string]any
 	for _, c := range asList(i["comments"]) {
 		comments = append(comments, Comment(c))
@@ -139,24 +145,16 @@ func Issue(n string) (map[string]any, error) {
 	return row, nil
 }
 
-var runJobRe = regexp.MustCompile(`/actions/runs/(\d+)/job/(\d+)`)
-
-// Log is the failing steps' log of a GitHub Actions job (from a check's details URL), for Claude to read.
-func Log(url string) (map[string]any, error) {
-	m := runJobRe.FindStringSubmatch(url)
-	if m == nil {
-		return nil, errf("Only GitHub Actions checks have logs here; open the check's page for others.")
-	}
-	out, err := Gh(120*time.Second, "", "run", "view", m[1], "--job", m[2], "--log-failed")
+// PrChecks is only a pull request's checks: what the window polls while some are still running.
+func PrChecks(n string) ([]map[string]any, error) {
+	n, err := Num(n)
 	if err != nil {
-		// ponytail: matched on gh's error text; GitHub answers 410 Gone once a run's logs have expired
-		if strings.Contains(err.Error(), "HTTP 410") {
-			return nil, errf("GitHub no longer keeps this run's logs (they expire).")
-		}
 		return nil, err
 	}
-	if len(out) > 20_000 {
-		out = out[len(out)-20_000:]
+	var p map[string]any
+	if err := GhJSON(0, "", &p, "pr", "view", n, "--json", "statusCheckRollup"); err != nil {
+		return nil, err
 	}
-	return map[string]any{"log": out}, nil
+	checks, _ := p["statusCheckRollup"].([]any)
+	return Checks(checks), nil
 }

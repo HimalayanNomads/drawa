@@ -206,6 +206,29 @@ func Repo() (map[string]any, error) {
 	return v, nil
 }
 
+var meCache = struct {
+	sync.Mutex
+	login string
+}{}
+
+// Me is the login gh acts as and the repo it acts on: what every confirm names before something is published.
+func Me() (map[string]any, error) {
+	repo, err := Repo()
+	if err != nil {
+		return nil, err
+	}
+	meCache.Lock()
+	defer meCache.Unlock()
+	if meCache.login == "" {
+		out, err := Gh(0, "", "api", "user", "--jq", ".login")
+		if err != nil {
+			return nil, err
+		}
+		meCache.login = strings.TrimSpace(out)
+	}
+	return map[string]any{"login": meCache.login, "repo": repo["nameWithOwner"]}, nil
+}
+
 // State is the repo on GitHub, and the pull request for the branch you're on (if any).
 func State() map[string]any {
 	_, branch := gitx.Git("branch", "--show-current") // empty on detached HEAD: no pull request to look for
@@ -234,41 +257,11 @@ func State() map[string]any {
 	}
 }
 
-func Prs(state string) ([]map[string]any, error) {
-	if state != "open" && state != "closed" && state != "merged" && state != "all" {
-		state = "open"
-	}
-	var raw []map[string]any
-	if err := GhJSON(0, "", &raw, "pr", "list", "--state", state, "--limit", strconv.Itoa(ListMax+1), "--json", PRList); err != nil {
-		return nil, err
-	}
-	out := make([]map[string]any, len(raw))
-	for i, p := range raw {
-		out[i] = PrRow(p)
-	}
-	return out, nil
-}
-
 func IssueRow(i map[string]any) map[string]any {
 	return map[string]any{
 		"number": i["number"], "title": i["title"], "author": who(i["author"]),
 		"updated": i["updatedAt"], "state": i["state"], "labels": labels(i),
 	}
-}
-
-func Issues(state string) ([]map[string]any, error) {
-	if state != "open" && state != "closed" && state != "all" {
-		state = "open"
-	}
-	var raw []map[string]any
-	if err := GhJSON(0, "", &raw, "issue", "list", "--state", state, "--limit", strconv.Itoa(ListMax+1), "--json", "number,title,author,labels,updatedAt,state"); err != nil {
-		return nil, err
-	}
-	out := make([]map[string]any, len(raw))
-	for i, x := range raw {
-		out[i] = IssueRow(x)
-	}
-	return out, nil
 }
 
 func Comment(c map[string]any) map[string]any {

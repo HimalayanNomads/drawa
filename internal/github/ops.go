@@ -1,6 +1,7 @@
 package github
 
 import (
+	"cmp"
 	"regexp"
 	"strings"
 	"time"
@@ -53,68 +54,89 @@ func Draft(base, backend string) map[string]any {
 	return map[string]any{"title": title, "body": strings.TrimSpace(body)}
 }
 
-// Op carries out a write operation from the GitHub window (checkout, draft, create a PR, or comment).
+// ops are the GitHub window's writes, by name. Each validates its own input before anything reaches gh, and gh gets
+// its arguments as argv (never through a shell); free text (bodies, titles) goes on stdin or as one --flag=value.
+var ops = map[string]func(map[string]any) map[string]any{
+	"checkout": checkout,
+	"draft": func(b map[string]any) map[string]any {
+		return Draft(cmp.Or(strings.TrimSpace(s(b["base"])), "main"), s(b["backend"]))
+	},
+	"create":      createPr,
+	"comment":     comment,
+	"review":      review,
+	"linecomment": lineComment,
+	"merge":       merge,
+	"state":       setState,
+	"newissue":    newIssue,
+	"edit":        edit,
+	"rerun":       rerun,
+}
+
+// Op carries out a write operation from the GitHub window.
 func Op(body map[string]any) map[string]any {
-	op, _ := body["op"].(string)
-	switch op {
-	case "checkout":
-		n, err := Num(body["n"])
-		if err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		out, err := Gh(120*time.Second, "", "pr", "checkout", n)
-		if err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		return map[string]any{"ok": true, "out": strings.TrimSpace(out)}
-	case "draft":
-		base := strings.TrimSpace(s(body["base"]))
-		if base == "" {
-			base = "main"
-		}
-		return Draft(base, s(body["backend"]))
-	case "create":
-		title, base := strings.TrimSpace(s(body["title"])), strings.TrimSpace(s(body["base"]))
-		if title == "" || base == "" {
-			return map[string]any{"ok": false, "out": "A pull request needs a title and a base branch."}
-		}
-		if _, err := BranchArg(base); err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		ok, out := gitx.GitOpts(gitx.Opts{Timeout: 120 * time.Second}, "push", "-u", "origin", "HEAD")
-		if !ok { // gh can't open a PR for a branch GitHub doesn't have
-			if len(out) > 2000 {
-				out = out[len(out)-2000:]
-			}
-			return map[string]any{"ok": false, "out": out}
-		}
-		args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--body-file", "-"}
-		if truthy(body["draft"]) {
-			args = append(args, "--draft")
-		}
-		created, err := Gh(120*time.Second, s(body["body"]), args...)
-		if err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		return map[string]any{"ok": true, "out": strings.TrimSpace(created)}
-	case "comment":
-		kind := "issue"
-		if s(body["kind"]) == "pr" {
-			kind = "pr"
-		}
-		text := strings.TrimSpace(s(body["body"]))
-		if text == "" {
-			return map[string]any{"ok": false, "out": "Write a comment first."}
-		}
-		n, err := Num(body["n"])
-		if err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		out, err := Gh(0, text, kind, "comment", n, "--body-file", "-")
-		if err != nil {
-			return map[string]any{"ok": false, "out": err.Error()}
-		}
-		return map[string]any{"ok": true, "out": strings.TrimSpace(out)}
+	op := s(body["op"])
+	if f, ok := ops[op]; ok {
+		return f(body)
 	}
 	return map[string]any{"ok": false, "out": "unknown op " + op}
+}
+
+func fail(err error) map[string]any { return map[string]any{"ok": false, "out": err.Error()} }
+
+// reply is gh's answer as the page reads it: ok, and what gh printed (a URL, usually) or its error.
+func reply(out string, err error) map[string]any {
+	if err != nil {
+		return fail(err)
+	}
+	return map[string]any{"ok": true, "out": strings.TrimSpace(out)}
+}
+
+// kind is "pr" or "issue": which gh command a shared op (comment, state, edit) runs.
+func kind(b map[string]any) string {
+	if s(b["kind"]) == "pr" {
+		return "pr"
+	}
+	return "issue"
+}
+
+func checkout(b map[string]any) map[string]any {
+	n, err := Num(b["n"])
+	if err != nil {
+		return fail(err)
+	}
+	return reply(Gh(120*time.Second, "", "pr", "checkout", n))
+}
+
+func createPr(b map[string]any) map[string]any {
+	title, base := strings.TrimSpace(s(b["title"])), strings.TrimSpace(s(b["base"]))
+	if title == "" || base == "" {
+		return map[string]any{"ok": false, "out": "A pull request needs a title and a base branch."}
+	}
+	if _, err := BranchArg(base); err != nil {
+		return fail(err)
+	}
+	ok, out := gitx.GitOpts(gitx.Opts{Timeout: 120 * time.Second}, "push", "-u", "origin", "HEAD")
+	if !ok { // gh can't open a PR for a branch GitHub doesn't have
+		if len(out) > 2000 {
+			out = out[len(out)-2000:]
+		}
+		return map[string]any{"ok": false, "out": out}
+	}
+	args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--body-file", "-"}
+	if truthy(b["draft"]) {
+		args = append(args, "--draft")
+	}
+	return reply(Gh(120*time.Second, s(b["body"]), args...))
+}
+
+func comment(b map[string]any) map[string]any {
+	text := strings.TrimSpace(s(b["body"]))
+	if text == "" {
+		return map[string]any{"ok": false, "out": "Write a comment first."}
+	}
+	n, err := Num(b["n"])
+	if err != nil {
+		return fail(err)
+	}
+	return reply(Gh(0, text, kind(b), "comment", n, "--body-file", "-"))
 }

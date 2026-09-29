@@ -117,11 +117,19 @@ var getRoutes = map[string]routeFunc{
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
 	"/api/session":   sessionRoute,
 	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(), 200, nil },
-	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(cmp.Or(q.Get("state"), "open"))) },
-	"/api/gh/issues": func(q url.Values) (any, int, error) { return ok(github.Issues(cmp.Or(q.Get("state"), "open"))) },
+	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(ghList(q))) },
+	"/api/gh/issues": func(q url.Values) (any, int, error) { return ok(github.Issues(ghList(q))) },
+	"/api/gh/checks": func(q url.Values) (any, int, error) { return ok(github.PrChecks(q.Get("n"))) },
+	"/api/gh/runs":   func(q url.Values) (any, int, error) { return ok(github.Runs(q.Get("limit"))) },
+	"/api/gh/labels": func(q url.Values) (any, int, error) { return ok(github.Labels()) },
+	"/api/gh/me":     func(q url.Values) (any, int, error) { return ok(github.Me()) },
 	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
 	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
 	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
+}
+
+func ghList(q url.Values) github.List {
+	return github.ListArgs(cmp.Or(q.Get("state"), "open"), q.Get("q"), q.Get("filter"), q.Get("limit"))
 }
 
 var agentIDRe = regexp.MustCompile(`^[\w-]{1,100}$`)
