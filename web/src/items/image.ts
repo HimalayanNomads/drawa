@@ -3,7 +3,7 @@
 // server (a file named by its hash, `src`), so every browser and address sees them; pictures from before that live
 // in this browser's IndexedDB (lib/blobs) and move to the server the first time they're shown. Draw on it to point at things, then @ it or drop it on a
 // card: Claude gets the picture, with your drawing when there is one.
-import { make, ping, toast, typing, uuid } from '../lib/dom'
+import { make, ping, toast, typing, uuid, button } from '../lib/dom'
 import { openZoom } from '../lib/zoom'
 import { post } from '../lib/api'
 import { persist, each } from '../lib/store'
@@ -58,9 +58,12 @@ function imageWindow(o: Saved) {
   const gone = () => body.replaceChildren(make('p', 'none', "This picture isn't stored anymore (it was kept in another browser, or its data was cleared)."))
   if (o.src) {
     const url = '/api/images/' + o.src
-    // missing (404): gone for good. Anything else (server down, restarting): try again once it's back
-    img.onerror = () => fetch(url).then(r => r.status === 404, () => false).then(missing => {
-      if (missing) return gone()
+    // missing (404): gone for good. No answer (server down, restarting): try again once it's back. Any other answer:
+    // the server is there, so waiting for it to come back would wait forever; say so, with a Retry
+    img.onerror = () => fetch(url).then(r => r.status, () => 0).then(status => {
+      if (status === 404) return gone()
+      if (status) return body.replaceChildren(make('p', 'none', `This picture couldn't be loaded (${status === 200 ? 'not a readable image' : `the server answered ${status}`}).`),
+        button('Retry', '', () => { body.replaceChildren(box); img.src = url + '?r=' + Date.now() }))
       img.alt = `${o.title} (couldn't load; retrying when the server is back)`
       retry.set(img, url)
     })
