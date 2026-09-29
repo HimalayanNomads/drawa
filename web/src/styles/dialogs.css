@@ -7,6 +7,7 @@ dialog .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1p
 .prompt{width:min(420px,calc(100vw - 32px));padding:20px 20px 16px}
 .prompt h2{margin:0 0 6px;font-size:16px;font-weight:600}
 .prompt p{margin:0 0 18px;font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
+#confirm p{white-space:pre-line;max-height:50vh;overflow:auto;overflow-wrap:anywhere} /* what gets published, as written */
 .prompt .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
 /* the update dialog (lib/update.ts): smaller and quieter than a confirm, the app barely dimmed behind it */
 #update{width:min(360px,calc(100vw - 32px));padding:16px 16px 12px}

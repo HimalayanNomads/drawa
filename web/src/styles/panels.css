@@ -65,8 +65,8 @@
 #foldall{height:28px;font-size:12px}
 .diff{display:grid;grid-template-columns:minmax(max-content,1fr);padding:6px 0;overflow-x:auto;font:12px/20px var(--mono);font-variant-ligatures:none} /* show exactly the characters that change */
 /* one column as wide as the longest line: every row's color spans the full scroll width, not just the visible part */
-.diff div{display:grid;grid-template-columns:28px max-content;min-width:100%;white-space:pre;color:var(--ink-2)}
-.diff div::before{content:attr(data-s);text-align:center;color:var(--muted)}
+.diff>div{display:grid;grid-template-columns:28px max-content;min-width:100%;white-space:pre;color:var(--ink-2)}
+.diff>div::before{content:attr(data-s);text-align:center;color:var(--muted)}
 .diff .add{background:var(--add-bg);color:var(--ink)}.diff .add::before{color:var(--add)}
 .diff .del{background:var(--del-bg);color:var(--ink)}.diff .del::before{color:var(--del)}
 .diff .sep{display:block;width:auto;height:auto;text-align:center;color:var(--muted);background:var(--hover)}

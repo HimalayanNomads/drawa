@@ -1,7 +1,7 @@
 // GitHub through the `gh` CLI (the Go server runs it with your own login): the data shapes, and sending a pull request,
 // its failing checks, its review comments or an issue to Claude. Those are references like canvas items, but they
 // aren't on the canvas: each is a detached element whose dataset says what to fetch at send time.
-import { make } from '../lib/dom'
+import { make, confirmBox, toast, clip } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { referable } from '../canvas/refs'
 import { centerOn } from '../canvas/canvas'
@@ -13,9 +13,12 @@ import { who, lastAgent } from '../lib/agents'
 export interface Check { name: string; state: 'pass' | 'fail' | 'pending' | 'skip'; url: string }
 export interface Note { author: string; body: string; when: string; state?: string }
 export interface PrRow { number: number; title: string; author: string; head: string; base: string; draft: boolean; review: string; updated: string; state: string; labels: string[]; checks: Check[] }
-export interface Pr extends PrRow { url: string; body: string; additions: number; deletions: number; files: number; mergeable: string; created: string; comments: Note[]; reviews: Note[]; inline: (Note & { path: string; line: number; hunk: string })[]; inline_error?: string; diff: string; diff_truncated?: boolean }
+export interface Pr extends PrRow { url: string; body: string; additions: number; deletions: number; files: number; mergeable: string; created: string; comments: Note[]; reviews: Note[]; inline: Inline[]; inline_error?: string; diff: string; diff_truncated?: boolean }
+export type Inline = Note & { path: string; line: number; side: 'LEFT' | 'RIGHT'; outdated: boolean; hunk: string }
 export interface IssueRow { number: number; title: string; author: string; updated: string; state: string; labels: string[] }
-export interface Issue extends IssueRow { body: string; url: string; created: string; comments: Note[] }
+export interface Issue extends IssueRow { body: string; url: string; created: string; comments: Note[]; assignees: string[] }
+export interface Run { id: number; title: string; workflow: string; branch: string; event: string; created: string; url: string; attempt: number; state: Check['state']; conclusion: string }
+export interface Label { name: string; color: string; description: string }
 export interface GhState { ok: boolean; error?: string; repo?: string; url?: string; default?: string; branch?: string; pr?: (PrRow & { url: string }) | null }
 
 type GhReply = { ok?: boolean; out?: string; title?: string; body?: string; error?: string }
@@ -24,6 +27,22 @@ export const ghPost = (body: object): Promise<GhReply> =>
   post('gh', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
 export const getPr = (n: number) => api<Pr>(`gh/pr?n=${n}`)
 export const getIssue = (n: number) => api<Issue>(`gh/issue?n=${n}`)
+export const getChecks = (n: number) => api<Check[]>(`gh/checks?n=${n}`)
+let me: Promise<{ login: string; repo: string } | null> | undefined
+/** Who gh publishes as, and where: asked once (null when it can't tell; the confirm then says less). */
+export const whoami = () => (me ??= api<{ login: string; repo: string }>('gh/me').catch(() => (me = undefined, null)))
+
+/** Every write goes through here: a confirm that says what gets published, as whom and where; then the op, and a
+ *  toast either way. Resolves to the reply when it went through, undefined when cancelled or it failed. */
+export async function publish(title: string, what: string, action: string, body: object, done: string) {
+  const u = await whoami()
+  const where = u ? `\n\nPublished on GitHub as @${u.login} in ${u.repo}.` : '\n\nPublished on GitHub under your account.'
+  if (!await confirmBox(title, clip(what, 1200) + where, action)) return
+  const r = await ghPost(body)
+  if (!r.ok) { toast(`${action} failed: ${(r.out || 'gh gave no reason.').split('\n')[0]}`); return }
+  toast(done)
+  return r
+}
 
 /** "3 passed, 1 failed, 2 running" counts, and the dot color for a list row. */
 export function tally(checks: Check[]) {

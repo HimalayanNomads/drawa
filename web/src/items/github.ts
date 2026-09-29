@@ -1,25 +1,30 @@
-// The GitHub window: pull requests and issues of this repo (through the `gh` CLI), and one of them in detail: the
-// conversation, the files changed, the checks. Anything here can go to Claude (see gh.ts). One per canvas, like Git.
-import { make, ICON, iconButton, button, confirmBox, ping, extLink, ago } from '../lib/dom'
+// The GitHub window: pull requests, issues and workflow runs of this repo (through the `gh` CLI), searchable, and one
+// pull request or issue in detail (ghpr.ts, ghissue.ts; runs and checks in ghruns.ts). Anything here can go to Claude
+// (see gh.ts), and every write asks first (publish() in gh.ts). One per canvas, like Git.
+import { make, ICON, iconButton, button, ping, extLink, ago, pressed } from '../lib/dom'
 import { api, q } from '../lib/api'
-import { md, enhance, enhanceMarked } from '../lib/markdown'
+import { md, enhance } from '../lib/markdown'
 import { enhance as enhanceSelect } from '../lib/select'
 import { persist } from '../lib/store'
 import { items, savedRect, centerOn, spotBeside, changed, type Rect } from '../canvas/canvas'
 import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
-import { unified } from '../panels/diff'
-import { ghPost, getPr, getIssue, tally, dot, reviewWord, stateOf, REVIEW, sendToClaude, sendLabel, type Pr, type Issue, type PrRow, type IssueRow, type Check, type Note, type What } from './gh'
+import { tally, dot, reviewWord, stateOf, REVIEW, publish, type Pr, type Issue, type PrRow, type IssueRow, type Note, type Run } from './gh'
+import { prDetail } from './ghpr'
+import { issueDetail, newIssue } from './ghissue'
+import { runList } from './ghruns'
 
 export const GH_ICON = '<svg viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><path d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7M8.5 3 7 4.5 8.5 6"/></svg>'
+const REFRESH = '<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/></svg>'
 
-type Tab = 'pr' | 'issue'
-interface View { tab: Tab; state: string; n?: number; sub?: 'conv' | 'files' | 'checks' }
-let win: { el: HTMLElement; body: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow)[]; failed?: boolean } | undefined
+type Tab = 'pr' | 'issue' | 'runs'
+/** What the window shows. q and filter narrow the lists (GitHub search syntax; mine / review / assigned). */
+export interface View { tab: Tab; state: string; n?: number; sub?: 'conv' | 'files' | 'checks'; q?: string; filter?: string }
+export let win: { el: HTMLElement; body: HTMLElement; view: View; seen?: Pr | Issue | (PrRow | IssueRow | Run)[]; failed?: boolean; more: number } | undefined
 
 /** Open (or bring into view) the GitHub window, optionally at a pull request or issue (and one of its tabs). */
-export function openGitHub(at?: { tab: Tab; n?: number; sub?: View['sub'] }, r?: Rect, saved?: View) {
+export function openGitHub(at?: { tab: 'pr' | 'issue'; n?: number; sub?: View['sub'] }, r?: Rect, saved?: View) {
   if (!win) {
     const { el, body } = makeWindow({
       kind: 'github', cls: 'ghnode', title: 'GitHub', minW: 320, minH: 240,
@@ -28,7 +33,7 @@ export function openGitHub(at?: { tab: Tab; n?: number; sub?: View['sub'] }, r?:
     })
     el.dataset.id = 'github'
     body.classList.add('ghbody')
-    win = { el, body, view: saved ?? { tab: 'pr', state: 'open' } }
+    win = { el, body, view: saved ?? { tab: 'pr', state: 'open' }, more: 0 }
     if (!r) centerOn(el)
   } else { centerOn(win.el); ping(win.el) }
   if (at) win.view = { ...win.view, tab: at.tab, n: at.n, sub: at.sub ?? 'conv' }
@@ -36,22 +41,27 @@ export function openGitHub(at?: { tab: Tab; n?: number; sub?: View['sub'] }, r?:
   changed()
 }
 
-function show() {
+export function show() {
   const w = win!
   w.seen = undefined
   w.failed = false
   if (w.view.n) return w.view.tab === 'pr' ? prDetail(w.view.n) : issueDetail(w.view.n)
+  if (w.view.tab === 'runs') return runList()
   list()
 }
-const go = (v: Partial<View>) => { win!.view = { ...win!.view, ...v }; show(); changed() }
-const fail = (box: HTMLElement, e: unknown) => box.replaceChildren(make('p', 'ghnote bad', (e as Error).message))
+/** Move the window to another view. A new view object: loads still running for the old one see it and stop. */
+export const go = (v: Partial<View>) => { win!.view = { ...win!.view, ...v }; win!.more = 0; show(); changed() }
+export const fail = (box: HTMLElement, e: unknown) => box.replaceChildren(make('p', 'ghnote bad', (e as Error).message))
+/** Is this still what the window shows? (A slow load mustn't draw over where you went meanwhile.) */
+export const still = (w: typeof win, v: View) => win === w && w!.view === v
+
 /** Load one pull request or issue into the window: undefined when it failed (the error is shown) or you moved on. */
-async function load<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
+export async function load<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
   const w = win!, v = w.view
   w.body.replaceChildren(make('p', 'ghnote', `Loading ${what}…`))
   let x: T
   try { x = await get() } catch (e) {
-    if (win !== w || w.view !== v) return
+    if (!still(w, v)) return
     // not a dead end: back to the list, or try again (a rate limit, a gh login); a reload opens the list, not this
     w.failed = true
     const top = make('div', 'ghhead')
@@ -62,37 +72,78 @@ async function load<T extends Pr | Issue>(what: string, get: () => Promise<T>) {
     changed()
     return
   }
-  if (win !== w || w.view !== v) return
+  if (!still(w, v)) return
   w.seen = x
   return x
 }
-const SHOWN = 50 // the server sends one more when there are more
+export const SHOWN = 50 // a page of a list; the server sends one more when there are more
+const CAP = 500 // the server's most; past it, a narrower search
 
 /* ---------- lists ---------- */
-const STATES: Record<Tab, string[]> = { pr: ['open', 'merged', 'closed', 'all'], issue: ['open', 'closed', 'all'] }
+const STATES: Record<Tab, string[]> = { pr: ['open', 'merged', 'closed', 'all'], issue: ['open', 'closed', 'all'], runs: [] }
+const FILTERS: Record<Tab, [string, string][]> = {
+  pr: [['mine', 'Mine'], ['review', 'Review requested'], ['assigned', 'Assigned to me']],
+  issue: [['mine', 'Mine'], ['assigned', 'Assigned to me']], runs: [],
+}
 
-async function list() {
-  const w = win!, v = w.view, bar = make('div', 'ghbar'), rows = make('div', 'ghlist')
-  for (const [tab, label] of [['pr', 'Pull requests'], ['issue', 'Issues']] as const) {
-    const b = button(label, v.tab === tab ? 'on' : '', () => go({ tab, state: 'open' }))
-    b.setAttribute('aria-pressed', String(v.tab === tab))
-    bar.append(b)
+/** The top bar every list shares: Pull requests / Issues / Actions, then `extra` (a state menu), then Refresh. */
+export function topBar(...extra: HTMLElement[]) {
+  const v = win!.view, bar = make('div', 'ghbar'), tabs = make('span', 'ghkinds')
+  for (const [tab, label] of [['pr', 'Pull requests'], ['issue', 'Issues'], ['runs', 'Actions']] as const) {
+    const b = button(label, '', () => go({ tab, state: 'open', n: undefined, filter: undefined, q: undefined }))
+    pressed(b, v.tab === tab)
+    tabs.append(b)
   }
+  bar.append(tabs, make('span', 'spacer'), ...extra, iconButton(REFRESH, 'Refresh', show))
+  return bar
+}
+
+/** Rows of a list, and Load more under them while there are more (up to CAP). */
+export async function pages<T>(rows: HTMLElement, get: (limit: number) => Promise<T[]>, draw: (r: T) => HTMLElement, none: string) {
+  const w = win!, v = w.view, limit = SHOWN + w.more
+  if (!rows.childElementCount) rows.replaceChildren(make('p', 'ghnote', 'Loading…')) // a reload keeps its rows (and the scroll) until the new ones are in
+  try {
+    const data = await get(limit)
+    if (!still(w, v)) return
+    const shown = data.slice(0, limit)
+    w.seen = shown as typeof w.seen
+    const more = data.length > limit
+    const next = button('Load more', 'ghmore', () => { next.disabled = true; next.textContent = 'Loading…'; w.more += SHOWN; pages(rows, get, draw, none) })
+    rows.replaceChildren(...shown.map(draw), ...(data.length ? [] : [make('p', 'ghnote', none)]),
+      ...(more && limit < CAP ? [next] : []),
+      ...(more && limit >= CAP ? [make('p', 'ghnote', `Showing the latest ${limit}. Narrow the search for older ones.`)] : []))
+  } catch (e) { if (still(w, v)) fail(rows, e) }
+}
+
+function list() {
+  const w = win!, v = w.view, rows = make('div', 'ghlist')
   const sel = make('select')
   sel.setAttribute('aria-label', 'Show')
   for (const s of STATES[v.tab]) sel.append(new Option(s[0].toUpperCase() + s.slice(1), s, false, s === v.state))
   sel.onchange = () => go({ state: sel.value })
-  bar.append(make('span', 'spacer'), sel, iconButton('<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/></svg>', 'Refresh', show))
-  rows.append(make('p', 'ghnote', 'Loading…'))
-  w.body.replaceChildren(bar, rows)
+  w.body.replaceChildren(topBar(sel), finder(v), rows)
   enhanceSelect(sel)
-  try {
-    const data = await api<(PrRow | IssueRow)[]>(`gh/${v.tab === 'pr' ? 'prs' : 'issues'}?state=${v.state}`)
-    if (win !== w || w.view !== v) return // moved on meanwhile
-    w.seen = data.slice(0, SHOWN)
-    rows.replaceChildren(...w.seen.map(row), ...(data.length ? [] : [make('p', 'ghnote', `No ${v.state === 'all' ? '' : v.state + ' '}${v.tab === 'pr' ? 'pull requests' : 'issues'}.`)]),
-      ...(data.length > SHOWN ? [make('p', 'ghnote', `Showing the latest ${SHOWN}. Older ones are on GitHub.`)] : []))
-  } catch (e) { fail(rows, e) }
+  const kind = v.tab === 'pr' ? 'pull requests' : 'issues'
+  pages(rows, limit => api<(PrRow | IssueRow)[]>(`gh/${v.tab === 'pr' ? 'prs' : 'issues'}?state=${v.state}&q=${q(v.q ?? '')}&filter=${v.filter ?? ''}&limit=${limit}`),
+    row, `No ${v.state === 'all' ? '' : v.state + ' '}${kind}${v.q || v.filter ? ' match' : ''}.`)
+}
+
+/** The search box (GitHub search syntax: author:x label:bug text) and the quick filters, over a list. */
+function finder(v: View) {
+  const box = make('form', 'ghfind'), input = make('input'), chips = make('div', 'row')
+  Object.assign(input, { type: 'search', value: v.q ?? '', placeholder: 'Search: author:x label:bug text' })
+  input.setAttribute('aria-label', `Search ${v.tab === 'pr' ? 'pull requests' : 'issues'} (GitHub search syntax)`)
+  input.addEventListener('keydown', e => e.stopPropagation())
+  box.onsubmit = e => { e.preventDefault(); go({ q: input.value.trim() || undefined }) }
+  for (const [f, label] of FILTERS[v.tab]) {
+    const b = button(label, '', () => go({ filter: v.filter === f ? undefined : f }))
+    b.type = 'button'
+    pressed(b, v.filter === f)
+    chips.append(b)
+  }
+  if (v.tab === 'issue') chips.append(make('span', 'spacer'), Object.assign(button('New issue', 'primary', newIssue), { type: 'button' }))
+  box.append(input, chips)
+  return box
 }
 
 function row(r: PrRow | IssueRow) {
@@ -110,11 +161,11 @@ function row(r: PrRow | IssueRow) {
 }
 
 // URLs in GitHub's data open only if they're https: (a commit status's targetUrl is whatever its sender set)
-const https = (u: string) => /^https:\/\//i.test(u ?? '')
-const ghLink = (url: string) => https(url) ? [extLink('btn', 'Open on GitHub', url)] : []
+export const https = (u: string) => /^https:\/\//i.test(u ?? '')
+export const ghLink = (url: string) => https(url) ? [extLink('btn', 'Open on GitHub', url)] : []
 
-/* ---------- one pull request ---------- */
-function header(title: string, n: number, back: string, state: string, facts: string[]) {
+/* ---------- shared by the pull request and issue views ---------- */
+export function header(title: string, n: number, back: string, state: string, facts: string[]) {
   const top = make('div', 'ghhead'), h = make('h3')
   top.append(button(`← ${back}`, 'ghback', () => go({ n: undefined })))
   h.append(title, ' ', make('span', 'ghn', `#${n}`))
@@ -125,111 +176,47 @@ function header(title: string, n: number, back: string, state: string, facts: st
   return top
 }
 
-async function prDetail(n: number) {
-  const p = await load(`pull request #${n}`, () => getPr(n))
-  if (!p) return
-  const w = win!, v = w.view, t = tally(p.checks)
-  const acts = make('div', 'ghacts')
-  const send = (what: What) => () => sendToClaude(what, n, p.title)
-  const sendChecks = button(`Failing checks${t.fail ? ` (${t.fail})` : ''}`, '', send('checks'))
-  sendChecks.disabled = !t.fail
-  const reviews = p.reviews.length + p.inline.length
-  const sendReviews = button(`Review comments${reviews ? ` (${reviews})` : ''}`, '', send('reviews'))
-  sendReviews.disabled = !reviews && !p.comments.length
-  acts.append(make('span', 'ghsend', sendLabel() + ':'), button('This PR', 'ai', send('pr')), sendChecks, sendReviews,
-    make('span', 'spacer'), button('Check out', '', () => checkout(p)), ...ghLink(p.url))
-  const tabs = make('div', 'ghtabs'), pane = make('div', 'ghpane')
-  const subs = [['conv', `Conversation${p.comments.length + p.reviews.length ? ` (${p.comments.length + p.reviews.length})` : ''}`], ['files', `Files (${p.files})`], ['checks', `Checks${p.checks.length ? ` (${t.pass}/${p.checks.length})` : ''}`]] as const
-  for (const [k, label] of subs) {
-    const b = button(label, (v.sub ?? 'conv') === k ? 'on' : '', () => { v.sub = k; tabs.querySelectorAll('.on').forEach(x => x.classList.remove('on')); b.classList.add('on'); fill(); changed() })
-    tabs.append(b)
-  }
-  // on the page first: diagrams and code tools need it (conversation() builds them off it, enhanceMarked finishes them)
-  const fill = () => { pane.replaceChildren(...(v.sub === 'files' ? files(p.diff) : v.sub === 'checks' ? checkList(p.checks) : conversation(p.body, [...p.comments, ...p.reviews]))); enhanceMarked(pane) }
-  w.body.replaceChildren(header(p.title, n, 'All pull requests', stateOf(p), [`@${p.author}`, `${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`, ...(REVIEW[p.review] ? [REVIEW[p.review]] : [])]), acts, tabs, pane)
-  fill()
-}
-
-function conversation(body: string, notes: Note[]) {
+export function conversation(body: string, notes: Note[]) {
   const first = make('div', 'ghc md')
   first.innerHTML = md(body.trim() || '*No description.*')
   enhance(first)
-  return [first, ...notes.sort((a, b) => a.when.localeCompare(b.when)).map(c => {
-    const box = make('div', 'ghc'), who = make('p', 'ghwho'), text = make('div', 'md')
-    who.append(make('b', '', `@${c.author}`), ` ${c.state ? reviewWord(c.state) + ' · ' : ''}${ago(c.when)}`)
-    if (c.state) box.dataset.state = c.state.toLowerCase()
-    text.innerHTML = md(c.body || '')
-    enhance(text)
-    box.append(who, ...(c.body ? [text] : []))
-    return box
-  })]
+  return [first, ...notes.sort((a, b) => a.when.localeCompare(b.when)).map(note)]
 }
 
-/** A multi-file diff as one foldable block per file. */
-function files(diff: string) {
-  const parts = diff.split(/^(?=diff --git )/m).filter(s => s.startsWith('diff --git'))
-  if (!parts.length) return [make('p', 'ghnote', diff.trim() || 'No changes.')]
-  return parts.map(part => {
-    const d = make('details', 'ghfile'), s = make('summary')
-    const path = /^diff --git a\/.+? b\/(.+)$/m.exec(part)?.[1] ?? 'file'
-    const body = part.slice(part.search(/^@@/m) >>> 0) // counts from the first hunk: the header's ---/+++ lines aren't changes
-    const add = (body.match(/^\+/gm) ?? []).length, del = (body.match(/^-/gm) ?? []).length
-    s.append(make('span', 'ghpath', path), make('span', 'a', `+${add}`), make('span', 'r', `−${del}`))
-    d.open = parts.length <= 8
-    d.append(s, unified(part))
-    return d
-  })
+export function note(c: Note) {
+  const box = make('div', 'ghc'), who = make('p', 'ghwho'), text = make('div', 'md')
+  who.append(make('b', '', `@${c.author}`), ` ${c.state ? reviewWord(c.state) + ' · ' : ''}${ago(c.when)}`)
+  if (c.state) box.dataset.state = c.state.toLowerCase()
+  text.innerHTML = md(c.body || '')
+  enhance(text)
+  box.append(who, ...(c.body ? [text] : []))
+  return box
 }
 
-function checkList(checks: Check[]) {
-  if (!checks.length) return [make('p', 'ghnote', 'No checks ran on this pull request.')]
-  const order = { fail: 0, pending: 1, pass: 2, skip: 3 }
-  return [...checks].sort((a, b) => order[a.state] - order[b.state]).map(c => {
-    const r = make('div', 'ghcheck')
-    r.dataset.state = c.state
-    r.append(dot(c.state), https(c.url) ? extLink('ghcheck-n', c.name, c.url) : make('span', 'ghcheck-n', c.name), make('span', 'ghcheck-s', c.state))
-    if (c.state === 'fail' && c.url.includes('/actions/runs/')) {
-      const pre = make('pre', 'ghlog')
-      r.append(button('Show log', '', async () => {
-        pre.textContent = 'Loading…'
-        r.after(pre)
-        pre.textContent = await api<{ log: string }>(`gh/log?url=${q(c.url)}`).then(x => x.log || '(empty)', e => (e as Error).message)
-      }))
-    }
-    return r
-  })
-}
-
-async function checkout(p: Pr) {
-  if (!await confirmBox(`Check out #${p.number}?`, `Switches this folder to the branch ${p.head} (gh pr checkout). Uncommitted changes that conflict will stop it.`, 'Check out')) return
-  const r = await ghPost({ op: 'checkout', n: p.number })
-  await confirmBox(r.ok ? 'Checked out' : 'Checkout failed', r.out || (r.ok ? `On ${p.head} now.` : 'gh gave no reason.'), 'OK')
-}
-
-/* ---------- one issue ---------- */
-async function issueDetail(n: number) {
-  const i = await load(`issue #${n}`, () => getIssue(n))
-  if (!i) return
-  const w = win!, acts = make('div', 'ghacts')
-  acts.append(make('span', 'ghsend', sendLabel() + ':'), button('This issue', 'ai', () => sendToClaude('issue', n, i.title)), make('span', 'spacer'), ...ghLink(i.url))
-  const pane = make('div', 'ghpane'), box = make('form', 'ghreply'), ta = make('textarea')
+/** A text box and its buttons ([label, cls, what it does with the text]), for comments and reviews. An action that
+ *  resolves true went through: the box empties. */
+export function writeBox(placeholder: string, buttons: [string, string, (text: string) => Promise<boolean>][]) {
+  const box = make('form', 'ghreply'), ta = make('textarea'), row = make('div', 'row')
   ta.rows = 3
-  ta.placeholder = 'Comment on this issue'
-  ta.setAttribute('aria-label', 'Comment')
+  ta.placeholder = placeholder
+  ta.setAttribute('aria-label', placeholder)
   ta.addEventListener('keydown', e => e.stopPropagation())
-  const post = button('Comment', 'primary', () => box.requestSubmit())
-  post.type = 'submit'
-  box.append(ta, post)
-  box.onsubmit = async e => {
-    e.preventDefault()
-    if (!ta.value.trim() || !await confirmBox('Post this comment?', 'It is published on GitHub under your account.', 'Comment')) return
-    const r = await ghPost({ op: 'comment', kind: 'issue', n, body: ta.value })
-    if (r.ok) show()
-    else await confirmBox('Comment failed', r.out ?? '', 'OK')
+  box.onsubmit = e => e.preventDefault()
+  for (const [label, cls, act] of buttons) {
+    const b = button(label, cls, async () => { if (await act(ta.value.trim())) ta.value = '' })
+    b.type = 'button'
+    row.append(b)
   }
-  pane.append(...conversation(i.body, i.comments), box)
-  w.body.replaceChildren(header(i.title, n, 'All issues', i.state.toLowerCase(), [`@${i.author}`, ago(i.created), ...i.labels]), acts, pane)
-  enhanceMarked(pane)
+  box.append(ta, row)
+  return box
+}
+
+/** Comment on a pull request or issue: asks first, then reloads the view to show it. */
+export const commentOn = (kind: 'pr' | 'issue', n: number) => async (text: string) => {
+  if (!text) return false
+  const r = await publish('Post this comment?', `On ${kind === 'pr' ? 'pull request' : 'issue'} #${n}:\n\n${text}`, 'Comment', { op: 'comment', kind, n, body: text }, 'Comment posted.')
+  if (r) show()
+  return !!r
 }
 
 /* ---------- saved, and readable by Claude ---------- */
@@ -239,9 +226,12 @@ referable('github', {
   icon: '⇄',
   label: () => 'GitHub',
   content: () => {
-    const s = win?.seen
-    if (!s) return { text: 'The GitHub window (nothing loaded yet).' }
-    if (Array.isArray(s)) return { text: `GitHub ${win!.view.tab === 'pr' ? 'pull requests' : 'issues'} (${win!.view.state}):\n` + s.map(r => `#${r.number} ${r.title} (@${r.author}, ${stateOf(r as PrRow)})`).join('\n') }
+    const s = win?.seen, v = win?.view
+    if (!s || !v) return { text: 'The GitHub window (nothing loaded yet).' }
+    if (Array.isArray(s)) {
+      if (v.tab === 'runs') return { text: 'GitHub Actions workflow runs:\n' + (s as Run[]).map(r => `${r.workflow}: ${r.title} (${r.branch}, ${r.state}${r.conclusion ? ' ' + r.conclusion : ''}, ${r.url})`).join('\n') }
+      return { text: `GitHub ${v.tab === 'pr' ? 'pull requests' : 'issues'} (${v.state}${v.q ? ', search: ' + v.q : ''}${v.filter ? ', filter: ' + v.filter : ''}):\n` + (s as (PrRow | IssueRow)[]).map(r => `#${r.number} ${r.title} (@${r.author}, ${stateOf(r as PrRow)})`).join('\n') }
+    }
     return { text: `GitHub ${'diff' in s ? 'pull request' : 'issue'} #${s.number}: ${s.title}\n${s.url}\n\n${s.body}` }
   },
 })
