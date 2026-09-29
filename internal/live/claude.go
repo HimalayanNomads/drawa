@@ -117,7 +117,11 @@ func spawnClaude(s Spec, sink Sink) (be Backend, err error) {
 			}
 		}()
 	}
-	c.p, c.stdin, err = StartProc(buildArgv(s.Sid, s.Mode, s.Model, s.Effort, c.mcpCfg), nil, func(code int) {
+	argv := buildArgv(s.Sid, s.Mode, s.Model, s.Effort, c.mcpCfg)
+	if s.Cid == "" { // Meta's private probe: its `/usage` transcript would crowd real sessions out of the list
+		argv = append(argv, "--no-session-persistence")
+	}
+	c.p, c.stdin, err = StartProc(argv, nil, func(code int) {
 		if c.mcpCfg != "" {
 			os.Remove(c.mcpCfg)
 		}

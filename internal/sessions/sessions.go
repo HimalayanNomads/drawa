@@ -199,13 +199,16 @@ func Trimmed(line string) string {
 	return string(b)
 }
 
+// firstPrompt is a transcript's title: its first typed prompt (a string, or the first text block beside pasted
+// images), skipping tool results and the CLI's own `<command-name>`/caveat lines. "" means it has no assistant
+// message, like the transcript of Drawa's own `/usage` probe, so List leaves it out.
 func firstPrompt(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
-		return "(no prompt)"
+		return ""
 	}
 	defer f.Close()
-	prompt := "(no prompt)"
+	prompt, replied := "", false
 	eachLine(f, func(b []byte) bool {
 		var d struct {
 			Type    string `json:"type"`
@@ -214,17 +217,42 @@ func firstPrompt(path string) string {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(b, &d) != nil || d.Type != "user" || d.IsMeta {
+		if json.Unmarshal(b, &d) != nil {
 			return true
 		}
-		var c string
-		if json.Unmarshal(d.Message.Content, &c) != nil || strings.HasPrefix(c, "<") {
-			return true
+		if d.Type == "assistant" {
+			replied = true
+		} else if d.Type == "user" && !d.IsMeta && prompt == "" {
+			prompt = promptText(d.Message.Content)
 		}
-		prompt = truncate(c, 120, "")
-		return false
+		return prompt == "" || !replied // both are usually in the first few lines
 	})
+	if !replied {
+		return ""
+	}
+	if prompt == "" {
+		return "(no prompt)"
+	}
 	return prompt
+}
+
+// promptText is what the user typed in a message's content, or "" if it's only tool results or the CLI's own text.
+func promptText(raw json.RawMessage) string {
+	var c string
+	if json.Unmarshal(raw, &c) != nil {
+		var blocks []struct{ Type, Text string }
+		json.Unmarshal(raw, &blocks)
+		for _, b := range blocks {
+			if b.Type == "text" && !strings.HasPrefix(b.Text, "<") {
+				c = b.Text
+				break
+			}
+		}
+	}
+	if strings.HasPrefix(c, "<") {
+		return ""
+	}
+	return truncate(c, 120, "")
 }
 
 var promptCache = struct {
@@ -281,12 +309,16 @@ func List() []Info {
 		all = append(all, fm{filepath.Join(config.Sessions, e.Name()), info.ModTime()})
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].mtime.After(all[j].mtime) })
-	if len(all) > 50 {
-		all = all[:50]
-	}
 	for _, f := range all {
+		if len(out) == 50 {
+			break
+		}
+		title := firstPromptOf(f.path, f.mtime.UnixNano())
+		if title == "" {
+			continue
+		}
 		id := strings.TrimSuffix(filepath.Base(f.path), ".jsonl")
-		out = append(out, Info{ID: id, Title: firstPromptOf(f.path, f.mtime.UnixNano()), Mtime: float64(f.mtime.UnixNano()) / 1e9})
+		out = append(out, Info{ID: id, Title: title, Mtime: float64(f.mtime.UnixNano()) / 1e9})
 	}
 	return out
 }

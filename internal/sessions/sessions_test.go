@@ -163,3 +163,31 @@ func TestQueuedHandback(t *testing.T) {
 		t.Fatalf("text changed: %q", text)
 	}
 }
+
+func TestListTitles(t *testing.T) {
+	dir := withTempSessions(t)
+	write := func(id string, lines ...[2]any) {
+		f, _ := os.Create(filepath.Join(dir, id+".jsonl"))
+		defer f.Close()
+		for _, l := range lines {
+			writeLine(f, l[0].(string), l[1])
+		}
+	}
+	reply := [2]any{"assistant", []any{map[string]any{"type": "text", "text": "ok"}}}
+	write("pasted", // text beside an image, after a tool-result-only message
+		[2]any{"user", []any{map[string]any{"type": "tool_result", "content": "x"}}},
+		[2]any{"user", []any{map[string]any{"type": "image"}, map[string]any{"type": "text", "text": "what is this"}}},
+		reply)
+	write("usage", // Drawa's /usage probe: never answered by the model
+		[2]any{"user", "<local-command-caveat>Caveat</local-command-caveat>"},
+		[2]any{"user", "<command-name>/usage</command-name>"})
+	write("plain", [2]any{"user", "<command-name>/clear</command-name>"}, [2]any{"user", "hello"}, reply)
+	got := map[string]string{}
+	for _, s := range List() {
+		got[s.ID] = s.Title
+	}
+	want := map[string]string{"pasted": "what is this", "plain": "hello"}
+	if len(got) != len(want) || got["pasted"] != want["pasted"] || got["plain"] != want["plain"] {
+		t.Fatalf("List titles = %v, want %v", got, want)
+	}
+}

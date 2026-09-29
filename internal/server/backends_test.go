@@ -50,7 +50,8 @@ func TestSessionsThroughHistory(t *testing.T) {
 	config.Sessions = t.TempDir()
 	t.Cleanup(func() { config.Sessions = saved })
 	sid := "33333333-3333-3333-3333-333333333333"
-	line := `{"type":"user","message":{"role":"user","content":"hello there"}}` + "\n"
+	line := `{"type":"user","message":{"role":"user","content":"hello there"}}` + "\n" +
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}` + "\n"
 	if err := os.WriteFile(filepath.Join(config.Sessions, sid+".jsonl"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
