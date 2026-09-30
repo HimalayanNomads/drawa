@@ -58,29 +58,22 @@ export async function inFile(c: Change, tool: string, inp: Record<string, any>) 
   const after = before == null ? null : applied(tool, before, inp)
   if (before == null || after == null || !c.isConnected) return
   const parts = diffLines(before, after).map(p => ({ kind: p.added ? 'add' : p.removed ? 'del' : 'eq', lines: p.value.replace(/\n$/, '').split('\n') }))
-  // the changed old lines, [first, last): unchanged lines outside the window aren't drawn
-  let n = 0, first = -1, last = 0
-  for (const p of parts) {
-    if (p.kind !== 'eq' && first < 0) first = n
-    if (p.kind !== 'add') n += p.lines.length
-    if (p.kind !== 'eq') last = n
-  }
-  if (first < 0) return
-  const lo = Math.max(0, first - AROUND), hi = Math.min(n, last + AROUND)
+  if (parts.every(p => p.kind === 'eq')) return
   const box = make('div', 'diff')
-  if (lo) box.append(make('div', 'sep', `⋯ ${lo} lines above`))
-  let at = 0, mark: Element | undefined
-  for (const p of parts) {
-    for (const l of p.lines) {
-      if (p.kind !== 'eq' || (at >= lo && at < hi)) {
-        const row = box.appendChild(make('div', p.kind, l))
-        row.dataset.s = p.kind === 'add' ? '+' : p.kind === 'del' ? '−' : ''
-        if (p.kind !== 'eq') mark ??= row
-      }
-      if (p.kind !== 'add') at++
-    }
-  }
-  if (hi < n) box.append(make('div', 'sep', `⋯ ${n - hi} lines below`))
+  let mark: Element | undefined
+  const rows = (kind: string, lines: string[]) => lines.forEach(l => {
+    const row = box.appendChild(make('div', kind, l))
+    row.dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+    if (kind !== 'eq') mark ??= row
+  })
+  // unchanged stretches keep AROUND lines next to each change; the rest folds into one row
+  parts.forEach((p, i) => {
+    const len = p.lines.length, head = i > 0 ? AROUND : 0, tail = i < parts.length - 1 ? AROUND : 0
+    if (p.kind !== 'eq' || head + tail >= len) return rows(p.kind, p.lines)
+    rows('eq', p.lines.slice(0, head))
+    box.append(make('div', 'sep', `⋯ ${len - head - tail} lines ${!head ? 'above' : !tail ? 'below' : 'unchanged'}`))
+    rows('eq', p.lines.slice(len - tail))
+  })
   c.querySelector('.diff')!.replaceWith(box)
   if (mark) box.scrollTop = mark.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3
 }
