@@ -285,11 +285,13 @@ export function swallowNext(type: string, ms: number) {
   setTimeout(() => removeEventListener(type, eat, { capture: true }), ms)
 }
 
-/** Resize grips on the left, right and bottom edges and both bottom corners (the top is the tab, which drags), in
- *  world units so they track the pointer at any zoom. The left side moves the window too, so its right edge stays
- *  put. `widthOnly`: the height follows the content (text notes): only the sides and a corner, for width. */
-export function resizable(el: HTMLElement, minW: number, minH: number, onResize: () => void, widthOnly = false) {
-  const edges = widthOnly ? ['e', 'w', 'se'] : ['e', 'w', 's', 'se', 'sw']
+/** Resize grips on the left, right and bottom edges and all four corners (the top edge is the tab, which drags), in
+ *  world units so they track the pointer at any zoom. The left and top sides move the window too, so the opposite
+ *  edge stays put. `widthOnly`: the height follows the content (text notes): only the sides and the bottom corners,
+ *  for width. `aspect`: the content's width/height while it has one (a picture): the window keeps its shape, the
+ *  width deciding on corners and side edges, the height on the bottom edge. */
+export function resizable(el: HTMLElement, minW: number, minH: number, onResize: () => void, widthOnly = false, aspect?: () => number | undefined) {
+  const edges = widthOnly ? ['e', 'w', 'se', 'sw'] : ['e', 'w', 's', 'se', 'sw', 'ne', 'nw']
   for (const edge of edges) {
     const grip = el.appendChild(make('div', 'grip'))
     grip.dataset.edge = edge
@@ -300,18 +302,31 @@ export function resizable(el: HTMLElement, minW: number, minH: number, onResize:
       front(el)
       const w = el.offsetWidth, h = el.offsetHeight, k = onCanvas(el) ? view.k : 1 // floating: not scaled
       const x = parseFloat(el.style.left) || 0, fx = parseFloat(el.style.getPropertyValue('--fx')) || 0
-      const left = edge.includes('w'), right = edge.includes('e'), down = edge.includes('s') && !widthOnly
+      const y = parseFloat(el.style.top) || 0, fy = parseFloat(el.style.getPropertyValue('--fy')) || 0
+      const left = edge.includes('w'), right = edge.includes('e'), down = edge.includes('s') && !widthOnly, up = edge.includes('n') && !widthOnly
+      const ar = widthOnly ? undefined : aspect?.(), body = el.querySelector<HTMLElement>(':scope > .win-b')
+      const bw = body ? w - body.clientWidth : 0, ex = body ? h - body.clientHeight : 0 // the window around the content
       el.style.setProperty('--resize-cursor', getComputedStyle(grip).cursor) // before .resizing overrides it: a side edge stays ew/ns
       el.classList.add('resizing')
       track(grip, e, (dx, dy) => {
-        if (right) el.style.width = `${Math.max(minW, Math.round(w + dx / k))}px`
-        if (left) {
-          const nw = Math.max(minW, Math.round(w - dx / k)), moved = w - nw // what the left edge actually moved, in window px
-          el.style.width = `${nw}px`
-          if (el.classList.contains('floating')) el.style.setProperty('--fx', `${Math.round(fx + moved)}px`)
-          else el.style.left = `${Math.round(x + moved)}px`
+        let nw = Math.max(minW, Math.round(w + (right ? dx : left ? -dx : 0) / k))
+        let nh = Math.max(minH, Math.round(h + (down ? dy : up ? -dy : 0) / k))
+        if (ar) {
+          if (!left && !right) nw = Math.max(minW, Math.round((nh - ex) * ar + bw)) // the bottom edge: the width follows
+          nh = Math.round((nw - bw) / ar + ex)
+          if (nh < minH) { nh = minH; nw = Math.round((nh - ex) * ar + bw) }
         }
-        if (down) el.style.height = `${Math.max(minH, Math.round(h + dy / k))}px`
+        const floating = el.classList.contains('floating')
+        if (left || right || ar) el.style.width = `${nw}px`
+        if (left) {
+          if (floating) el.style.setProperty('--fx', `${Math.round(fx + w - nw)}px`)
+          else el.style.left = `${Math.round(x + w - nw)}px`
+        }
+        if (down || up || ar) el.style.height = `${nh}px`
+        if (up) {
+          if (floating) el.style.setProperty('--fy', `${Math.round(fy + h - nh)}px`)
+          else el.style.top = `${Math.round(y + h - nh)}px`
+        }
         onResize()
       }, () => { el.classList.remove('resizing'); el.style.removeProperty('--resize-cursor'); changed() })
     })

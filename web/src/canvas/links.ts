@@ -18,12 +18,22 @@ interface Link { id: string; from: HTMLElement; to: HTMLElement; label: string; 
 const links: Link[] = []
 let selected: Link | null = null
 
+/** A window's rect below its tab, which is hidden unless hovered. Items without a tab (notes, file chips) and a
+ *  collapsed window (only its tab) stay whole. */
+let tab = 0
+function body(el: HTMLElement): Rect {
+  const r = liveRect(el)
+  if (!el.classList.contains('win') || el.classList.contains('min')) return r
+  tab ||= parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h')) || 34
+  return { ...r, y: r.y + tab, h: r.h - tab }
+}
+
 /** Where an arrow between two rects starts and ends: the sides facing each other, and a gentle curve. */
-function curve(a: Rect, b: Rect) {
-  const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
-  const across = Math.abs(cb.x - ca.x) / (a.w + b.w) >= Math.abs(cb.y - ca.y) / (a.h + b.h) // side by side, or stacked
-  const s = across ? { x: cb.x > ca.x ? a.x + a.w : a.x, y: ca.y } : { x: ca.x, y: cb.y > ca.y ? a.y + a.h : a.y }
-  const t = across ? { x: cb.x > ca.x ? b.x - 6 : b.x + b.w + 6, y: cb.y } : { x: cb.x, y: cb.y > ca.y ? b.y - 6 : b.y + b.h + 6 }
+function curve(ab: Rect, bb: Rect) {
+  const ca = { x: ab.x + ab.w / 2, y: ab.y + ab.h / 2 }, cb = { x: bb.x + bb.w / 2, y: bb.y + bb.h / 2 }
+  const across = Math.abs(cb.x - ca.x) / (ab.w + bb.w) >= Math.abs(cb.y - ca.y) / (ab.h + bb.h) // side by side, or stacked
+  const s = across ? { x: cb.x > ca.x ? ab.x + ab.w : ab.x, y: ca.y } : { x: ca.x, y: cb.y > ca.y ? ab.y + ab.h : ab.y }
+  const t = across ? { x: cb.x > ca.x ? bb.x - 6 : bb.x + bb.w + 6, y: cb.y } : { x: cb.x, y: cb.y > ca.y ? bb.y - 6 : bb.y + bb.h + 6 }
   const d = Math.max(40, (across ? Math.abs(t.x - s.x) : Math.abs(t.y - s.y)) / 2)
   const c1 = across ? { x: s.x + Math.sign(t.x - s.x) * d, y: s.y } : { x: s.x, y: s.y + Math.sign(t.y - s.y) * d }
   const c2 = across ? { x: t.x - Math.sign(t.x - s.x) * d, y: t.y } : { x: t.x, y: t.y - Math.sign(t.y - s.y) * d }
@@ -39,7 +49,7 @@ function shape(k: ReturnType<typeof curve>) {
 /** Measure first (layout reads), then `write` (DOM writes): so a batch of arrows lays out once, not per arrow. */
 function measure(l: Link) {
   const hide = l.from.classList.contains('full') || l.to.classList.contains('full') || hidden(l.from) || hidden(l.to)
-  const k = hide ? null : shape(curve(liveRect(l.from), liveRect(l.to)))
+  const k = hide ? null : shape(curve(body(l.from), body(l.to)))
   return () => write(l, k)
 }
 const draw = (l: Link) => measure(l)()
@@ -140,7 +150,7 @@ export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
   const [, line, tip] = g.children as unknown as SVGPathElement[]
   const move = (ev: PointerEvent) => {
     const p = toWorld(ev.clientX, ev.clientY), to = itemAt(ev.clientX, ev.clientY)
-    const k = to && to !== from ? curve(liveRect(from), liveRect(to)) : curve(liveRect(from), { x: p.x, y: p.y, w: 0, h: 0 })
+    const k = to && to !== from ? curve(body(from), body(to)) : curve(body(from), { x: p.x, y: p.y, w: 0, h: 0 })
     const { line: d, head } = shape(k)
     line.setAttribute('d', d)
     tip.setAttribute('d', head)

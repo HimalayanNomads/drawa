@@ -7,7 +7,10 @@
 .win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
   min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 94px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;
   background:var(--rail);border:1px solid var(--edge);border-bottom:0;border-radius:var(--r-tab) var(--r-tab) 0 0;
-  cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s}
+  cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s,opacity .2s,visibility .2s;
+  opacity:0;visibility:hidden}
+/* only the hovered or focused window shows its tab; selected/dragging ones and windows outside the canvas keep it */
+.win:is(:hover,:focus-within,.focus,.selected,.dragging)>.win-h,.pinbar>.win>.win-h,.floats>.win>.win-h,.fullview>.win>.win-h{opacity:1;visibility:visible}
 /* the shoulder: a concave quarter-curve from the tab's right edge down onto the body's top edge.
    The tab is tinted and sits on the body's top border, which runs full width: a clear line between title and content. */
 .win-h::after{content:"";position:absolute;left:100%;bottom:0;width:var(--r-tab);height:var(--r-tab);pointer-events:none;
@@ -40,7 +43,7 @@
 /* collapsed: only the tab is left, closed off at the bottom */
 .win.min{height:auto!important;min-height:0!important}
 .win.min>.win-b,.win.min>.grip{display:none}
-.win.min>.win-h{margin:0;border-bottom:1px solid var(--edge);border-radius:var(--r-tab)}
+.win.min>.win-h{margin:0;border-bottom:1px solid var(--edge);border-radius:var(--r-tab);opacity:1;visibility:visible}
 .win.min>.win-h::after{display:none}
 
 .win.dragging>.win-h{cursor:grabbing}
@@ -52,15 +55,19 @@
 /* the edges: a thin band across the body's sides (below the tab), the corners: a small square. --gs (window.ts)
    widens them at low zoom and for fingers, so they stay easy to hit; what they draw on hover stays put */
 .grip{--g:var(--gs,1)}
-.grip[data-edge=e],.grip[data-edge=w]{top:var(--tab-h);bottom:14px;width:calc(7px*var(--g));cursor:ew-resize}
+.grip[data-edge=e],.grip[data-edge=w]{top:calc(var(--tab-h) + 14px);bottom:14px;width:calc(7px*var(--g));cursor:ew-resize}
 .grip[data-edge=e]{right:calc(-3px*var(--g))}.grip[data-edge=w]{left:calc(-3px*var(--g))}
 .grip[data-edge=s]{left:14px;right:14px;bottom:calc(-3px*var(--g));height:calc(7px*var(--g));cursor:ns-resize}
 .grip[data-edge=se],.grip[data-edge=sw]{bottom:0;width:calc(18px*var(--g));height:calc(18px*var(--g))}
 .grip[data-edge=se]{right:0;cursor:nwse-resize}.grip[data-edge=sw]{left:0;cursor:nesw-resize}
+.grip[data-edge=ne],.grip[data-edge=nw]{top:var(--tab-h);width:calc(18px*var(--g));height:calc(18px*var(--g))}
+.grip[data-edge=ne]{right:0;cursor:nesw-resize}.grip[data-edge=nw]{left:0;cursor:nwse-resize}
 /* shown on hover: the edge (or corner) you're about to pull */
 .grip::after{content:"";position:absolute;opacity:0;transition:opacity .15s;border:solid var(--accent);border-width:0}
 .grip[data-edge=e]::after{inset:0 calc(3px*var(--g)) 0 auto;border-right-width:2px}.grip[data-edge=w]::after{inset:0 auto 0 calc(3px*var(--g));border-left-width:2px}
 .grip[data-edge=s]::after{inset:auto 0 calc(3px*var(--g));border-bottom-width:2px}
 .grip[data-edge=se]::after{right:-1px;bottom:-1px;width:12px;height:12px;border-width:0 2px 2px 0;border-bottom-right-radius:var(--r-box)}
 .grip[data-edge=sw]::after{left:-1px;bottom:-1px;width:12px;height:12px;border-width:0 0 2px 2px;border-bottom-left-radius:var(--r-box)}
+.grip[data-edge=ne]::after{right:-1px;top:-1px;width:12px;height:12px;border-width:2px 2px 0 0;border-top-right-radius:var(--r-box)}
+.grip[data-edge=nw]::after{left:-1px;top:-1px;width:12px;height:12px;border-width:2px 0 0 2px;border-top-left-radius:var(--r-box)}
 .grip:hover::after,.grip:active::after{opacity:.9}

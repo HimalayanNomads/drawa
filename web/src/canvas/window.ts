@@ -18,6 +18,7 @@ interface WindowOpts {
   minW: number
   minH: number
   actions?: HTMLElement[] // buttons at the tab's end (the collapse button goes before them)
+  aspect?: () => number | undefined // the content's width/height, when the window should keep that shape while resized
   onChange?: () => void // after it moves, resizes or collapses (default: re-route the edges)
 }
 export { winTitle } // its home is refs.ts
@@ -118,7 +119,7 @@ export function makeWindow(o: WindowOpts): Win {
   extra.append(iconButton(ICON.float, '', () => toggleFloat(el), 'floatbtn'), iconButton(ICON.pin, '', () => toggleDock(el), 'pinbtn'), iconButton(ICON.full, '', () => toggleFull(el), 'fullbtn'))
   syncPin(el)
   syncFull(el)
-  resizable(el, o.minW, o.minH, onChange)
+  resizable(el, o.minW, o.minH, onChange, false, o.aspect)
   renamable(el, title)
   return { el, head, title, body }
 }

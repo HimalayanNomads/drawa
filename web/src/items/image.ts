@@ -45,6 +45,7 @@ function imageWindow(o: Saved) {
   const box = inkBox('im:' + o.id) // drawing on the picture stays on the same spot at any size
   const { el, body } = makeWindow({
     kind: 'image', cls: 'inode', title: o.title, rect: o.rect, minW: 160, minH: 100,
+    aspect: () => (img.naturalWidth && !el.classList.contains('min') ? img.naturalWidth / img.naturalHeight : undefined),
     actions: [
       iconButton(ICON.crop, 'Crop picture', () => crop(el, box, img), 'crop-btn'),
       removeButton('Remove from canvas', () => { dropBlob(o.id).catch(() => {}); if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src) }),

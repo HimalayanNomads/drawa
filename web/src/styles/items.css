@@ -248,3 +248,5 @@
 .pvnode-s{position:relative;flex:1;min-height:0;overflow:auto;background:var(--bg);cursor:text}
 .pvnode-s>.mdview{max-width:none}
 .pvnode .none{padding:16px;color:var(--muted);font-size:12.5px}
+/* a drawn shape on a picture is hit anywhere inside, not just on its outline: hovering it shows its controls instead of zoom */
+body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-events:all}
