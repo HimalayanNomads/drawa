@@ -1,15 +1,14 @@
 import { defineConfig } from 'vite'
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import type { Plugin } from 'vite'
 
 // The Go server owns the API and runs the agents; Vite only serves the UI in dev. DRAWA_PORT moves both (a second
 // checkout next to a running drawa).
 const api = { target: `http://127.0.0.1:${process.env.DRAWA_PORT || 8765}`, changeOrigin: true }
 
-export default defineConfig({
-  build: { target: 'es2022', chunkSizeWarningLimit: 1000 }, // big chunks are Mermaid's, loaded only when a diagram appears
-  server: { port: 5173, strictPort: true, proxy: { '/api': api, '/ask': api } },
-  plugins: [{
+function goServer(): Plugin {
+  return {
     name: 'go-server',
     apply: 'serve',
     // `npm run dev` also starts the Go server (it rebuilds and restarts itself when a .go file changes).
@@ -22,5 +21,11 @@ export default defineConfig({
       const go = spawn(bin, [resolve(process.env.DRAWA_ROOT ?? '..')], { cwd: '..', stdio: 'inherit', env: { ...process.env, DRAWA_DEV: '1' } })
       process.on('exit', () => go.kill())
     },
-  }],
+  }
+}
+
+export default defineConfig({
+  build: { target: 'es2022', chunkSizeWarningLimit: 1000 }, // big chunks are Mermaid's, loaded only when a diagram appears
+  server: { port: 5173, strictPort: true, proxy: { '/api': api, '/ask': api } },
+  plugins: [goServer()],
 })
