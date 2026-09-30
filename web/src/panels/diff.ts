@@ -1,10 +1,12 @@
 // A diff block for every Edit / MultiEdit / Write. Blocks live on their file's node; the inspector shows them.
 import { diffLines } from 'diff'
 import { make } from '../lib/dom'
+import { api, q } from '../lib/api'
 import type { Session } from '../session/session'
 
 export type Change = HTMLDivElement & { file: string; add: number; del: number }
 const MAX_LINES = 600 // ponytail: per-change cap; huge writes are unreadable as a diff anyway
+const AROUND = 1000 // file lines shown above and below an edit waiting for approval
 
 export function change(S: Session, tool: string, file: string, inp: Record<string, any>): Change | undefined {
   const pairs: [string, string][] | null =
@@ -47,6 +49,51 @@ export function change(S: Session, tool: string, file: string, inp: Record<strin
   h.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold() } }
   c.append(h, body)
   return c
+}
+
+/** An edit waiting for approval, shown inside its file (up to AROUND lines each side) and scrolled to the change,
+ *  so you can read around it. Falls back to the snippet when the file is new, binary or no longer holds the edit. */
+export async function inFile(c: Change, tool: string, inp: Record<string, any>) {
+  const before = (await api<{ text: string | null }>('file?path=' + q(c.file)).catch(() => null))?.text
+  const after = before == null ? null : applied(tool, before, inp)
+  if (before == null || after == null || !c.isConnected) return
+  const parts = diffLines(before, after).map(p => ({ kind: p.added ? 'add' : p.removed ? 'del' : 'eq', lines: p.value.replace(/\n$/, '').split('\n') }))
+  // the changed old lines, [first, last): unchanged lines outside the window aren't drawn
+  let n = 0, first = -1, last = 0
+  for (const p of parts) {
+    if (p.kind !== 'eq' && first < 0) first = n
+    if (p.kind !== 'add') n += p.lines.length
+    if (p.kind !== 'eq') last = n
+  }
+  if (first < 0) return
+  const lo = Math.max(0, first - AROUND), hi = Math.min(n, last + AROUND)
+  const box = make('div', 'diff')
+  if (lo) box.append(make('div', 'sep', `⋯ ${lo} lines above`))
+  let at = 0, mark: Element | undefined
+  for (const p of parts) {
+    for (const l of p.lines) {
+      if (p.kind !== 'eq' || (at >= lo && at < hi)) {
+        const row = box.appendChild(make('div', p.kind, l))
+        row.dataset.s = p.kind === 'add' ? '+' : p.kind === 'del' ? '−' : ''
+        if (p.kind !== 'eq') mark ??= row
+      }
+      if (p.kind !== 'add') at++
+    }
+  }
+  if (hi < n) box.append(make('div', 'sep', `⋯ ${n - hi} lines below`))
+  c.querySelector('.diff')!.replaceWith(box)
+  if (mark) box.scrollTop = mark.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3
+}
+
+/** The file's text once the edit is made, or null when an old_string isn't in it (the file changed since). */
+function applied(tool: string, text: string, inp: Record<string, any>): string | null {
+  if (tool === 'Write') return inp.content ?? ''
+  for (const e of tool === 'Edit' ? [inp] : inp.edits ?? []) {
+    const a: string = e.old_string ?? '', b: string = e.new_string ?? ''
+    if (!a || !text.includes(a)) return null
+    text = e.replace_all ? text.replaceAll(a, () => b) : text.replace(a, () => b)
+  }
+  return text
 }
 
 export function settleChange(c: Change, ok: boolean) {

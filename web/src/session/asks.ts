@@ -3,7 +3,7 @@
 import { make, rel, button } from '../lib/dom'
 import { post } from '../lib/api'
 import { reviewPlan, plansExpired, planWithdrawn } from '../items/plan'
-import { change } from '../panels/diff'
+import { change, inFile } from '../panels/diff'
 import { notify } from './notify'
 import { put, renderCard, type Session } from './session'
 import { describe, type Msg } from './stream'
@@ -28,7 +28,7 @@ export function approval(S: Session, m: Msg) {
   if (caption) box.append(make('p', '', caption))
   // file changes: show exactly what would change before you allow it
   const diff = input.file_path && ['Edit', 'MultiEdit', 'Write'].includes(r.tool_name) ? change(S, r.tool_name, rel(String(input.file_path)), input) : undefined
-  if (diff) box.append(diff)
+  if (diff) { box.append(diff); inFile(diff, r.tool_name, input) }
   const answer = (allow: boolean, always = false) => {
     // answered only once the server took it: on failure the buttons stay, to try again
     row.querySelectorAll('button').forEach(b => (b.disabled = true))
@@ -137,6 +137,7 @@ function closeAsk(S: Session, box: HTMLElement, why: string) {
   if (box.contains(document.activeElement)) S.ta.focus()
   box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(x => (x.disabled = true))
   box.querySelector(':scope > .err')?.remove()
+  box.querySelector(':scope > .chg')?.remove() // can hold a whole file: done with it
   box.querySelector(':scope > .row')?.replaceChildren(make('span', 'answered', why))
   box.classList.add('done')
 }
