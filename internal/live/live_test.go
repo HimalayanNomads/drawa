@@ -261,7 +261,8 @@ func TestTrackTasks(t *testing.T) {
 // The canvas MCP config reaches claude as a 0600 file (not on the command line), removed when it exits.
 func TestMCPConfigFile(t *testing.T) {
 	saved, savedRoot := claudeArgv, config.Root
-	claudeArgv, config.Root = []string{"sh", "-c", `stat -c %a "$1"; cat "$1"; echo`}, t.TempDir()
+	// ls -l, not stat: stat's flags differ between GNU (Linux) and BSD (macOS)
+	claudeArgv, config.Root = []string{"sh", "-c", `ls -l "$1" | cut -c1-10; cat "$1"; echo`}, t.TempDir()
 	t.Cleanup(func() { claudeArgv, config.Root = saved, savedRoot })
 	l, err := New("card", "claude", "", "", "", "")
 	if err != nil {
@@ -271,7 +272,7 @@ func TestMCPConfigFile(t *testing.T) {
 	waitExit(t, l)
 	lines, _ := l.LinesFrom(0)
 	all := strings.Join(lines, "")
-	if !strings.Contains(all, "600") || !strings.Contains(all, "/mcp/card/"+l.Token) {
+	if !strings.Contains(all, "-rw-------") || !strings.Contains(all, "/mcp/card/"+l.Token) {
 		t.Fatalf("config file not passed as expected: %s", all)
 	}
 	<-l.done

@@ -58,12 +58,18 @@ func TestBaseMissingCache(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), link); err != nil {
 		t.Skip("no symlinks:", err)
 	}
+	// a cache folder that doesn't exist yet, behind the symlink: Linux reads XDG_CACHE_HOME, macOS $HOME/Library/Caches
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(link, "missing"))
+	t.Setenv("HOME", filepath.Join(link, "home"))
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	before := Base()
 	if err := os.MkdirAll(before, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	after, err := filepath.EvalSymlinks(filepath.Join(link, "missing", "drawa", "repos"))
+	after, err := filepath.EvalSymlinks(filepath.Join(cache, "drawa", "repos"))
 	if err != nil || before != after || Base() != after {
 		t.Errorf("Base() before the cache existed %q, after %q (%v)", before, after, err)
 	}

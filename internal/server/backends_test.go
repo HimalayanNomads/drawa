@@ -16,9 +16,9 @@ import (
 func call(t *testing.T, srv *httptest.Server, method, path, body string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
-	req.Host = "127.0.0.1:8765"
+	req.Host = selfHost
 	if method == "POST" {
-		req.Header.Set("Origin", "http://127.0.0.1:8765")
+		req.Header.Set("Origin", selfOrigin)
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := srv.Client().Do(req)

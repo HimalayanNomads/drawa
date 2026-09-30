@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,11 +13,18 @@ import (
 	"time"
 
 	"drawa/internal/canvastools"
+	"drawa/internal/config"
 	"drawa/internal/live"
 )
 
-// mcpPost POSTs an MCP JSON-RPC body to a card, with the Host header the handler requires (config.Hosts is
-// fixed to :8765 regardless of the test server's actual listening port).
+// The Host and Origin the handler accepts. config.Hosts is built from config.Port (DRAWA_PORT, as set in a shell
+// Drawa itself opened), not from the test server's actual listening port.
+var (
+	selfHost   = fmt.Sprintf("127.0.0.1:%d", config.Port)
+	selfOrigin = "http://" + selfHost
+)
+
+// mcpPost POSTs an MCP JSON-RPC body to a card, with the Host header the handler requires.
 func mcpPost(t *testing.T, srv *httptest.Server, cardPath string, body any) (int, []byte) {
 	t.Helper()
 	var data []byte
@@ -30,7 +38,7 @@ func mcpPost(t *testing.T, srv *httptest.Server, cardPath string, body any) (int
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Host = "127.0.0.1:8765"
+	req.Host = selfHost
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +200,7 @@ func TestTwoCardsOneStream(t *testing.T) {
 	open := func(c string) *bufio.Reader {
 		t.Helper()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/events?page=abcd1234&c="+c, nil)
-		req.Host = "127.0.0.1:8765"
+		req.Host = selfHost
 		resp, err := srv.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)

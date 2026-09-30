@@ -27,16 +27,16 @@ func TestRequestChecks(t *testing.T) {
 	srv := httptest.NewServer(Handler())
 	defer srv.Close()
 
-	good := "127.0.0.1:8765"
+	good := selfHost
 	cases := []struct {
 		name, method, path, host, origin string
 	}{
 		{"GET bad host", "GET", "/api/files", "evil.com:8765", ""},
-		{"POST bad host", "POST", "/api/images", "evil.com", "http://127.0.0.1:8765"},
+		{"POST bad host", "POST", "/api/images", "evil.com", selfOrigin},
 		{"POST no origin", "POST", "/api/images", good, ""},
 		{"POST evil origin", "POST", "/api/images", good, "http://evil.com"},
 		{"POST null origin", "POST", "/api/images", good, "null"},
-		{"MCP with origin", "POST", "/mcp/sec/" + lv.Token, good, "http://127.0.0.1:8765"},
+		{"MCP with origin", "POST", "/mcp/sec/" + lv.Token, good, selfOrigin},
 		{"MCP bad token", "POST", "/mcp/sec/" + strings.Repeat("0", 32), good, ""},
 	}
 	for _, c := range cases {
@@ -60,9 +60,9 @@ func TestBrowserGuards(t *testing.T) {
 	h := Handler()
 	do := func(method, path, ctype, fetchSite, body string) *http.Response {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		req.Host = "127.0.0.1:8765"
+		req.Host = selfHost
 		if method == "POST" {
-			req.Header.Set("Origin", "http://127.0.0.1:8765")
+			req.Header.Set("Origin", selfOrigin)
 			req.Header.Set("Content-Type", ctype)
 		}
 		if fetchSite != "" {
@@ -119,7 +119,7 @@ func TestRawServesOnlyProjectImages(t *testing.T) {
 		want int
 	}{{"a.png", 200}, {"../out.png", 404}, {"a.html", 415}, {"d.png", 404}, {"missing.png", 404}} {
 		req := httptest.NewRequest("GET", "/api/raw?path="+url.QueryEscape(c.path), nil)
-		req.Host = "127.0.0.1:8765"
+		req.Host = selfHost
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code != c.want {

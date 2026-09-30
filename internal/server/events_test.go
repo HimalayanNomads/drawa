@@ -30,7 +30,7 @@ func TestGapMarker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/events?page=abcd1234&c="+cid+":0:g1", nil)
-	req.Host = "127.0.0.1:8765"
+	req.Host = selfHost
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
