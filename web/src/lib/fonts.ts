@@ -1,4 +1,4 @@
-// Global fonts: interface (--sans) and code (--mono), chosen from the toolbar's "Aa" panel. Remembered per browser.
+// Global fonts: interface (--sans) and code (--mono), chosen in the toolbar's Settings panel. Remembered per browser.
 import { $ } from './dom'
 import { enhance } from './select'
 
@@ -41,8 +41,7 @@ function apply() {
   try { localStorage.setItem(KEY, JSON.stringify(choice)) } catch {}
 }
 
-/* ---------- the panel ---------- */
-const panel = $('#fontpanel'), btn = $('#btn-fonts')
+/* ---------- its controls in the Settings panel ---------- */
 function wire(sel: HTMLSelectElement, input: HTMLInputElement, list: [string, string][], key: 'ui' | 'code') {
   sel.replaceChildren(...list.map(([label, value]) => Object.assign(document.createElement('option'), { textContent: label, value })))
   const customKey = key === 'ui' ? 'uiCustom' : 'codeCustom'
@@ -57,12 +56,5 @@ function wire(sel: HTMLSelectElement, input: HTMLInputElement, list: [string, st
 }
 wire($<HTMLSelectElement>('#font-ui'), $<HTMLInputElement>('#font-ui-custom'), UI, 'ui')
 wire($<HTMLSelectElement>('#font-code'), $<HTMLInputElement>('#font-code-custom'), CODE, 'code')
-
-const setOpen = (open: boolean) => { panel.hidden = !open; btn.setAttribute('aria-expanded', String(open)) }
-btn.onclick = () => setOpen(panel.hidden === true)
-addEventListener('pointerdown', e => {
-  if (!panel.hidden && !(e.target as Element).closest('#fontpanel, #btn-fonts, .xsel-menu')) setOpen(false)
-})
-addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden && !e.defaultPrevented) { e.preventDefault(); setOpen(false); btn.focus() } })
 
 apply()

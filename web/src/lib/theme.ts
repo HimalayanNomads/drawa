@@ -1,9 +1,11 @@
-// Light / dark mode (toolbar button) and a color scheme for each (Appearance panel). The palettes are in
-// styles/schemes.css; this module puts the choice on <html data-theme data-scheme> and remembers it.
-// The inline script in index.html applies the saved choice before first paint; keep its defaults in sync.
+// Light / dark mode (the toolbar button, or System to follow the computer's) and a color scheme for each, picked in
+// the Settings panel and saved in your settings file (lib/prefs.ts). The palettes are in styles/schemes.css; this
+// module puts the choice on <html data-theme data-scheme>. The inline script in index.html applies the last one seen
+// before first paint; keep its defaults in sync.
 import { $, ICON } from './dom'
 import { enhance } from './select'
 import { command } from './keys'
+import { prefs, onPrefs, setPrefs, type Prefs } from './prefs'
 
 type Mode = 'light' | 'dark'
 /** [id in schemes.css, label]. First of each list is the default. */
@@ -14,41 +16,46 @@ const SCHEMES: Record<Mode, [string, string][]> = {
     ['catppuccin-macchiato', 'Catppuccin Macchiato'], ['catppuccin-frappe', 'Catppuccin Frappé'], ['tokyo-night', 'Tokyo Night'], ['tokyo-night-storm', 'Tokyo Night Storm'],
     ['gruvbox-dark', 'Gruvbox Dark'], ['nord', 'Nord'], ['kanagawa', 'Kanagawa'], ['everforest', 'Everforest']],
 }
-const KEY = 'drawa:theme'
-interface Choice { mode: Mode; light: string; dark: string }
-const load = (): Choice => {
-  const d: Choice = { mode: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', light: SCHEMES.light[0][0], dark: SCHEMES.dark[0][0] }
-  try { const s = JSON.parse(localStorage.getItem(KEY) ?? '{}'); return { ...d, ...(s && typeof s === 'object' ? s : {}) } } catch { return d }
-}
-const choice = load()
+const option = (value: string, textContent: string) => Object.assign(document.createElement('option'), { value, textContent })
+const system = matchMedia('(prefers-color-scheme: dark)')
+const mode = (): Mode => { const t = prefs().theme; return t === 'light' || t === 'dark' ? t : system.matches ? 'dark' : 'light' }
+/** The scheme picked for a mode, or its first when the settings file names one this version doesn't have. */
+const scheme = (m: Mode) => { const s = m === 'dark' ? prefs().darkScheme : prefs().lightScheme; return SCHEMES[m].some(([id]) => id === s) ? s : SCHEMES[m][0][0] }
 
-export const isDark = () => choice.mode === 'dark'
+export const isDark = () => mode() === 'dark'
 const listeners: (() => void)[] = []
 /** Called after the mode or scheme changes (for things drawn with theme colors baked in). */
 export const onTheme = (f: () => void) => listeners.push(f)
 
-const btn = $('#btn-theme')
+const btn = $('#btn-theme'), pick = $<HTMLSelectElement>('#theme-mode')
+const pickers: Record<Mode, HTMLSelectElement> = { light: $('#scheme-light'), dark: $('#scheme-dark') }
+let shown = '' // the mode and scheme on the page: only a real change redraws what has colors baked in
 
-function apply(notify = true) {
-  const root = document.documentElement
-  root.dataset.theme = choice.mode
-  root.dataset.scheme = choice[choice.mode]
-  btn.innerHTML = choice.mode === 'dark' ? ICON.moon : ICON.sun
-  btn.title = `Switch to ${choice.mode === 'dark' ? 'light' : 'dark'} mode`
+function apply() {
+  const m = mode(), s = scheme(m), root = document.documentElement
+  root.dataset.theme = m
+  root.dataset.scheme = s
+  btn.innerHTML = m === 'dark' ? ICON.moon : ICON.sun
+  btn.title = `Switch to ${m === 'dark' ? 'light' : 'dark'} mode`
   btn.setAttribute('aria-label', btn.title)
-  try { localStorage.setItem(KEY, JSON.stringify(choice)) } catch {}
-  if (notify) listeners.forEach(f => f())
+  pick.value = prefs().theme
+  for (const k of ['light', 'dark'] as Mode[]) pickers[k].value = scheme(k)
+  if (shown && shown !== `${m} ${s}`) listeners.forEach(f => f())
+  shown = `${m} ${s}`
 }
-btn.onclick = () => { choice.mode = isDark() ? 'light' : 'dark'; apply() }
+btn.onclick = () => setPrefs({ theme: isDark() ? 'light' : 'dark' })
 command({ label: 'Switch light / dark mode', group: 'Canvas', run: () => btn.click() })
 
+pick.replaceChildren(option('system', 'System'), option('light', 'Light'), option('dark', 'Dark'))
+pick.onchange = () => setPrefs({ theme: pick.value as Prefs['theme'] })
+enhance(pick)
 // one scheme picker per mode; picking one also switches to that mode so you see it
-for (const mode of ['light', 'dark'] as Mode[]) {
-  const sel = $<HTMLSelectElement>(`#scheme-${mode}`)
-  sel.replaceChildren(...SCHEMES[mode].map(([id, label]) => Object.assign(document.createElement('option'), { value: id, textContent: label })))
-  if (!SCHEMES[mode].some(([id]) => id === choice[mode])) choice[mode] = SCHEMES[mode][0][0]
-  sel.value = choice[mode]
-  sel.onchange = () => { choice[mode] = sel.value; choice.mode = mode; apply() }
+for (const m of ['light', 'dark'] as Mode[]) {
+  const sel = pickers[m]
+  sel.replaceChildren(...SCHEMES[m].map(([id, label]) => option(id, label)))
+  sel.onchange = () => setPrefs(m === 'dark' ? { theme: m, darkScheme: sel.value } : { theme: m, lightScheme: sel.value })
   enhance(sel)
 }
-apply(false)
+system.addEventListener('change', apply) // on System: follow the computer when it switches
+onPrefs(apply)
+apply()

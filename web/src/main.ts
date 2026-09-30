@@ -2,6 +2,8 @@
 // Features register themselves on import (saved-layout slices, referable kinds); the imports below are the app.
 import './lib/fonts' // applies the saved font choice right away
 import './lib/theme'
+import './lib/uimode' // full or minimal interface, from your settings file (lib/prefs.ts)
+import './lib/settings' // the toolbar's Settings panel
 import './lib/tooltip' // the app's own tooltips for every title="…"
 import './lib/update' // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api'
@@ -56,7 +58,7 @@ more.setAttribute('aria-label', 'More')
 more.setAttribute('aria-controls', 'bar-more')
 const showMore = (open: boolean) => { tail.classList.toggle('open', open); more.setAttribute('aria-expanded', String(open)) }
 showMore(false)
-tail.append(...['#btn-scratch', '#btn-git', '#btn-drawer', '#btn-theme', '#btn-fonts'].map(s => $(s)))
+tail.append(...['#btn-scratch', '#btn-git', '#btn-drawer', '#btn-theme', '#btn-settings'].map(s => $(s)))
 $('#bar').append(more, tail)
 more.onclick = () => showMore(!tail.classList.contains('open'))
 tail.addEventListener('click', () => showMore(false)) // picking one closes the menu

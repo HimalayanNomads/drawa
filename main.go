@@ -35,6 +35,7 @@ import (
 	"drawa/internal/config"
 	"drawa/internal/live"
 	_ "drawa/internal/opencode" // registers the opencode backend
+	"drawa/internal/prefs"
 	"drawa/internal/qr"
 	"drawa/internal/remote"
 	"drawa/internal/server"
@@ -322,6 +323,9 @@ func main() {
 			fmt.Println("UI build failed. Needs Node.js 18+ (npm on PATH).")
 			os.Exit(1)
 		}
+	}
+	if _, err := prefs.Load(); err != nil { // writes ~/.drawa/config.json with the defaults on the first run
+		fmt.Println("Settings:", err)
 	}
 	go restartOnChange()
 	go func() { // each claude runs in its own process group, so Ctrl+C in this terminal no longer reaches it

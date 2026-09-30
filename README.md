@@ -189,6 +189,27 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 DRAWA_PORT=8766 CLAUDE_CONFIG_DIR=$HOME/.claude-work drawa ~/other/project
 ```
 
+### Settings file
+
+Settings that follow you to every project and browser live in `~/.drawa/config.json`. Drawa writes it with the defaults the first time it starts, and the Settings panel (the gear in the toolbar) changes it. You can also edit it by hand: the change applies the next time you reload the page. A file that isn't valid JSON is left alone, and the defaults apply until it's fixed.
+
+```json
+{
+  "darkScheme": "claude-dark",
+  "lightScheme": "claude-light",
+  "theme": "system",
+  "ui": "full"
+}
+```
+
+| Key | Default | Values |
+|---|---|---|
+| `ui` | `full` | `full` shows every window's title tab; `minimal` shows a window's tab only when you hover or focus it. A session card waiting for your approval keeps its tab either way. |
+| `theme` | `system` | `system` follows your computer's light or dark mode; `light` or `dark` fixes it. |
+| `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |
+
+Fonts and which key sends a message are kept per browser.
+
 ## Keyboard shortcuts
 
 Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're typing. Press `?` in the app for this list, and `Ctrl+K` to run any action by name. A short tip shows in the corner at launch; **Hide tips** turns them off.
@@ -200,7 +221,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | **Windows** | `W`/`Shift+W` next/previous window (selects it, so `Delete`, arrows and `Ctrl+G` act on it) · `M` collapse/expand · `Shift+F` full view · `F2` rename · `Shift+P` pin to the sidebar · `Shift+S` stick to the screen. They act on the selected window, else the one in front |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Esc` stop |
 | **Selection** | `Ctrl/Cmd+A` select all · arrows nudge (`Shift`: 10px) · `Delete` remove · `Esc` clear · `Ctrl/Cmd+G` group the selected windows (groups in it merge; nothing selected: an empty group) · `Ctrl/Cmd+Shift+G` ungroup the selected groups |
-| **Message box** | `Enter` send · `Shift+Enter` new line (or `Ctrl+Enter` send and `Enter` new line: pick in Appearance, `Aa`) · `Esc` leave the box · `↑` at the start / `↓` at the end: previous/next message or `!` command you sent in this session (past the newest: your draft) |
+| **Message box** | `Enter` send · `Shift+Enter` new line (or `Ctrl+Enter` send and `Enter` new line: pick in Settings, the gear) · `Esc` leave the box · `↑` at the start / `↓` at the end: previous/next message or `!` command you sent in this session (past the newest: your draft) |
 
 **Mouse:** drag the background to select (Select mode) or pan (Hand mode). The middle button and the wheel always pan. `Ctrl/Cmd+scroll` or pinch zooms; `Shift+scroll` scrolls sideways. The zoom is saved with the canvas. Jumping to a window (`Ctrl+K`, `C`, a notification) keeps the zoom unless the window would be under 50% or wouldn't fit, then it zooms to fit that window (at most 100%). Click a picture or diagram for full view, and click it again to zoom and pan it. Phones start in Hand mode.
 

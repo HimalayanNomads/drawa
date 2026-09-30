@@ -7,9 +7,10 @@
 .win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;
   min-width:min(180px,100%);max-width:calc(100% - var(--r-tab) - 94px); /* room for the .win-x strip */height:var(--tab-h);padding:0 4px 0 12px;
   background:var(--rail);border:1px solid var(--edge);border-bottom:0;border-radius:var(--r-tab) var(--r-tab) 0 0;
-  cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s,opacity .2s,visibility .2s;
-  opacity:0;visibility:hidden}
-/* only the hovered or focused window shows its tab; selected/dragging ones and windows outside the canvas keep it */
+  cursor:grab;user-select:none;transition:border-color .25s,box-shadow .25s,opacity .2s,visibility .2s}
+/* the minimal interface (lib/prefs.ts): only the hovered or focused window shows its tab; selected/dragging ones,
+   collapsed ones and windows outside the canvas keep it */
+[data-ui=minimal] .win-h{opacity:0;visibility:hidden}
 .win:is(:hover,:focus-within,.focus,.selected,.dragging)>.win-h,.pinbar>.win>.win-h,.floats>.win>.win-h,.fullview>.win>.win-h{opacity:1;visibility:visible}
 /* the shoulder: a concave quarter-curve from the tab's right edge down onto the body's top edge.
    The tab is tinted and sits on the body's top border, which runs full width: a clear line between title and content. */

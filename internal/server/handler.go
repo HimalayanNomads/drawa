@@ -1,4 +1,4 @@
-// Package server is the HTTP layer: GET routing, the write endpoints (/api/git, /api/gh, /api/images, the
+// Package server is the HTTP layer: GET routing, the write endpoints (/api/git, /api/gh, /api/images, /api/prefs, the
 // per-card send/respond/mode/canvas/interrupt/close operations), static file serving, and dispatch to the
 // /api/events stream, the canvas MCP server, and the /api/shell runner.
 package server
@@ -29,6 +29,7 @@ import (
 	"drawa/internal/gitx"
 	"drawa/internal/images"
 	"drawa/internal/live"
+	"drawa/internal/prefs"
 	"drawa/internal/sessions"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
@@ -115,6 +116,7 @@ var getRoutes = map[string]routeFunc{
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
 	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
+	"/api/prefs":     func(q url.Values) (any, int, error) { return prefsAnswer(prefs.Load()), 200, nil },
 	"/api/session":   sessionRoute,
 	"/api/gh":        func(q url.Values) (any, int, error) { return github.State(), 200, nil },
 	"/api/gh/prs":    func(q url.Values) (any, int, error) { return ok(github.Prs(ghList(q))) },
@@ -126,6 +128,16 @@ var getRoutes = map[string]routeFunc{
 	"/api/gh/pr":     func(q url.Values) (any, int, error) { return ok(github.Pr(q.Get("n"))) },
 	"/api/gh/issue":  func(q url.Values) (any, int, error) { return ok(github.Issue(q.Get("n"))) },
 	"/api/gh/log":    func(q url.Values) (any, int, error) { return ok(github.Log(q.Get("url"))) },
+}
+
+// prefsAnswer is your settings, and why ~/.drawa/config.json couldn't be read or saved when it couldn't, for the
+// page to say (a broken hand edit: the defaults apply meanwhile).
+func prefsAnswer(p map[string]any, err error) map[string]any {
+	out := map[string]any{"prefs": p}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	return out
 }
 
 func ghList(q url.Values) github.List {
@@ -405,6 +417,17 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/api/update/restart":
 		restartNow(w)
+		return
+	case "/api/prefs":
+		p, err := prefs.Set(body)
+		switch {
+		case errors.Is(err, prefs.ErrInvalid):
+			sendJSON(w, map[string]any{"error": err.Error()}, 400)
+		case err != nil:
+			sendJSON(w, map[string]any{"error": err.Error()}, 500)
+		default:
+			sendJSON(w, map[string]any{"prefs": p}, 200)
+		}
 		return
 	case "/api/git":
 		out, err := gitx.GitOp(body)

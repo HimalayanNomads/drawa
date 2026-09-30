@@ -1,5 +1,5 @@
 // Which key sends a message from a message box (a session card's, a sub-agent's): Enter (Shift+Enter for a new
-// line), or Ctrl/Cmd+Enter (Enter for a new line), chosen in the toolbar's "Aa" panel. Remembered per browser.
+// line), or Ctrl/Cmd+Enter (Enter for a new line), chosen in the toolbar's Settings panel. Remembered per browser.
 import { $ } from './dom'
 import { enhance } from './select'
 import { MOD } from './keys'

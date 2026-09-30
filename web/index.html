@@ -4,12 +4,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"><!-- page zoom stays allowed; pinch on the canvas zooms the canvas (canvas/nav.ts), and fields are 16px on touch screens so iOS doesn't zoom into them (base.css) -->
 <title>Drawa</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<script>/* theme before first paint, no flash of the wrong one (lib/theme.ts owns it after boot; same defaults) */
+<script>/* theme and interface before first paint, no flash of the wrong one (lib/theme.ts and lib/uimode.ts own them after boot, from
+   your settings file via lib/prefs.ts, which keeps its last copy in drawa:prefs; same defaults) */
   (function(){try{for(var i=localStorage.length;i--;){var k=localStorage.key(i)  /* keys saved before the rename to Drawa */
     if(k.indexOf('claude-ui:')===0){var n='drawa:'+k.slice(10);if(localStorage.getItem(n)===null)localStorage.setItem(n,localStorage.getItem(k));localStorage.removeItem(k)}}}catch(e){}
-  var c={};try{c=JSON.parse(localStorage.getItem('drawa:theme')||'{}')||{}}catch(e){}
-  var m=c.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),r=document.documentElement
-  r.dataset.theme=m;r.dataset.scheme=c[m]||(m==='dark'?'claude-dark':'claude-light')})()</script>
+  var p={},c={};try{p=JSON.parse(localStorage.getItem('drawa:prefs')||'{}')||{}}catch(e){}
+  try{c=JSON.parse(localStorage.getItem('drawa:theme')||'{}')||{}}catch(e){} /* the theme from before the settings file */
+  var t=p.theme||c.mode,m=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),r=document.documentElement
+  r.dataset.theme=m;r.dataset.scheme=p[m+'Scheme']||c[m]||(m==='dark'?'claude-dark':'claude-light');r.dataset.ui=p.ui==='minimal'?'minimal':'full'})()</script>
 <link rel="stylesheet" href="/src/styles/index.css"><!-- linked, not imported from JS: no unstyled flash while scripts load -->
 
 <div id="stage" aria-label="Canvas: drag to pan, Ctrl+scroll to zoom">
@@ -50,14 +52,19 @@
   <button id="btn-drawer" class="btn" title="History and files (Shift+H)" aria-expanded="false" aria-label="History and files"><svg viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="lbl">History &amp; files</span></button>
   <button id="btn-help" data-key="?" class="btn icon-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4M8 11.3v.2"/></svg></button>
   <button id="btn-theme" class="btn icon-btn"></button>
-  <button id="btn-fonts" class="btn" aria-label="Appearance" title="Appearance: color schemes and fonts" aria-expanded="false" aria-controls="fontpanel"><span class="aa">Aa</span></button>
+  <button id="btn-settings" class="btn icon-btn" aria-label="Settings" title="Settings: theme, interface and fonts" aria-expanded="false" aria-controls="settings"><svg viewBox="0 0 16 16"><path d="M6.7 1.5L9.3 1.5L9.4 3.3L10.3 3.7L11.7 2.5L13.5 4.3L12.3 5.7L12.7 6.6L14.5 6.7L14.5 9.3L12.7 9.4L12.3 10.3L13.5 11.7L11.7 13.5L10.3 12.3L9.4 12.7L9.3 14.5L6.7 14.5L6.6 12.7L5.7 12.3L4.3 13.5L2.5 11.7L3.7 10.3L3.3 9.4L1.5 9.3L1.5 6.7L3.3 6.6L3.7 5.7L2.5 4.3L4.3 2.5L5.7 3.7L6.6 3.3Z"/><circle cx="8" cy="8" r="2"/></svg></button>
 </header>
 
-<div id="fontpanel" class="float" hidden role="dialog" aria-label="Appearance">
+<div id="settings" class="float" hidden role="dialog" aria-label="Settings">
+  <label for="theme-mode">Theme</label>
+  <select id="theme-mode"></select>
   <label for="scheme-light">Light scheme</label>
   <select id="scheme-light"></select>
   <label for="scheme-dark">Dark scheme</label>
   <select id="scheme-dark"></select>
+  <label for="ui-mode">Interface</label>
+  <select id="ui-mode"></select>
+  <p class="where">Saved in ~/.drawa/config.json, for every project. Fonts and the send key are kept in this browser.</p>
   <hr>
   <label for="font-ui">Interface font</label>
   <select id="font-ui"></select>

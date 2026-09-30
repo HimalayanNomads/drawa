@@ -3,6 +3,7 @@
 // them in canvas_list and can draw them too (canvas_link).
 import { make, ICON, iconButton, EDITABLE, closestAt, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
+import { minimalUI, onUIMode } from '../lib/uimode'
 import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, track, hidden, type Rect } from './canvas'
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -18,12 +19,12 @@ interface Link { id: string; from: HTMLElement; to: HTMLElement; label: string; 
 const links: Link[] = []
 let selected: Link | null = null
 
-/** A window's rect below its tab, which is hidden unless hovered. Items without a tab (notes, file chips) and a
- *  collapsed window (only its tab) stay whole. */
+/** In the minimal interface, a window's rect below its tab, which is hidden unless hovered. Items without a tab
+ *  (notes, file chips) and a collapsed window (only its tab) stay whole. */
 let tab = 0
 function body(el: HTMLElement): Rect {
   const r = liveRect(el)
-  if (!el.classList.contains('win') || el.classList.contains('min')) return r
+  if (!minimalUI() || !el.classList.contains('win') || el.classList.contains('min')) return r
   tab ||= parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h')) || 34
   return { ...r, y: r.y + tab, h: r.h - tab }
 }
@@ -165,6 +166,7 @@ export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
 }
 
 /* ---------- keeping up, saving, and what Claude sees ---------- */
+onUIMode(() => changed()) // tabs shown or hidden: arrows move to the windows' new edges
 onChange(viewOnly => {
   if (!viewOnly && waiting.length && performance.now() - tried > 1000) adopt() // at most once a second: it queries every item
   const todo = []

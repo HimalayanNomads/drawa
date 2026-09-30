@@ -20,7 +20,7 @@ import { command } from '../lib/keys'
 import { saveSoon } from '../lib/store'
 import { keepImages } from './drafts'
 
-command({ label: 'Send (set in Appearance)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Appearance (Aa)' })
+command({ label: 'Send (set in Settings)', group: 'Message box', keys: ['Enter', 'Ctrl+Enter'], tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Settings (the gear)' })
 command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] })
 command({ label: 'Earlier messages', group: 'Message box', keys: ['↑↓'] })
 command({ label: 'Leave the box', group: 'Message box', keys: ['Esc'] })
