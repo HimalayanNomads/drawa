@@ -104,6 +104,7 @@ Rules for these registries:
   - Surfaces are square-cut (`--r-box`). The tab curve is the only prominent round corner.
   - Don't bring back 8–14px rounded cards, rounded boxes nested in rounded boxes, or pills. The user has rejected these repeatedly.
 - **Window states change `--edge` only;** `window.css` draws the outline from it (no blurred shadows on windows). Don't restyle `.win-h` or `.win-b` per feature beyond what's in the kind's own section.
+- **A window's tab shows only when you reach for it** (hovered, focused, selected, dragged; always when collapsed, pinned, floating or in full view). A state that waits on the user keeps its tab up, in the kind's own section, as `.card[data-state=asking]` does in `session.css`; don't show tabs for states that don't need the user.
 - **Color carries meaning:** read, edit, write and run are the action colors, and everything else is neutral. Mix tints with `color-mix(in oklab, …)`; oklch mixing shifts hues.
 - **Input fields must look like input fields:** a visible border, a text cursor, and a clear focus state.
 - **No native-looking controls:** `<select>` goes through `enhance()` from `lib/select.ts`.

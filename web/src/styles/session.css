@@ -4,6 +4,8 @@
 /* state, without glows: the tab's top line takes the state's color (focus alone keeps the kind color) */
 .card[data-state=busy]>.win-h{box-shadow:inset 0 2px 0 var(--accent)}
 .card[data-state=asking]>.win-h{box-shadow:inset 0 2px 0 var(--run)}
+/* waiting on you: its tab (status dot, state line) stays up even when the card isn't hovered or focused */
+.card[data-state=asking]>.win-h{opacity:1;visibility:visible}
 .card>.win-h{min-width:min(240px,100%);padding-left:13px}
 .card>.win-h .t{font-size:13px}
 .card .dot{width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--line-2);flex:none;transition:background .2s}
