@@ -18,6 +18,7 @@ pre code.hljs{background:none;padding:12px 14px}
 .md :not(pre)>code{padding:1px 5px;border-radius:var(--r-tag);background:var(--hover);font-size:.86em}
 .md table{overflow-wrap:normal;border-collapse:collapse;display:block;overflow-x:auto;font-size:13.5px;margin:.75em 0}
 .md th{text-align:left;font-weight:600}.md td,.md th{padding:6px 12px;border-bottom:1px solid var(--line)}
+.md img,.md video{max-width:100%;height:auto}
 .md blockquote{margin:.75em 0;padding:2px 14px;color:var(--ink-2);background:var(--hover);border-radius:var(--r-box)}
 
 .mermaid{position:relative;margin:.75em 0;padding:16px;border:1px solid var(--line);border-radius:var(--r-box);background:var(--bg);overflow-x:auto;text-align:center;white-space:pre;color:var(--muted);font:12px var(--mono);cursor:grab;user-select:none;touch-action:none}
