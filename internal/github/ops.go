@@ -109,7 +109,23 @@ func checkout(b map[string]any) map[string]any {
 	if err != nil {
 		return fail(err)
 	}
+	defer gitx.Forget() // a new HEAD: the Git window, and a pull request's Files tab, ask again
 	return reply(Gh(repo, 120*time.Second, "", "pr", "checkout", n))
+}
+
+// headOf is --head for branch, pushed to origin: owner:branch, origin's owner as GitHub names it now. GH_REPO is the
+// repo gh picks, which in a fork with an upstream remote is upstream, where a bare branch name isn't. Origin is
+// asked of gh by its URL, which follows a rename. When gh can't say, the bare name: gh then says what's wrong itself.
+func headOf(repo, branch string) string {
+	ok, url := gitx.GitOpts(gitx.Opts{Repo: repo}, "remote", "get-url", "origin")
+	if !ok || url == "" || strings.HasPrefix(url, "-") { // never an option to gh
+		return branch
+	}
+	out, err := gh(repo, 0, "", ghEnv, "repo", "view", url, "--json", "owner", "--jq", ".owner.login")
+	if owner := strings.TrimSpace(out); err == nil && loginRe.MatchString(owner) {
+		return owner + ":" + branch
+	}
+	return branch
 }
 
 func createPr(b map[string]any) map[string]any {
@@ -134,7 +150,7 @@ func createPr(b map[string]any) map[string]any {
 	if _, err := BranchArg(branch); err != nil {
 		return fail(err)
 	}
-	args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--head=" + branch, "--body-file", "-"}
+	args := []string{"pr", "create", "--title=" + title, "--base=" + base, "--head=" + headOf(repo, branch), "--body-file", "-"}
 	if truthy(b["draft"]) {
 		args = append(args, "--draft")
 	}

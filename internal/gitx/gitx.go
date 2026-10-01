@@ -142,12 +142,17 @@ func GitMessage(repo, backend string) map[string]any {
 	return map[string]any{"message": out}
 }
 
+// Forget drops the shared status, for something that just changed the repo (an op, a pull request checked out).
+func Forget() {
+	stateCache.Lock()
+	stateCache.state = nil
+	stateCache.Unlock()
+}
+
 // GitOp carries out a write operation from the Git window (stage/unstage/commit/push/pull/init/message), in Root's
 // repo or the nested one named by "repo".
 func GitOp(body map[string]any) (map[string]any, error) {
-	stateCache.Lock()
-	stateCache.state = nil // whatever it does, the next status is fresh
-	stateCache.Unlock()
+	Forget() // whatever it does, the next status is fresh
 	op, _ := body["op"].(string)
 	repo, _ := body["repo"].(string)
 	repo, err := repoDir(repo)

@@ -27,7 +27,7 @@ export async function prDetail(n: number) {
     pane.replaceChildren(...(v.sub === 'files' ? files(p) : v.sub === 'checks' ? checkList(p.checks) : [...conversation(p.body, [...p.comments, ...p.reviews]), ...(p.state === 'OPEN' ? [reviewBar(p)] : [])]))
     enhanceMarked(pane)
   }
-  w.body.replaceChildren(header(p.title, n, 'All pull requests', stateOf(p), [`@${p.author}`, `${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`, ...(REVIEW[p.review] ? [REVIEW[p.review]] : [])]), sendBar(p), manage(p), tabs, pane)
+  w.body.replaceChildren(header(p.title, n, 'All pull requests', stateOf(p), [`@${p.author}`, `${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`, ...(REVIEW[p.review] ? [REVIEW[p.review]] : [])]), sendBar(p, fill), manage(p), tabs, pane)
   fill()
   // running checks settle on their own: only the checks are asked again, and redrawn when they change
   whilePending(v, () => p.checks.some(c => c.state === 'pending'), async () => {
@@ -39,7 +39,7 @@ export async function prDetail(n: number) {
   })
 }
 
-function sendBar(p: Pr) {
+function sendBar(p: Pr, redraw: () => void) {
   const acts = make('div', 'ghacts'), t = tally(p.checks)
   const send = (what: What) => () => sendToClaude(what, p.number, p.title)
   const sendChecks = button(`Failing checks${t.fail ? ` (${t.fail})` : ''}`, '', send('checks'))
@@ -48,7 +48,7 @@ function sendBar(p: Pr) {
   const sendReviews = button(`Review comments${reviews ? ` (${reviews})` : ''}`, '', send('reviews'))
   sendReviews.disabled = !reviews && !p.comments.length
   acts.append(make('span', 'ghsend', sendLabel() + ':'), button('This PR', 'ai', send('pr')), sendChecks, sendReviews,
-    make('span', 'spacer'), button('Check out', '', () => checkout(p)), ...ghLink(p.url))
+    make('span', 'spacer'), button('Check out', '', () => checkout(p, redraw)), ...ghLink(p.url))
   return acts
 }
 
@@ -100,7 +100,8 @@ function reviewBar(p: Pr) {
  *  make a big diff untabbable). When HEAD is the pull request's newest commit, the files on disk are its files (bar
  *  uncommitted edits): each opens in its window, from its button or a line number. A nested repo's paths get its
  *  folder in front. ponytail: the project's own repo's paths are from its top, so a project opened in a subfolder of
- *  its repo can't open them. */
+ *  its repo can't open them; and HEAD is checked when the tab is drawn (and after Check out here), so a branch switched
+ *  elsewhere shows only once the tab is drawn again. */
 function files(p: Pr) {
   const parts = p.diff.split(/^(?=diff --git )/m).filter(s => s.startsWith('diff --git'))
   if (!parts.length) return [make('p', 'ghnote', p.diff.trim() || 'No changes.')]
@@ -176,8 +177,10 @@ function lineForm(n: number, path: string, r: HTMLElement) {
   f.querySelector('textarea')!.focus()
 }
 
-async function checkout(p: Pr) {
+/** Check out, then `redraw` the pull request: HEAD is now its newest commit, so its files open from disk. */
+async function checkout(p: Pr, redraw: () => void) {
   if (!await confirmBox(`Check out #${p.number}?`, `Switches this folder to the branch ${p.head} (gh pr checkout). Uncommitted changes that conflict will stop it.`, 'Check out')) return
   const r = await ghPost({ op: 'checkout', n: p.number })
+  if (r.ok) redraw()
   await confirmBox(r.ok ? 'Checked out' : 'Checkout failed', r.out || (r.ok ? `On ${p.head} now.` : 'gh gave no reason.'), 'OK')
 }

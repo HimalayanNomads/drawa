@@ -207,26 +207,42 @@ func orEmpty(v any) any {
 
 var repoCache = struct {
 	sync.Mutex
-	val map[string]map[string]any
-}{val: map[string]map[string]any{}}
+	val  map[string]map[string]any
+	fail map[string]repoFail
+}{val: map[string]map[string]any{}, fail: map[string]repoFail{}}
 
-// Repo is the repo's name, url and default branch: asked once per repo (a slow call); an error isn't cached, so it's
-// retried.
+type repoFail struct {
+	at  time.Time
+	err error
+}
+
+// Repo is the repo's name, url and default branch: asked once per repo (a slow call). Every Gh call asks it first, so
+// an error is kept for a few seconds (offline, or a repo with no GitHub remote, would otherwise ask twice per call),
+// then retried. gh runs outside the lock: one slow answer doesn't hold up every other repo's calls.
 func Repo(repo string) (map[string]any, error) {
 	repoCache.Lock()
-	defer repoCache.Unlock()
-	if v := repoCache.val[repo]; v != nil {
+	v, f := repoCache.val[repo], repoCache.fail[repo]
+	repoCache.Unlock()
+	if v != nil {
 		return v, nil
+	}
+	if f.err != nil && time.Since(f.at) < 10*time.Second {
+		return nil, f.err
 	}
 	// asked of gh as it is (not Gh, which asks this): it follows the remote's old name to the repo's current one
 	out, err := gh(repo, 0, "", ghEnv, "repo", "view", "--json", "nameWithOwner,url,defaultBranchRef")
+	if err == nil {
+		if e := json.Unmarshal([]byte(out), &v); e != nil || v == nil {
+			err = errf("gh repo view answered something that isn't a repo")
+		}
+	}
+	repoCache.Lock()
+	defer repoCache.Unlock()
 	if err != nil {
+		repoCache.fail[repo] = repoFail{time.Now(), err}
 		return nil, err
 	}
-	var v map[string]any
-	if err := json.Unmarshal([]byte(out), &v); err != nil || v == nil {
-		return nil, errf("gh repo view answered something that isn't a repo")
-	}
+	delete(repoCache.fail, repo)
 	repoCache.val[repo] = v
 	return v, nil
 }
