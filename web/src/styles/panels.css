@@ -86,7 +86,6 @@
 .src code.hljs{padding:0 14px}
 .mdview{max-width:72ch;margin:0;padding:20px 24px 40px}
 .mdview h1{font-size:22px;padding-bottom:6px;border-bottom:1px solid var(--line)}.mdview h2{font-size:18px}
-.mdview img{max-width:100%}
 .mdview input[type=checkbox]{margin:0 6px 0 0;vertical-align:-1px;accent-color:var(--accent)}
 .mdview li:has(>input[type=checkbox]){list-style:none;margin-left:-1.2em}
 .mdview hr{border:0;border-top:1px solid var(--line);margin:1.5em 0}
