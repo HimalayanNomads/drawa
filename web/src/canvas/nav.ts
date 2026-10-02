@@ -30,14 +30,13 @@ const deltas = (e: WheelEvent) => (e.shiftKey && !e.deltaX ? { dx: e.deltaY, dy:
 /** Is the pointer over something that scrolls (a card's log, a list, a code block)? Then the wheel is its, even
  *  at the end of its content: reaching the bottom of a log shouldn't start panning the canvas. */
 const inScroller = (el: Element | null, e: WheelEvent): boolean => {
-  const { dx, dy } = deltas(e), m = Math.max(Math.abs(dx), Math.abs(dy)) / 2
-  // either axis the wheel really moves on (half the motion or more): a trackpad's diagonal events over a text
-  // that only scrolls down mustn't pan, but a pixel of drift on the other axis mustn't stop a straight pan
+  const { dx, dy } = deltas(e)
+  const vertical = Math.abs(dy) >= Math.abs(dx)
   for (; el && el !== stage; el = el.parentElement) {
     const s = el as HTMLElement, cs = getComputedStyle(s)
     // the style first: only an element that can scroll gets its sizes read
-    if (dy && Math.abs(dy) >= m && /auto|scroll/.test(cs.overflowY) && s.scrollHeight > s.clientHeight + 1) return true
-    if (dx && Math.abs(dx) >= m && /auto|scroll/.test(cs.overflowX) && s.scrollWidth > s.clientWidth + 1) return true
+    if (!/auto|scroll/.test(vertical ? cs.overflowY : cs.overflowX)) continue
+    if (vertical ? s.scrollHeight > s.clientHeight + 1 : s.scrollWidth > s.clientWidth + 1) return true
   }
   return false
 }
