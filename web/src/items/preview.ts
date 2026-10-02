@@ -11,7 +11,6 @@ import { makeWindow, removeButton, winTitle } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { inkBox } from '../canvas/ink'
 import { toggleFull, isFull } from '../canvas/fullview'
-import { openZoom } from '../lib/zoom'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
 
@@ -54,7 +53,7 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
   const img = make('img', 'inode-img')
   img.alt = winTitle(el)
   img.onload = () => inkBox(host.dataset.ink!, host, img.naturalWidth, img.naturalHeight)
-  img.onclick = () => (isFull(el) ? openZoom(img) : toggleFull(el)) // as a picture window: full view, then zoom and pan
+  img.onclick = () => { if (!isFull(el)) toggleFull(el) } // as a picture window: full view, where it zooms and pans
   img.onerror = () => { if (img.isConnected) fill(host, make('p', 'none', "This picture can't be read: moved, deleted, or over 20 MB.")) }
   img.src = '/api/raw?path=' + q(el.dataset.path!) + (again ? '&v=' + Date.now() : '')
   return img

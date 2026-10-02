@@ -197,8 +197,12 @@ type Pt = { clientX: number; clientY: number; pressure?: number }
  *  position); otherwise the canvas's, in world coordinates. `scale`: stored units per screen px; `off(ev)`: has the
  *  pointer left the window; `back(q)`: a stored point on screen again. */
 function placeAt(e: Pt) {
-  const host = closestAt(e.clientX, e.clientY, '[data-ink]') ?? undefined
-  const fit = fits(host), b = host?.getBoundingClientRect()
+  const hit = closestAt(e.clientX, e.clientY, '[data-ink]') ?? undefined
+  // anywhere on a picture's window (its margin, a resize grip, a diagram's editor) draws on the picture: the window's
+  // own ink is in its pixels, so it would drift off the picture when that scales (full view, a resize)
+  const pic = hit && !fits(hit) ? hit.querySelector<HTMLElement>('[data-ink-fit]') : null
+  const host = pic?.offsetWidth ? pic : hit // not while it's hidden (collapsed, nothing to show yet)
+  const fit = fits(host), b = host?.getBoundingClientRect(), edge = hit?.getBoundingClientRect()
   const k = host && b ? b.width / host.offsetWidth : view.k // screen px per host px (or world px)
   const u = unitsPerHostPx(host)
   const pt = (ev: Pt) => {
@@ -208,7 +212,7 @@ function placeAt(e: Pt) {
   }
   // only a window on the canvas hands its strokes over: past a pinned or full-view one's edge the canvas isn't where
   // the ink shows (ponytail: those still clip)
-  const off = (ev: Pt) => !!b && !!host!.closest('#world') && (ev.clientX < b.left || ev.clientX > b.right || ev.clientY < b.top || ev.clientY > b.bottom)
+  const off = (ev: Pt) => !!edge && !!hit!.closest('#world') && (ev.clientX < edge.left || ev.clientX > edge.right || ev.clientY < edge.top || ev.clientY > edge.bottom)
   const back = ([x, y]: number[]) => (fit ? [b!.left + x / u * k, b!.top + y / u * k] : [b!.left + (x - host!.scrollLeft) * k, b!.top + (y - host!.scrollTop) * k])
   return { host, pt, scale: u / k, off, back }
 }

@@ -189,11 +189,7 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
   ed.append(ta, status)
   ed.hidden = true
   body.append(view, ed)
-  view.onclick = () => { // click the drawing: full view (Esc to come back); in full view, zoom and pan it
-    if (!isFull(node)) return toggleFull(node)
-    const svg = view.querySelector('svg')
-    if (svg) openZoom(svg)
-  }
+  view.onclick = () => { if (!isFull(node)) toggleFull(node) } // click the drawing: full view, where it zooms and pans
   // a new source from outside (Claude's canvas_update): checked first, so a bad one leaves the drawing as it was
   setSource.set(node, async text => {
     await (await load()).parse(text)
