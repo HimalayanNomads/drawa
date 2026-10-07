@@ -8,13 +8,21 @@ export interface Pasted { type: string; data: string; url: string; blob?: Blob; 
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] // what the API accepts
 const MAX_EDGE = 1568 // Claude downsizes anything larger anyway; sending less keeps requests small
 
+/** Read image files into sendable images, collecting the ones that failed to decode.
+ *  A file throws when the browser can't interpret it as a bitmap (wrong format, corrupted, SVG
+ *  that createImageBitmap refuses, etc.). Those come back in `failed` so the caller can route
+ *  them elsewhere instead of silently dropping them. */
+export async function decodeImages(files: File[]): Promise<{ images: Pasted[]; failed: File[] }> {
+  const images: Pasted[] = [], failed: File[] = []
+  for (const f of files) {
+    try { images.push(await readOne(f)) } catch (e) { console.warn('image skipped:', f.name, e); failed.push(f) }
+  }
+  return { images, failed }
+}
+
 /** Read image files into sendable images. Other types, or ones that fail to decode, are skipped. */
 export async function readImages(files: File[]): Promise<Pasted[]> {
-  const out: Pasted[] = []
-  for (const f of files) {
-    try { out.push(await readOne(f)) } catch (e) { console.warn('image skipped:', f.name, e) }
-  }
-  return out
+  return (await decodeImages(files)).images
 }
 
 async function readOne(f: File): Promise<Pasted> {

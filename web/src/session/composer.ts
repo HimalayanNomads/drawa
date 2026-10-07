@@ -7,7 +7,8 @@ import { link, unlink, onForget } from '../canvas/graph'
 import { canvasRefs, refOf, refIcon, isPicture, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, renderCard, type Session } from './session'
 import { send } from './live'
-import { readImages, thumb, type Pasted } from './images'
+import { decodeImages, thumb, type Pasted } from './images'
+import { raster } from './filetypes'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
@@ -94,23 +95,29 @@ export function composer(S: Session, body: HTMLElement) {
   }
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
   // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
-  const attach = async (files: File[]) => {
-    if (textOnly(S.backend)) { noImages(S); return }
-    const got = await readImages(files)
-    if (!got.length) return
-    const at = S.images.length
-    S.images.push(...got)
-    const marks = got.map((_, i) => `[Image${at + i + 1}]`).join(' ') + ' '
-    ta.setRangeText(marks, ta.selectionStart, ta.selectionEnd, 'end')
-    drawChips(S)
-    fit()
-    ta.focus()
+  // Returns the files it could not decode, so the caller can route them to textRefs.
+  const attach = async (files: File[]): Promise<File[]> => {
+    if (textOnly(S.backend)) { noImages(S); return files }
+    const { images: got, failed } = await decodeImages(files)
+    if (got.length) {
+      const at = S.images.length
+      S.images.push(...got)
+      const marks = got.map((_, i) => `[Image${at + i + 1}]`).join(' ') + ' '
+      ta.setRangeText(marks, ta.selectionStart, ta.selectionEnd, 'end')
+      drawChips(S)
+      fit()
+      ta.focus()
+    }
+    return failed
   }
-  // anything else: text files go along as their contents (session/uploads.ts)
+  // Raster images go to attach(); everything else (SVG, text, binary) and any bitmaps that
+  // failed to decode go to textRefs() in one call so there is at most one "Not attached" toast.
   const attachAny = async (files: File[]) => {
-    const images = files.filter(f => f.type.startsWith('image/'))
-    if (images.length) attach(images)
-    for (const r of await textRefs(files.filter(f => !f.type.startsWith('image/')))) addRef(S, r)
+    const imgs = files.filter(raster)
+    const failedFromAttach = imgs.length ? await attach(imgs) : []
+    const rest = [...files.filter(f => !raster(f)), ...failedFromAttach]
+    if (!rest.length) return
+    for (const r of await textRefs(rest)) addRef(S, r)
   }
   ta.addEventListener('paste', e => {
     const files = [...e.clipboardData?.files ?? []]
