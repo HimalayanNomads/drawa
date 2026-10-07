@@ -95,9 +95,11 @@ export function composer(S: Session, body: HTMLElement) {
   }
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
   // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
-  // Returns the files it could not decode, so the caller can route them to textRefs.
+  // Returns files that failed to decode as bitmaps so the caller can route them to textRefs.
+  // A text-only backend is handled entirely by noImages(); [] is returned so attachAny does not
+  // also toast "Not attached" for the same files.
   const attach = async (files: File[]): Promise<File[]> => {
-    if (textOnly(S.backend)) { noImages(S); return files }
+    if (textOnly(S.backend)) { noImages(S); return [] }
     const { images: got, failed } = await decodeImages(files)
     if (got.length) {
       const at = S.images.length
