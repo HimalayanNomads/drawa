@@ -45,7 +45,7 @@ export function openGit(r?: Rect) {
   const stop = new AbortController(), signal = stop.signal
   addEventListener('focus', wake, { signal })
   document.addEventListener('visibilitychange', () => { if (!document.hidden) wake() }, { signal })
-  document.addEventListener('turnend', wake, { signal }) // ponytail: nothing dispatches this yet; the session's result handler should
+  document.addEventListener('turnend', wake, { signal })
   el.addEventListener('pointerdown', wake, { signal })
   el.addEventListener('collapse', wake, { signal })
   // a commit or push in the project's own repo can change its pull request; GitHub knows nothing of the nested ones here

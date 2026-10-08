@@ -372,6 +372,7 @@ export function on(S: Session, m: Msg) {
     save()
     loadSessions()
     tree()
+    if (!S.replaying) document.dispatchEvent(new Event('turnend'))
   }
 }
 
@@ -404,4 +405,3 @@ export function replay(S: Session, m: SavedMessage & { usage?: Msg; parent?: str
     }
   }
 }
-
