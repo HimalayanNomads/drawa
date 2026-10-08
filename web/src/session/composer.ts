@@ -4,16 +4,16 @@ import { make, ICON, ping, toast } from '../lib/dom'
 import { api, post, q as enc } from '../lib/api'
 import { centerOn, onDrop, onCanvas } from '../canvas/canvas'
 import { link, unlink, onForget } from '../canvas/graph'
-import { canvasRefs, refOf, refIcon, type Ref } from '../canvas/refs'
+import { canvasRefs, refOf, refIcon, isPicture, type Ref } from '../canvas/refs'
 import { cards, focus, meta, clearSession, renderCard, type Session } from './session'
 import { send } from './live'
 import { readImages, thumb, type Pasted } from './images'
 import { textRefs } from './uploads'
 import { runShell } from './shell'
 import { modePicker } from './mode'
-import { modelPicker, effortPicker, infoBadge } from './gen'
+import { modelPicker, effortPicker, effortNote, infoBadge } from './gen'
 import { recall } from './recall'
-import { who, metaNow } from '../lib/agents'
+import { who, metaNow, textOnly } from '../lib/agents'
 import { enhance } from '../lib/select'
 import { isSend, sendCombo, onSendKey } from '../lib/sendkey'
 import { command } from '../lib/keys'
@@ -42,7 +42,10 @@ export function composer(S: Session, body: HTMLElement) {
   sendBtn.setAttribute('aria-label', 'Send')
   const modelSel = modelPicker(S), effortSel = effortPicker(S), pick = modePicker(S)
   const gen = make('div', 'gensel') // model + effort, then the status line (text and rings together) below them
-  gen.append(modelSel, effortSel, infoBadge(S))
+  gen.append(modelSel, effortSel)
+  const note = effortNote(S)
+  if (note) gen.append(note)
+  gen.append(infoBadge(S))
   form.append(ta, pick, stopBtn, sendBtn)
   chips.hidden = true
   const dock = make('div', 'dock') // the card's footer: attached references above a clearly bordered message field
@@ -92,6 +95,7 @@ export function composer(S: Session, body: HTMLElement) {
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
   // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
   const attach = async (files: File[]) => {
+    if (textOnly(S.backend)) { noImages(S); return }
     const got = await readImages(files)
     if (!got.length) return
     const at = S.images.length
@@ -231,7 +235,10 @@ function commandMenu(S: Session, form: HTMLFormElement) {
 }
 
 /* ---------- references to canvas items ---------- */
+const noImages = (S: Session) => toast(`Images aren't supported in ${who(S.backend)}: it takes text only.`)
+
 export function addRef(S: Session, r: Ref) {
+  if (textOnly(S.backend) && isPicture(r.kind)) { noImages(S); return } // @ or dropped on it: refused like a pasted one
   if (!S.refs.some(x => x.el === r.el)) S.refs.push(r)
   // dashed arrow card -> item while attached; stays once sent. Things that aren't on the canvas (a GitHub pull
   // request) are detached elements: no arrow, and clicking their chip runs their own onclick (opens them).

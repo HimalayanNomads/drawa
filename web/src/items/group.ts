@@ -373,14 +373,23 @@ persist('groups',
 // on the page and stays, and so does one only parked (a finished sub-agent's window, a delete that can still be
 // undone) until it's dropped for good. ponytail: ids of windows that never show up again stay in the saved list
 // (harmless: nothing resolves them); a periodic prune could drop them if lists get long
-// a window made beside a member (an agent, a diagram, canvas_create near it) is made inside its group: spotBeside
-// asks here for the spot, and the window joins when it shows up there
+// a window made beside a member (an agent, a diagram, canvas_create near it) or in a frame (a picture dropped or
+// pasted there) is made inside its group: spotBeside / spotAt ask here for the spot, and the window joins when it
+// shows up there
 const spawning: { g: HTMLElement; x: number; y: number }[] = []
 spawnIn((from, w, h) => {
-  const g = groupOf(from)
-  if (!g || !onCanvas(g) || g.classList.contains('min')) return null
-  const f = rect(from), r = placeIn(members(g).map(sizeOf), { x: f.x + f.w + GAP, y: f.y, w, h }, inner(styleRect(g), PAD, tabH()), GAP)
-  const at = { g, x: Math.round(r.x), y: Math.round(r.y) }
+  const item = from instanceof HTMLElement, open = (g: HTMLElement) => onCanvas(g) && !g.classList.contains('min')
+  // a spot handed out already (canvas_create's, asked again by addImage at the picture's real size) keeps its group,
+  // even when that spot is outside the frame; any other is in a frame by its corner (where a drop aimed) or its
+  // middle (a paste centered on the view)
+  const pending = item ? undefined : spawning.find(s => s.x === Math.round(from.x) && s.y === Math.round(from.y))
+  const g = item ? groupOf(from) : pending?.g ?? groups().find(g => open(g) && [[from.x, from.y], [from.x + w / 2, from.y + h / 2]].some(([x, y]) => inside(styleRect(g), x, y)))
+  if (!g || !open(g)) return null
+  const f = item ? rect(from) : from, want = item ? { x: f.x + f.w + GAP, y: f.y, w, h } : from
+  const r = placeIn(members(g).map(sizeOf), want, inner(styleRect(g), PAD, tabH()), GAP)
+  const x = Math.round(r.x), y = Math.round(r.y)
+  if (pending) { pending.x = x; pending.y = y; return r }
+  const at = { g, x, y }
   spawning.push(at)
   setTimeout(() => spawning.splice(spawning.indexOf(at) >>> 0, 1), 10000) // made elsewhere after all (a saved spot won)
   return r

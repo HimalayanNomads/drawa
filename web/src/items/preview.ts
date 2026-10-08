@@ -13,6 +13,7 @@ import { inkBox } from '../canvas/ink'
 import { toggleFull, isFull } from '../canvas/fullview'
 import { fileOpener } from '../canvas/find'
 import { sourceView, mdView, isMarkdown } from '../panels/files'
+import { toggleEdit, editing, draft, editAt, editFocus } from './fileedit'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i // what /api/raw serves
 interface Saved { path: string; title: string; rect: Rect }
@@ -23,7 +24,7 @@ referable('preview', {
   icon: '◫',
   name: 'file',
   label: el => el.dataset.path ?? '',
-  copy: el => texts.get(el.dataset.path ?? '') ?? '',
+  copy: el => draft(el) ?? texts.get(el.dataset.path ?? '') ?? '', // while editing: what's in the editor
   content: el => ({ text: `File: ${el.dataset.path} (read it if you need its contents)` }),
 })
 
@@ -62,14 +63,24 @@ function picture(el: HTMLElement, host: HTMLElement, again: boolean) {
   return img
 }
 
-const toLine = new WeakMap<HTMLElement, (line: number) => void>()
+/** The file's line under `y` in a code view, from its height and line count (one layout read, on a double-click). */
+function lineAt(host: HTMLElement, y: number) {
+  const code = host.querySelector('.src code'), n = host.querySelector('.src .ln')?.textContent?.split('\n').length
+  if (!code || !n) return 0 // rendered Markdown: no line to map to, the editor starts at the top
+  const r = code.getBoundingClientRect()
+  return Math.min(n, Math.max(1, Math.floor((y - r.top) / (r.height / n)) + 1))
+}
+
+const toLine = new WeakMap<HTMLElement, (line: number) => void>(), toEdit = new WeakMap<HTMLElement, () => Promise<void>>()
 
 export function preview(o: { path: string; title?: string; rect: Rect; line?: number }) {
+  const key = 'pv:' + o.path, image = IMAGE.test(o.path)
+  const edit = () => toggleEdit(el, host, o.path, pencil, () => load())
+  const pencil = iconButton(ICON.pencil, 'Edit the file', edit)
   const { el, body } = makeWindow({
     kind: 'preview', cls: 'pvnode', title: o.title || o.path.split('/').pop()!, rect: o.rect, minW: 200, minH: 120,
-    actions: [iconButton(ICON.reload, 'Read the file again', () => load(true)), removeButton('Remove from canvas')],
+    actions: [...(image ? [] : [pencil]), iconButton(ICON.reload, 'Read the file again', () => load(true), 'pv-reload'), removeButton('Remove from canvas')],
   })
-  const key = 'pv:' + o.path, image = IMAGE.test(o.path)
   el.dataset.id = 'preview:' + o.path // the same after a reload: arrows and canvas tools find it by this
   el.dataset.path = o.path
   // the ink host is made once, here: strokes stay on it through the reload button, and restoring ink (phase 2)
@@ -79,23 +90,36 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   if (image) body.classList.add('inode-b')
   host.append(make('p', 'none', 'Reading…'))
   body.append(host)
+  // double-click the text to edit it, as in a Markdown window, with the cursor on the line clicked
+  if (!image) host.addEventListener('dblclick', async e => {
+    if (editing(el) || (e.target as Element).closest('a, button, .mermaid')) return
+    const line = lineAt(host, e.clientY)
+    await edit()
+    if (line && editing(el)) editAt(el, line)
+  })
   let loads = 0, at = o.line // only the newest read is shown, when the reload button is pressed while one is still coming
   const load = async (again = false) => {
+    if (editing(el)) return // the editor holds the file until you stop editing
     const n = ++loads, view = image ? picture(el, host, again) : await textView(o.path, undefined, at)
-    if (n !== loads) return
+    if (n !== loads || editing(el)) return // the pencil was pressed while this read was on its way
     fill(host, view)
     revealIn(host)
   }
   load()
-  toLine.set(el, line => { at = line; load() }) // read again: the line is where it is in the file now
+  toLine.set(el, line => { at = line; if (editing(el)) editAt(el, line); else load() }) // read again: the line is where it is in the file now
+  toEdit.set(el, async () => { if (editing(el)) editFocus(el); else await edit() })
   return el
 }
 
-fileOpener((path, line) => {
-  const open = items('preview').find(el => el.dataset.path === path)
-  if (open) { if (line) toLine.get(open)?.(line); return open } // a file already open is flown to rather than opened twice
-  const c = viewCenter(), el = preview({ path, line, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
-  changed()
+fileOpener((path, line, edit) => {
+  let el = items('preview').find(el => el.dataset.path === path) // a file already open is flown to rather than opened twice
+  if (el) { if (line) toLine.get(el)?.(line) }
+  else {
+    const c = viewCenter()
+    el = preview({ path, line, rect: freeSpot({ x: c.x - 260, y: c.y - 200, w: 520, h: 400 }) })
+    changed()
+  }
+  if (edit) { const w = el; toEdit.get(w)?.().then(() => { if (line) editAt(w, line) }) }
   return el
 }, async (path, line) => IMAGE.test(path) ? Object.assign(make('img', 'finder-img'), { src: '/api/raw?path=' + q(path), alt: '' }) : textView(path, 200, line))
 

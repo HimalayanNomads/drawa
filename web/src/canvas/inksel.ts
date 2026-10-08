@@ -81,11 +81,13 @@ export function strokeMover(list: Stroke[], record = true): Mover {
   let dx = 0, dy = 0
   const move = (x: number, y: number) => {
     dx = x; dy = y
-    list.forEach((s, i) => s.el?.setAttribute('transform', `${base[i]} translate(${x * f[i]} ${y * f[i]})`.trim()))
+    list.forEach((s, i) => { s.el?.setAttribute('transform', `${base[i]} translate(${x * f[i]} ${y * f[i]})`.trim()); s.dx = x; s.dy = y })
+    changed() // arrows on them follow (they read dx/dy: the points only change at the end)
   }
   return Object.assign(move, { end: () => {
     const moved = !!(dx || dy), done = moved && record ? changing(list) : null
     list.forEach((s, i) => {
+      delete s.dx; delete s.dy
       if (base[i]) s.el?.setAttribute('transform', base[i]); else s.el?.removeAttribute('transform')
       if (!moved) return
       s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r])

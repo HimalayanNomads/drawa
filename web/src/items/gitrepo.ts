@@ -8,6 +8,7 @@ import { unified, openable, openFileButton } from '../panels/diff'
 import { expandable, textOf } from '../panels/expand'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 import { ghStrip, type Strip } from './gitgh'
+import { picker } from './gitwt'
 
 export interface GitFile { path: string; x: string; y: string; staged: [number, number]; unstaged: [number, number] }
 export interface GitState {
@@ -15,11 +16,16 @@ export interface GitState {
   files?: GitFile[]; total?: number; log?: { hash: string; subject: string; when: string; author: string }[]
   dir?: string // a nested repo's folder, relative to the project
   nested?: GitState[] // the project's own state only: the repos in its subfolders
+  worktreesFailed?: boolean // its worktree list couldn't be read this time: unknown, not empty
+  worktrees?: GitState[] // its linked worktrees: dir is their id (relative, or absolute when outside the project)
+  main?: string // a worktree's: the repo it belongs to ('' the project's own)
+  locked?: boolean; head?: string // a worktree's: git won't remove it; its commit, when detached
 }
 
 /** What a repo's view needs from the window around it. */
 export interface Host {
   refresh(): Promise<void> | void
+  redraw(): void // draw the last status again (a different checkout picked)
   open: Set<string> // the diffs you opened, kept open across refreshes
 }
 
@@ -29,6 +35,10 @@ export interface RepoView {
   gh: Strip // its pull request
   sig: string // the state last drawn: a refresh that changes nothing leaves the DOM (and open diffs) alone
   st?: GitState
+  repo: string // the repo it's a checkout of: dir, or a worktree's main repo
+  wt: boolean // a linked worktree of that repo
+  line: HTMLElement // the group's head line: its head, the checkout picker, sync and count
+  pick?: HTMLSelectElement; checkouts: GitState[] // the repo's checkouts, when it has worktrees: its own first
   busy?: boolean // an op is running: a second click waits for it, not runs it again
 }
 
@@ -36,27 +46,32 @@ export interface RepoView {
 export const drafts: Record<string, string> = {}
 /** Groups you opened (true) or closed; the others are open while they have something to commit, push or pull. */
 export const folds: Record<string, boolean> = {}
+/** The worktree each repo shows, by repo (none: its own checkout). */
+export const picks: Record<string, string> = {}
 
-type GitReply = { ok?: boolean; out?: string; message?: string; error?: string }
+type GitReply = { ok?: boolean; out?: string; message?: string; error?: string; dirty?: boolean }
 /** A git action. Never throws: a dead server comes back as a failed reply. */
-const gitPost = (body: object): Promise<GitReply> =>
+export const gitPost = (body: object): Promise<GitReply> =>
   post('git', body).catch(e => ({ ok: false, out: (e as Error).message, error: (e as Error).message }))
 
 export const repoName = (dir: string) => dir.split('/').pop() || project.name
 
-export function repoView(dir: string, host: Host): RepoView {
-  const el = make('section', 'ggroup'), head = make('button', 'ghead'), files = make('div', 'gfiles')
+export function repoView(dir: string, repo: string, host: Host): RepoView {
+  const el = make('section', 'ggroup'), line = make('div', 'ghl'), head = make('button', 'ghead'), files = make('div', 'gfiles')
   const foot = make('div', 'gfoot'), msg = make('textarea'), out = make('p', 'gout')
-  const v: RepoView = { dir, el, head, files, foot, msg, out, gh: ghStrip(dir, host.refresh), sig: '' }
+  const wt = dir !== repo
+  const v: RepoView = { dir, repo, wt, el, line, head, files, foot, msg, out, gh: ghStrip(dir, host.refresh), sig: '', checkouts: [] }
   head.onclick = () => { folds[dir] = !isOpen(v); changed(); fold(v); if (isOpen(v)) v.gh.wake() }
+  line.onclick = e => { if (e.target === line || (e.target as Element).matches('.gb,.n')) head.click() } // the whole line folds, but the picker
   msg.rows = 2
-  msg.placeholder = dir ? `Commit message for ${repoName(dir)}` : 'Commit message'
+  msg.placeholder = dir ? `Commit message for ${wt ? dir.slice(dir.lastIndexOf('/') + 1) : repoName(dir)}` : 'Commit message' // a worktree by its folder's name, not its whole path
   msg.setAttribute('aria-label', msg.placeholder)
   msg.value = drafts[dir] ?? ''
   msg.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit(v, host) })
   msg.addEventListener('input', () => setDraft(dir, msg.value))
   foot.append(msg, out)
-  el.append(head, v.gh.el, files, foot)
+  line.append(head)
+  el.append(line, v.gh.el, files, foot)
   return v
 }
 
@@ -76,12 +91,19 @@ function fold(v: RepoView) { v.head.setAttribute('aria-expanded', String(isOpen(
 /** Draw the repo's state into its view: the group's head line, its lists, and its commit / push / pull buttons. */
 export function fill(v: RepoView, st: GitState, host: Host) {
   v.st = st
-  const slash = v.dir.lastIndexOf('/'), sync = syncText(st)
   const chev = make('span', 'gchev')
   chev.innerHTML = ICON.open
-  v.head.replaceChildren(chev, make('span', 'gp', repoName(v.dir)), make('span', 'gd', slash > 0 ? v.dir.slice(0, slash + 1) : ''),
-    make('span', 'gb', st.repo ? `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable'))
-  if (st.total) v.head.append(make('span', 'n', String(st.total)))
+  const slash = v.repo.lastIndexOf('/'), sync = syncText(st), many = v.checkouts.length > 1
+  v.head.replaceChildren(chev, make('span', 'gp', repoName(v.repo)), make('span', 'gd', slash > 0 ? v.repo.slice(0, slash + 1) : ''))
+  const had = v.line.contains(document.activeElement) ? document.activeElement as HTMLElement : null
+  const gb = make('span', 'gb', st.repo ? many ? sync : `${st.branch}${sync ? ' ' + sync : ''}` : 'unreadable')
+  // the whole branch when the line is too narrow for it, and what the arrows mean
+  gb.title = [many ? '' : st.branch ?? '', st.ahead ? `${st.ahead} to push` : '', st.behind ? `${st.behind} to pull` : ''].filter(Boolean).join(' · ')
+  const tail = make('span', 'gtail') // the second line, under the name: the branch, or the picker standing in for it
+  if (v.wt) tail.dataset.wt = '' // showing a worktree, not the repo's own checkout: commits land there, so it stands out
+  tail.append(...(many ? [picker(v, host)] : []), gb)
+  v.line.replaceChildren(v.head, ...(st.total ? [make('span', 'n', `${st.total} changed`)] : []), tail)
+  if (had?.isConnected && had !== document.activeElement) had.focus() // moving the fold button or picker drops its focus
   v.head.title = st.repo ? `${v.dir || project.name}: ${st.total ? `${st.total} changed file${st.total === 1 ? '' : 's'}` : 'clean'}` : st.error ?? ''
   fold(v)
   v.gh.el.hidden = !st.repo // pull request status means nothing without a repository
@@ -137,7 +159,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   wrap.dataset.state = word
   const folder = f.path.endsWith('/') // an untracked folder is one row (git status --untracked-files=normal)
   // paths are the project's; a nested repo's rows show them from its own folder, which its group names
-  const shown = v.dir && f.path.startsWith(v.dir + '/') ? f.path.slice(v.dir.length + 1) : f.path
+  const shown = !v.wt && v.dir && f.path.startsWith(v.dir + '/') ? f.path.slice(v.dir.length + 1) : f.path
   const p = folder ? shown.slice(0, -1) : shown, slash = p.lastIndexOf('/')
   const name = make('button', 'gname')
   name.title = folder ? `${f.path} (untracked folder). Stage it to see its files.` : `${f.path} (${word}). Click for the diff.`
@@ -147,10 +169,12 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   const act = iconButton(isStaged ? '<svg viewBox="0 0 16 16"><path d="M3.5 8h9"/></svg>' : ICON.plus, isStaged ? 'Unstage' : 'Stage', () => op(v, host, isStaged ? 'unstage' : 'stage', [f.path]))
   // a deleted file has nothing on disk to open; an untracked folder isn't a file. Paths are the project's: a nested
   // repo's open as they are
-  const opens = !folder && word !== 'deleted'
+  // a worktree's paths are its own folder's: opened through the project's path, none when it lies outside the project
+  const proj = !v.wt ? f.path : v.dir.startsWith('/') ? '' : `${v.dir}/${f.path}`
+  const opens = !folder && word !== 'deleted' && !!proj
   // back to HEAD (or, for a Changes row, to what's staged): only a file HEAD has, so nothing new is deleted
   const discard = 'MD'.includes(code) ? [iconButton(UNDO, 'Discard changes (git restore)', () => discardFile(v, host, f, isStaged))] : []
-  r.append(name, stat, ...(opens ? [openFileButton(f.path, () => wrap.querySelector('.diff'))] : []), ...discard, act)
+  r.append(name, stat, ...(opens ? [openFileButton(proj, () => wrap.querySelector('.diff'))] : []), ...discard, act)
   wrap.append(r)
   const toggle = async () => {
     const open = wrap.querySelector('.diff')
@@ -161,8 +185,8 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
     try {
       const { diff } = await api<{ diff: string }>(`git/diff?repo=${q(v.dir)}&path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
       const d = wrap.appendChild(unified(diff))
-      if (opens) openable(d, f.path) // its new side is the file as staged or as it is: line numbers that match it
-      if (opens) expandable(d, textOf(isStaged ? `git/blob?repo=${q(v.dir)}&rev=&path=${q(f.path)}` : 'file?path=' + q(f.path)))
+      if (opens) openable(d, proj) // its new side is the file as staged or as it is: line numbers that match it
+      if (opens) expandable(d, textOf(isStaged ? `git/blob?repo=${q(v.dir)}&rev=&path=${q(f.path)}` : 'file?path=' + q(proj)))
     } catch (e) { // not an empty open row: closed again, and why
       wrap.classList.remove('open')
       name.setAttribute('aria-expanded', 'false')
@@ -290,3 +314,6 @@ async function writeMessage(v: RepoView, b: HTMLButtonElement, agent: string) {
   if (r.message) { v.msg.value = r.message; setDraft(v.dir, r.message); v.msg.style.height = 'auto'; v.msg.style.height = Math.min(160, v.msg.scrollHeight) + 'px'; say(v, '') }
   else say(v, r.error ?? `${who(agent)} could not write a message.`, true)
 }
+
+/** A worktree's folder for messages: its path in the project, or the last two parts of one outside it. */
+export const wtFolder = (dir: string) => dir.startsWith('/') ? '…/' + dir.split('/').slice(-2).join('/') : dir

@@ -19,11 +19,11 @@ import { added, erase, changing, undo } from './inkundo'
 // follows its row, not the top of the log.
 // `rid` is the row's own id when it has one (tool rows): the surest way back to it after a reload.
 // A stroke with `sh` is a shape (canvas/shapes.ts): p holds its two corners (a line's two ends), `f` fills it.
-// `row` and `bb` (bounding box) are only kept in memory.
+// `row`, `bb` (bounding box) and `dx`/`dy` (how far a drag has shifted it so far, canvas units) are only kept in memory.
 // `id`: given the first time a canvas-level stroke joins a group (items/groupink.ts), so the group can name it.
 // `g`: the id of the frameless group it's in (Excalidraw's kind: selecting one selects all; canvas/inksel.ts).
 export interface Stroke { c: string; s: number; sim: boolean; p: number[][]; t?: string; sh?: Shape; f?: boolean; a?: number; o?: number; k?: string; rid?: string; h?: string; id?: string; g?: string
-  host?: HTMLElement; el?: SVGPathElement | SVGTextElement | SVGGElement; row?: HTMLElement; bb?: [number, number, number, number]; sel?: boolean }
+  host?: HTMLElement; el?: SVGPathElement | SVGTextElement | SVGGElement; row?: HTMLElement; bb?: [number, number, number, number]; sel?: boolean; dx?: number; dy?: number }
 const NS = 'http://www.w3.org/2000/svg'
 const svg = $<SVGSVGElement>('#ink'), capture = $('#ink-capture'), bar = $('#inkbar'), btn = $('#btn-draw')
 export const strokes: Stroke[] = []

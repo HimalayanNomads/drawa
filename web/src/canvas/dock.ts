@@ -1,7 +1,7 @@
 // Pinning a window so it stays on screen while you pan and zoom. Two ways: into the sidebar on the right (stacked,
 // sharing its height), or floating anywhere on the screen (drag its tab to move it). Unpinning puts it back where
 // it was on the canvas: pinned windows keep their canvas position and size in their inline styles (see rect()).
-import { $, make } from '../lib/dom'
+import { $, make, focusedIn } from '../lib/dom'
 import { persist } from '../lib/store'
 import { world, stage, items, front, centerOn, changed, track, onChange, byIds, edgeGrip, holder, rect, view, toWorld, place } from './canvas'
 import { redraw } from './graph'
@@ -46,6 +46,7 @@ onChange(viewOnly => { // a pinned window collapsed, opened or closed
 
 /** Pin a window to the sidebar, or put a pinned one back on the canvas. */
 export function toggleDock(el: HTMLElement) {
+  const had = focusedIn(el) // typing in it (a file being edited): keep typing in the sidebar or back on the canvas
   if (el.classList.contains('full')) exitFull()
   if (floating(el)) unfloat(el)
   if (docked(el)) {
@@ -60,6 +61,7 @@ export function toggleDock(el: HTMLElement) {
   sync(el)
   shown() // arrows to a pinned window are hidden while it's pinned
   changed()
+  had?.focus({ preventScroll: true })
 }
 
 // drag a pinned window's tab: along the sidebar to reorder it, or out onto the canvas to unpin it where it's dropped
@@ -116,14 +118,20 @@ const setAt = (el: HTMLElement, x: number, y: number) => {
 
 /** Stick a window to the screen where it is now, or put a floating one back on the canvas. */
 export function toggleFloat(el: HTMLElement) {
+  if (!floating(el)) { const b = el.getBoundingClientRect(); floatAt(el, b.left, b.top); return }
+  const had = focusedIn(el) // typing in it: keep typing wherever it lands
   if (el.classList.contains('full')) exitFull()
-  if (floating(el)) { unfloat(el); bringBack(el); sync(el); redraw(); changed(); return }
-  const b = el.getBoundingClientRect()
-  floatAt(el, b.left, b.top)
+  unfloat(el)
+  bringBack(el)
+  sync(el)
+  redraw()
+  changed()
+  had?.focus({ preventScroll: true })
 }
 
 /** Stick a window to the screen with its top-left at (x, y) in screen pixels; one already stuck there just moves. */
 export function floatAt(el: HTMLElement, x: number, y: number) {
+  const had = focusedIn(el) // typing in it: keep typing wherever it floats
   if (el.classList.contains('full')) exitFull()
   if (docked(el)) { el.classList.remove('docked'); shown() }
   el.classList.add('floating')
@@ -133,6 +141,7 @@ export function floatAt(el: HTMLElement, x: number, y: number) {
   sync(el)
   redraw()
   changed()
+  had?.focus({ preventScroll: true })
 }
 /** Back on the canvas, on top; the camera goes to it only if its spot is off screen (a window you just unpinned
  *  from next to where it belongs shouldn't send the view flying). */

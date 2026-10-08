@@ -1,9 +1,12 @@
 // Your arrows between canvas items (Draw mode's Arrow tool, like Excalidraw's): press on one item, drag, release on
-// another. They stay attached as the items move, pin or float. Click one to label it or delete it. Claude sees
+// another. Either end can be a window or a drawing on the canvas itself (a shape, text, a pen stroke). They stay
+// attached as the items move, pin or float. Click one to label it or delete it. Claude sees
 // them in canvas_list and can draw them too (canvas_link).
 import { make, ICON, iconButton, EDITABLE, closestAt, uuid } from '../lib/dom'
 import { persist } from '../lib/store'
 import { minimalUI, onUIMode } from '../lib/uimode'
+import { strokes, type Stroke } from './ink'
+import { strokeRect } from './inksel'
 import { world, byIds, liveRect, onChange, onCanvas, changed, toWorld, shortId, track, hidden, type Rect } from './canvas'
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -15,14 +18,18 @@ layer.setAttribute('class', 'ulinks')
 layer.setAttribute('aria-hidden', 'true')
 const svg = layer.appendChild(document.createElementNS(NS, 'g'))
 svg.setAttribute('transform', `translate(${R},${R})`)
-interface Link { id: string; from: HTMLElement; to: HTMLElement; label: string; color: string; g: SVGGElement; text: HTMLElement }
+/** An arrow's end: an item, or a canvas-level drawing (ink on a window ends at its window). */
+type End = HTMLElement | Stroke
+const isEl = (e: End): e is HTMLElement => e instanceof HTMLElement
+interface Link { id: string; from: End; to: End; label: string; color: string; g: SVGGElement; text: HTMLElement }
 const links: Link[] = []
 let selected: Link | null = null
 
 /** In the minimal interface, a window's rect below its tab, which is hidden unless hovered. Items without a tab
  *  (notes, file chips) and a collapsed window (only its tab) stay whole. */
 let tab = 0
-function body(el: HTMLElement): Rect {
+function body(el: End): Rect {
+  if (!isEl(el)) { const r = strokeRect(el); return { ...r, x: r.x + (el.dx ?? 0), y: r.y + (el.dy ?? 0) } } // world units, like a canvas window's rect
   const r = liveRect(el)
   if (!minimalUI() || !el.classList.contains('win') || el.classList.contains('min')) return r
   tab ||= parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h')) || 34
@@ -49,7 +56,7 @@ function shape(k: ReturnType<typeof curve>) {
 
 /** Measure first (layout reads), then `write` (DOM writes): so a batch of arrows lays out once, not per arrow. */
 function measure(l: Link) {
-  const hide = l.from.classList.contains('full') || l.to.classList.contains('full') || hidden(l.from) || hidden(l.to)
+  const hide = [l.from, l.to].some(e => isEl(e) ? e.classList.contains('full') || hidden(e) : !!e.el?.dataset.hiddenIn)
   const k = hide ? null : shape(curve(body(l.from), body(l.to)))
   return () => write(l, k)
 }
@@ -75,10 +82,11 @@ function group(cls: string) {
   return g
 }
 
-export function addLink(from: HTMLElement, to: HTMLElement, label = '', color = 'ink', id: string = uuid()): Link {
+export function addLink(from: End, to: End, label = '', color = 'ink', id: string = uuid()): Link {
   const g = group(`ulink c-${color}`)
   const text = world.appendChild(make('div', 'ulabel'))
   const l: Link = { id, from, to, label, color, g, text }
+  idOf(from); idOf(to) // a drawing gets its id now, before the ink is next saved
   text.textContent = label
   g.addEventListener('pointerdown', e => { if (e.button === 0) { e.stopPropagation(); select(l) } })
   text.addEventListener('pointerdown', e => { e.stopPropagation(); select(l) })
@@ -98,10 +106,10 @@ function removeLink(l: Link) {
 
 /** An item is leaving (maybe for a moment: a delete that can be undone): its arrows go now. Returns what puts them
  *  back. */
-export function dropLinks(el: HTMLElement) {
-  const mine = links.filter(l => l.from === el || l.to === el)
-  mine.forEach(removeLink)
-  return () => mine.forEach(l => { if (l.from.isConnected && l.to.isConnected) addLink(l.from, l.to, l.label, l.color, l.id) })
+export function dropLinks(el: End) {
+  const mine = [...links.filter(l => l.from === el || l.to === el), ...(!isEl(el) && lost.get(el)?.splice(0) || [])]
+  mine.forEach(l => links.includes(l) && removeLink(l))
+  return () => mine.forEach(l => { if (alive(l.from) && alive(l.to)) addLink(l.from, l.to, l.label, l.color, l.id) })
 }
 
 /* ---------- selecting: the label becomes editable, with a delete button ---------- */
@@ -141,7 +149,16 @@ addEventListener('keydown', e => {
 })
 
 /* ---------- drawing one: press on an item, release on another (the Arrow tool in Draw mode) ---------- */
-const itemAt = (x: number, y: number) => closestAt(x, y, '.item')
+/** The item under a screen point, else a drawing on the canvas itself. */
+function itemAt(x: number, y: number): End | null {
+  const el = closestAt(x, y, '.item')
+  if (el) return el
+  for (const t of document.elementsFromPoint(x, y)) {
+    const s = strokes.find(s => !s.host && s.el && (s.el === t || s.el.contains(t))) // a shape's parts are inside its group
+    if (s) return s
+  }
+  return null
+}
 
 /** Start an arrow from the item under this press; follows the pointer until release. */
 export function startLink(e: PointerEvent, color: string, over: HTMLElement) {
@@ -171,13 +188,22 @@ onChange(viewOnly => {
   if (!viewOnly && waiting.length && performance.now() - tried > 1000) adopt() // at most once a second: it queries every item
   const todo = []
   for (const l of [...links]) {
-    if (!l.from.isConnected || !l.to.isConnected) { removeLink(l); continue } // an end left the canvas
-    if (viewOnly && onCanvas(l.from) && onCanvas(l.to)) continue // world coordinates: a pan or zoom doesn't move it
+    if (!alive(l.from) || !alive(l.to)) { keep(l); removeLink(l); continue } // an end left the canvas
+    if (viewOnly && [l.from, l.to].every(e => !isEl(e) || onCanvas(e))) continue // world coordinates: a pan or zoom doesn't move it
     todo.push(measure(l))
   }
   todo.forEach(w => w())
 })
-const idOf = (el: HTMLElement) => el.dataset.id ?? ''
+// arrows whose drawing left before erase() could take them (the eraser removes strokes mid-swipe): dropLinks hands
+// them over, so undoing the erase brings them back
+const lost = new WeakMap<Stroke, Link[]>()
+function keep(l: Link) {
+  for (const e of [l.from, l.to]) if (!isEl(e) && !alive(e)) lost.set(e, [...(lost.get(e) ?? []), l])
+}
+const alive = (e: End) => (isEl(e) ? e.isConnected : strokes.includes(e))
+const idOf = (e: End) => (isEl(e) ? e.dataset.id ?? '' : (e.id ??= uuid())) // a drawing gets an id the first time it's named
+/** An arrow end by its saved id: an item, else a canvas-level drawing. */
+export const endById = (id: string, ids = byIds()): End | undefined => ids.get(id) ?? strokes.find(s => !s.host && s.id === id)
 export const userLinks = () => links.map(l => ({ from: shortId(idOf(l.from)), to: shortId(idOf(l.to)), ...(l.label ? { label: l.label } : {}) }))
 type Saved = { id: string; from: string; to: string; label: string; color: string }
 // saved arrows whose ends aren't on the canvas (yet): kept and written back, so a window that comes late (or failed
@@ -188,7 +214,7 @@ function adopt() {
   tried = performance.now()
   const ids = byIds()
   waiting = waiting.filter(s => {
-    const a = ids.get(s.from), b = ids.get(s.to)
+    const a = endById(s.from, ids), b = endById(s.to, ids)
     if (a && b) addLink(a, b, s.label, s.color, s.id)
     return !(a && b)
   })

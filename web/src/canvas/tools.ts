@@ -3,13 +3,15 @@
 // (`creatable`); reading reuses what `referable` already knows about each kind.
 import { post } from '../lib/api'
 import { titleOf, setTitle, expand } from './window'
-import { ping, toast } from '../lib/dom'
+import { ping, toast, uuid } from '../lib/dom'
 import { items, rect, spotBeside, changed, shortId, onCanvas, front, centerOn, type Rect } from './canvas'
 import { link } from './graph'
 import { readItem } from './refs'
 import { snapshot } from './snapshot'
-import { textsOn, inkOn, shapesOn } from './inksel'
-import { addLink, userLinks } from './links'
+import { textsOn, inkOn, shapesOn, canvasStrokes, strokeRect } from './inksel'
+import { SHAPE_NAME } from './shapegeom'
+import type { Stroke } from './ink'
+import { addLink, userLinks, endById } from './links'
 import type { Session } from '../session/session'
 
 type Args = Record<string, any>
@@ -36,6 +38,7 @@ export async function canvasCall(S: Session, m: { id: string; tool: string; args
 }
 
 const short = (el: HTMLElement) => shortId(el.dataset.id ?? '')
+const endId = (e: HTMLElement | Stroke) => (e instanceof HTMLElement ? short(e) : shortId(e.id ?? ''))
 /** The item Claude means: its exact id first (readable ids like "git" are prefixes of others), then a UUID prefix,
  *  only when just one item has it: a guess could change the wrong item. */
 function find(id: unknown): HTMLElement {
@@ -46,6 +49,28 @@ function find(id: unknown): HTMLElement {
   if (some.length > 1) throw new Error(`Id "${want}" matches ${some.length} items: ${some.slice(0, 10).map(e => e.dataset.id).join(', ')}. Use a longer id.`)
   if (!some.length) throw new Error(`No canvas item with id "${want}". Call canvas_list for the current ids.`)
   return some[0]
+}
+
+/** Shapes and text drawn on the canvas itself, which arrows can join too (pen strokes are left out: there can be
+ *  hundreds). Naming one gives it an id, saved with the drawing. */
+function drawings() {
+  const list = canvasStrokes().filter(s => s.sh || s.t != null)
+  if (list.some(s => !s.id)) { list.forEach(s => (s.id ??= uuid())); changed() }
+  return list.map(s => {
+    const r = strokeRect(s)
+    return { id: shortId(s.id!), kind: s.sh ? SHAPE_NAME[s.sh] : 'text', ...(s.t ? { text: s.t.slice(0, 80) } : {}),
+      x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) }
+  })
+}
+/** An arrow end: an item, else a drawing from canvas_list (exact id or a unique prefix). */
+function findEnd(id: unknown): HTMLElement | Stroke {
+  try { return find(id) } catch (e) {
+    const want = String(id ?? '').trim(), exact = want && endById(want)
+    if (exact) return exact
+    const some = want ? canvasStrokes().filter(s => s.id?.startsWith(want)) : []
+    if (some.length === 1) return some[0]
+    throw e
+  }
 }
 
 /** Someone is typing in it (a note, a doc's or a diagram's source box, its title), or it holds a draft that isn't
@@ -74,7 +99,7 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
       return { id: short(el), kind: el.dataset.kind, title: titleOf(el).slice(0, 80), x: Math.round(r.x), y: Math.round(r.y), w: r.w, h: r.h,
         ...(el.classList.contains('min') ? { collapsed: true } : {}), ...(el === S.card ? { you: true } : {}),
         ...(inkOn(el, r) ? { drawnOn: true } : {}) }
-    }), arrows: userLinks() })) // arrows the user (or you) drew between items
+    }), drawings: drawings(), arrows: userLinks() })) // arrows the user (or you) drew between items and drawings
   }
   if (tool === 'canvas_read') {
     // its content as text, and a picture when someone drew on it (or when asked): ink never shows up in the text
@@ -116,10 +141,10 @@ async function run(S: Session, tool: string, a: Args): Promise<Block[]> {
     return text(JSON.stringify({ id: short(el), updated: [a.text != null && 'text', a.title != null && 'title'].filter(Boolean) }))
   }
   if (tool === 'canvas_link') {
-    const from = find(a.from), to = find(a.to)
+    const from = findEnd(a.from), to = findEnd(a.to)
     if (from === to) throw new Error('An arrow needs two different items.')
     addLink(from, to, String(a.label ?? '').trim(), 'write')
-    return text(JSON.stringify({ from: short(from), to: short(to) }))
+    return text(JSON.stringify({ from: endId(from), to: endId(to) }))
   }
   throw new Error(`Unknown canvas tool ${tool}.`)
 }

@@ -81,6 +81,29 @@ func ctags() string {
 // Installed says whether lookups can answer: universal-ctags with JSON output is on the PATH.
 func Installed() bool { return ctags() != "" }
 
+// managers is each package manager and its command for universal-ctags, in the order Install tries them.
+var managers = [][2]string{
+	{"brew", "brew install universal-ctags"},
+	{"pacman", "sudo pacman -S ctags"},
+	{"apt-get", "sudo apt install universal-ctags"},
+	{"dnf", "sudo dnf install ctags"},
+	{"zypper", "sudo zypper install ctags"},
+	{"apk", "sudo apk add ctags"},
+	{"nix-env", "nix-env -iA nixpkgs.universal-ctags"},
+	{"winget", "winget install UniversalCtags.Ctags"},
+}
+
+// Install is the command that installs universal-ctags here, from the first package manager on PATH; "" when
+// none is, and the page then points to the project's site.
+func Install() string {
+	for _, m := range managers {
+		if _, err := exec.LookPath(m[0]); err == nil {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 var building sync.Mutex // one ctags run at a time
 
 var cache = struct {

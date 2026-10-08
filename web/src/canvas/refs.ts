@@ -21,6 +21,8 @@ interface Referable {
   content: (el: HTMLElement, label: string) => Promise<Content> | Content
   /** The text its window's copy button copies (Markdown source, code); no button without it. */
   copy?: (el: HTMLElement) => string
+  /** Its content is a picture: an agent that takes text only can't be sent it. */
+  picture?: boolean
 }
 const kinds = new Map<string, Referable>()
 
@@ -30,6 +32,7 @@ export const refIcon = (kind: string) => kinds.get(kind)?.icon ?? '•'
 export const kindName = (kind: string) => kinds.get(kind)?.name ?? kind
 /** The kind's copy text, if its windows get a copy button. */
 export const copyOf = (kind: string) => kinds.get(kind)?.copy
+export const isPicture = (kind: string) => !!kinds.get(kind)?.picture
 export const refStatus = (el: HTMLElement) => kinds.get(el.dataset.kind ?? '')?.status?.(el)
 
 export function refOf(el: HTMLElement): Ref | null {

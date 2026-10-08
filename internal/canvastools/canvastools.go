@@ -93,7 +93,7 @@ var Tools = []map[string]any{
 	{
 		"name": "canvas_link",
 		"description": "Draw an arrow between two canvas items (from -> to), optionally labelled, to show how they relate. It stays " +
-			"attached as they move. Use item ids from canvas_list.",
+			"attached as they move. Use ids from canvas_list: items, or drawings (shapes and text drawn on the canvas).",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

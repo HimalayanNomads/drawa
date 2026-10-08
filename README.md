@@ -6,7 +6,7 @@
 
 **Your coding agents, on a canvas.**
 
-Run Claude Code, OpenCode and Codex side by side, watch every file they read, edit and run as a live map, and review each change without leaving the browser.
+Run Claude Code, OpenCode, Codex and Antigravity side by side, watch every file they read, edit and run as a live map, and review each change without leaving the browser.
 
 **[drawa.cc](https://drawa.cc)**
 
@@ -27,7 +27,7 @@ Run Claude Code, OpenCode and Codex side by side, watch every file they read, ed
 
 In a terminal, an agent's work scrolls past as a transcript. Drawa lays it out as a map instead.
 
-- **Several agents at once.** Each session is a card on the canvas: Claude Code, OpenCode or Codex, side by side, on the same project.
+- **Several agents at once.** Each session is a card on the canvas: Claude Code, OpenCode, Codex or Antigravity, side by side, on the same project.
 - **Work drawn as a map.** The files each agent reads, edits and writes appear in a window wired to its card, colored by what happened to them. The commands it runs collect beside it.
 - **Review in place.** Click any file for its diff from every session, and approve or answer the agent from the card it's running in.
 
@@ -40,6 +40,7 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 | [Claude Code](https://claude.com/claude-code) | **One agent is required.** `claude` on `PATH` and logged in, for your Claude subscription. |
 | [OpenCode](https://opencode.ai) | Or, instead or as well: `opencode` on `PATH`, for any other provider or its free models. See below. Tested with OpenCode 1.18.32. |
 | [Codex](https://developers.openai.com/codex/cli) | Or: `codex` on `PATH` and logged in, for your ChatGPT plan or an OpenAI API key. See below. Tested with Codex 0.158.0. |
+| [Antigravity](https://antigravity.google) | Or: `agy` on `PATH`, signed in once by running `agy` in a terminal. Limited: see below. Tested with agy 1.2.16. |
 | `git` | Optional. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | Optional. Code symbols: `Ctrl+K` finds functions, classes and the like by name, and clicking a name in a diff shows where it's defined. `brew install universal-ctags` on a Mac. Turn it off in Settings. |
@@ -47,31 +48,39 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 
 ### Choosing an agent
 
-No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), and [Codex](https://developers.openai.com/codex/cli) is OpenAI's. With either installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
+No Claude subscription? [OpenCode](https://opencode.ai) is an open-source coding agent that works with most model providers (OpenRouter, Google, OpenAI, local models and more), [Codex](https://developers.openai.com/codex/cli) is OpenAI's, and [Antigravity](https://antigravity.google) is Google's. With any installed, **New session ▾** in the toolbar offers it next to Claude Code, and each session card picks its model from that agent's list. Drawa's startup check lists the agents it finds, and warns if a version isn't the one Drawa was tested with.
 
-| | Claude Code | OpenCode | Codex |
-|---|---|---|---|
-| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` |
-| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) |
-| **Tested with** | Not pinned | 1.18.32 | 0.158.0 |
-| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) |
-| **Pasted images** | ✓ | ✓ | ✓ |
-| **Sub-agents** | Own window | Own window | One row, not their own window |
-| **Auto mode** | ✓ | – | – |
-| **Effort setting** | ✓ | – | – (uses its default) |
-| **Usage windows in the status line** | ✓ | – | – |
-| **Take back a queued message** | ✓ | – | – |
-| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) |
+| | Claude Code | OpenCode | Codex | Antigravity |
+|---|---|---|---|---|
+| **Sign in with** | Your Claude subscription | Any provider, via `opencode auth login`; its own free models need no key | Your ChatGPT plan or an OpenAI API key, via `codex login` | Your Google sign-in, via `agy` in a terminal |
+| **Install** | [claude.com/claude-code](https://claude.com/claude-code) | `curl -fsSL https://opencode.ai/install \| bash` ([docs](https://opencode.ai/docs)) | [Codex CLI docs](https://developers.openai.com/codex/cli) | [antigravity.google](https://antigravity.google) |
+| **Tested with** | Not pinned | 1.18.32 | 0.158.0 | 1.2.16 |
+| **Approvals, files and commands windows, canvas tools, history** | ✓ | ✓ | ✓ (looking at the canvas never asks) | Files, commands and history; no approvals (turns down edits) unless in Allow everything; no canvas tools |
+| **Pasted images** | ✓ | ✓ | ✓ | – |
+| **Sub-agents** | Own window | Own window | One row, not their own window | – |
+| **Auto mode** | ✓ | – | – | – |
+| **Effort setting** | ✓ | – | – (uses its default) | – (models name their own level) |
+| **Usage windows in the status line** | ✓ | – | ✓ (ChatGPT plan; none with an API key) | – |
+| **Take back a queued message** | ✓ | – | – | – |
+| **Memory per session** | Its own `claude` process | About 300 MB (its own `opencode` server) | About 250 MB (its own `codex app-server`) | Its own `agy` process |
 
-Neither OpenCode nor Codex has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
+Neither OpenCode, Codex nor Antigravity has an agent-specific process limit: set `DRAWA_MAX_LIVE` if your machine needs one. The Git window's **Write with ▾** picks which agent writes commit messages and pull request descriptions.
 
 - **OpenCode privacy.** A session's prompts, and the files it reads, go to the provider you pick. OpenCode's free models are run by third parties that may use what you send to improve their models (check [OpenCode Zen's terms](https://opencode.ai/docs/zen/)), so don't use them on code you can't share.
+- **Antigravity is limited.** `agy` can't ask for approval when run headless, so a card streams replies, shows the tools it calls, resumes and reopens past sessions, and writes commit messages, but anything that needs approval (edits, most commands) is turned down and listed under the reply, unless you start the session in **Allow everything** (`agy --dangerously-skip-permissions`: every tool runs without asking). There's no Stop, no mode or model switch mid-session (pick both before the first message), no pasted images, no slash commands, no canvas tools and no cost. Drawa keeps its own list of the project's Antigravity sessions in `~/.drawa/agy/`, and doesn't start one in a cloned repo you didn't trust. See [#34](https://github.com/HimalayanNomads/drawa/issues/34).
 - **Codex trust.** For a local folder, Drawa marks it trusted for Codex, so, as with Claude Code, its `.codex/` settings and `AGENTS.md` load. A cloned GitHub repo you didn't trust is marked untrusted, so they don't. Either way nothing is written to `~/.codex/config.toml`.
 
 <details>
 <summary><b>How the permission modes map onto Codex</b></summary>
 
 **Ask first** asks before edits and before any command Codex doesn't consider safe. **Plan only** never asks, nothing it runs can write, and it doesn't hand you a plan to approve: it answers in the chat. **Allow edits** approves file changes inside the project only (not in `.git`, `.codex`, `.agents` or `.claude`, and not renames out of it). **Always allow** covers a command or edit until the card's Codex process closes (after 30 idle minutes, or to stay under `DRAWA_MAX_LIVE`; it asks again after resuming), and Drawa doesn't save Codex's permanent command rules; canvas changes ask each time. A mode change applies from the next turn (a message sent mid-turn joins the running one), except that leaving **Allow everything** stops a running turn, since it can't lose full access mid-turn.
+
+</details>
+
+<details>
+<summary><b>How the permission modes map onto Antigravity</b></summary>
+
+Headless `agy` cannot prompt for approval during a turn. **Ask first** (the default) allows read-only tools, but any action requiring confirmation (file edits, mutating commands) is automatically turned down and listed under the reply. **Allow everything** starts the session with `--dangerously-skip-permissions`, letting all tools run without asking. Modes cannot be switched mid-session; pick either before sending your first message. Other modes (**Plan only**, **Allow edits**, **Auto**) are not supported.
 
 </details>
 
@@ -132,7 +141,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 
 ## Features
 
-- **Parallel sessions.** Each card is a live agent process: Claude Code, OpenCode or Codex, picked per session. Type any time; messages queue while the agent or its sub-agents work.
+- **Parallel sessions.** Each card is a live agent process: Claude Code, OpenCode, Codex or Antigravity, picked per session. Type any time; messages queue while the agent or its sub-agents work.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/agents-dark.png">
@@ -146,7 +155,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
   <img src="docs/readme/files-light.png" alt="A session card wired to its files window: dom.ts edited (+2 −1), keys.ts read, and a commands window below">
 </picture>
 
-- **Review in place.** An edit waiting for approval shows its diff inside the card. Click any file for its changes from every session, plus the file itself with Markdown and Mermaid preview.
+- **Review in place.** An edit waiting for approval shows its diff inside the card. Click any file for its changes from every session, plus the file itself with Markdown and Mermaid preview. Relative links in Markdown open the linked project file in the viewer; heading fragments on file links are ignored.
 
 <img src="docs/readme/review-dark.png" alt="An edit to dom.ts waiting for approval, its diff shown inside the card above Deny, Always allow and Allow">
 
@@ -198,8 +207,10 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 {
   "darkScheme": "claude-dark",
   "lightScheme": "claude-light",
+  "symbols": "auto",
   "theme": "system",
-  "ui": "full"
+  "ui": "full",
+  "vim": "off"
 }
 ```
 
@@ -208,6 +219,8 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 | `ui` | `full` | `full` shows every window's title tab; `minimal` shows a window's tab only when you hover or focus it. A session card waiting for your approval keeps its tab either way. |
 | `theme` | `system` | `system` follows your computer's light or dark mode; `light` or `dark` fixes it. |
 | `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |
+| `symbols` | `auto` | `auto` reads code symbols with universal-ctags when it's installed; `off` never runs it. |
+| `vim` | `off` | `on` gives the file editor and scratchpads Vim motions (`:w` saves, `:q` stops editing, `:q!` drops unsaved changes). Yanked text flashes so you see what was taken. Yanks and deletes go to the system clipboard, and `p` pastes what you copied elsewhere (once the browser lets the page read the clipboard). |
 
 Fonts and which key sends a message are kept per browser.
 
@@ -220,6 +233,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | **Canvas** | `V`/`1` select · `H` hand (hold `Space` to pan) · `Shift+1` fit all · `Shift+2` zoom to selection · `Shift+0` zoom 100% · `F` fit · `+`/`-` zoom in/out · arrows pan (`Shift`: bigger steps; with a selection they nudge it instead) |
 | **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Shift+H` history & files · `Ctrl+K` find a window, file, code symbol or command · `?` all shortcuts |
 | **Windows** | `W`/`Shift+W` next/previous window (selects it, so `Delete`, arrows and `Ctrl+G` act on it) · `M` collapse/expand · `Shift+F` full view · `F2` rename · `Shift+P` pin to the sidebar · `Shift+S` stick to the screen. They act on the selected window, else the one in front |
+| **File editor** | the pencil on a file window, a double-click on its text, or **Edit** at the top of the file inspector edits it · `Ctrl/Cmd+S` save · the pencil again stops editing (asks first if there are unsaved changes) · with Vim motions on (Settings): `:w` save · `:q` stop · `:q!` drop changes · `:wq` or `:x` save and stop · `gd` / `gD` the name's first use in the function / file (where it's declared), `Ctrl+O` back · `Esc` then `Tab` leaves the editor |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Esc` stop |
 | **Selection** | `Ctrl/Cmd+A` select all · arrows nudge (`Shift`: 10px) · `Delete` remove · `Esc` clear · `Ctrl/Cmd+G` group the selected windows (groups in it merge; nothing selected: an empty group) · `Ctrl/Cmd+Shift+G` ungroup the selected groups |
 | **Message box** | `Enter` send · `Shift+Enter` new line (or `Ctrl+Enter` send and `Enter` new line: pick in Settings, the gear) · `Esc` leave the box · `↑` at the start / `↓` at the end: previous/next message or `!` command you sent in this session (past the newest: your draft) |

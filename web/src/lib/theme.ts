@@ -3,7 +3,7 @@
 // module puts the choice on <html data-theme data-scheme>. The inline script in index.html applies the last one seen
 // before first paint; keep its defaults in sync.
 import { $, ICON } from './dom'
-import { enhance } from './select'
+import { enhance, segmented } from './select'
 import { command } from './keys'
 import { prefs, onPrefs, setPrefs, type Prefs } from './prefs'
 
@@ -48,7 +48,7 @@ command({ label: 'Switch light / dark mode', group: 'Canvas', run: () => btn.cli
 
 pick.replaceChildren(option('system', 'System'), option('light', 'Light'), option('dark', 'Dark'))
 pick.onchange = () => setPrefs({ theme: pick.value as Prefs['theme'] })
-enhance(pick)
+segmented(pick)
 // one scheme picker per mode; picking one also switches to that mode so you see it
 for (const m of ['light', 'dark'] as Mode[]) {
   const sel = pickers[m]

@@ -4,12 +4,12 @@
 // lookup is just empty, so callers never need to tell "not installed" from "nothing found".
 import { $, make } from './dom'
 import { api, q } from './api'
-import { enhance } from './select'
+import { segmented } from './select'
 import { prefs, onPrefs, setPrefs } from './prefs'
 
 export interface CodeSymbol { name: string; path: string; line: number; kind: string; scope?: string }
 
-let installed = false
+let installed = false, install = ''
 /** Lookups can answer: ctags is installed and the setting isn't off. */
 export const symbolsOn = () => installed && prefs().symbols !== 'off'
 
@@ -22,20 +22,20 @@ export const definitions = (name: string) =>
   symbolsOn() ? api<CodeSymbol[]>('symbols?def=' + q(name)).catch(none) : Promise.resolve(none())
 
 const sel = $<HTMLSelectElement>('#symbols'), status = $('#symbols-status')
-sel.replaceChildren(...([['auto', 'Use universal-ctags if installed'], ['off', 'Off']] as const)
+sel.replaceChildren(...([['auto', 'Auto'], ['off', 'Off']] as const)
   .map(([value, textContent]) => Object.assign(document.createElement('option'), { value, textContent })))
 sel.onchange = () => setPrefs({ symbols: sel.value === 'off' ? 'off' : 'auto' })
-enhance(sel)
+segmented(sel)
 
 function sync() {
   document.documentElement.dataset.symbols = symbolsOn() ? 'on' : 'off' // CSS shows a diff's definition box only when it can answer
   sel.value = prefs().symbols
   status.replaceChildren(...(prefs().symbols === 'off' ? ['Ctrl+K and diffs leave code symbols out.']
     : installed ? ['Ctrl+K lists functions, classes and more; click a name in a diff to see where it’s defined.']
-    : ['universal-ctags isn’t installed, so there are none. Install it (', make('code', '', 'brew install universal-ctags'), ' on a Mac) and reopen Settings.']))
+    : ['universal-ctags not found. ', ...(install ? ['Run ', make('code', '', install), ', then reopen Settings.'] : ['Install it from ctags.io, then reopen Settings.'])]))
 }
 // asked at boot and each time Settings opens, so installing ctags needs no restart
-const check = () => api<{ installed: boolean }>('symbols').then(r => { installed = r.installed; sync() }, () => {})
+const check = () => api<{ installed: boolean, install?: string }>('symbols').then(r => { installed = r.installed; install = r.install ?? ''; sync() }, () => {})
 $('#btn-settings').addEventListener('click', () => { if (!$('#settings').hidden) check() })
 onPrefs(sync)
 sync()

@@ -3,6 +3,7 @@
 // than Ctrl+Z taking saved strokes off one by one.
 import { changed } from './canvas'
 import { strokes, paint, remove, type Stroke } from './ink'
+import { dropLinks } from './links'
 
 const MAX = 200 // ponytail: oldest actions fall off; no redo (add a second stack if anyone asks for Ctrl+Shift+Z)
 const ops: (() => void)[] = [] // each puts the drawing back the way it was before one action
@@ -14,7 +15,8 @@ export const added = (...list: Stroke[]) => push(() => remove(...list))
 /** Take strokes off the drawing as one action undo can bring back (the eraser, Delete, Erase all). */
 export function erase(...gone: Stroke[]) {
   if (!gone.length) return
-  push(() => restore(gone))
+  const links = gone.map(dropLinks) // their arrows go now and come back with them
+  push(() => { restore(gone); links.forEach(back => back()) })
   remove(...gone)
 }
 

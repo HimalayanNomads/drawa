@@ -87,6 +87,10 @@ type Kind struct {
 	// descriptions. (true, its reply) or (false, the error). nil: it can't; Write picks another backend.
 	OneShot func(prompt, text string) (bool, string)
 	Warn    func() string // a note for preflight when its CLI is installed (e.g. an untested version), or ""
+	// NoEffort: it can't take a reasoning effort from Drawa; a link saying why, which the page shows beside a disabled
+	// effort picker. "": it takes one (or has no levels to offer, and the picker hides).
+	NoEffort string
+	TextOnly bool // it can't take images: the page won't attach one to its messages
 }
 
 var kinds = map[string]Kind{} // written only by init()s, so read without a lock

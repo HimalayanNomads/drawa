@@ -1,7 +1,7 @@
 // Which key sends a message from a message box (a session card's, a sub-agent's): Enter (Shift+Enter for a new
 // line), or Ctrl/Cmd+Enter (Enter for a new line), chosen in the toolbar's Settings panel. Remembered per browser.
 import { $ } from './dom'
-import { enhance } from './select'
+import { segmented } from './select'
 import { MOD } from './keys'
 
 type Send = 'enter' | 'mod'
@@ -27,4 +27,4 @@ sel.onchange = () => {
   try { localStorage.setItem(KEY, key) } catch {}
   listeners.forEach(f => f())
 }
-enhance(sel)
+segmented(sel)

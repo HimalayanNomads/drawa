@@ -115,6 +115,12 @@ func (t *translator) frame(raw []byte) []string {
 		l := p.TokenUsage.Last
 		t.Usage.Input, t.Usage.Output, t.Usage.Cache.Read = l.Input-l.Cached, l.Output, l.Cached
 		t.Window = p.TokenUsage.Window // the context meter's denominator, sent with the result
+	case "account/rateLimits/updated":
+		var p limits
+		json.Unmarshal(m.Params, &p)
+		if f, w := p.windows(); f != nil || w != nil { // a credits-only update has neither: keep the rings as they are
+			return []string{live.Line(live.Obj{"type", "rate_limit_event", "rate_limit_info", map[string]any{"unifiedWindows": map[string]any{"five_hour": f, "seven_day": w}}})}
+		}
 	case "serverRequest/resolved":
 		var p struct {
 			RequestID json.RawMessage `json:"requestId"`

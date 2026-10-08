@@ -4,7 +4,7 @@
 import { make, ICON, iconButton, copyButton, project, ping, uuid, perFrame, EDITABLE, confirmBox } from '../lib/dom'
 import { api, post } from '../lib/api'
 import { persist, save, saveSoon, each } from '../lib/store'
-import { front, savedRect, nextColumn, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
+import { front, savedRect, nextColumn, spotBeside, centerOn, fit, byIds, type Rect, onCanvas } from '../canvas/canvas'
 import { makeWindow, expand } from '../canvas/window'
 import { dropSession, redraw, link, itemLinks } from '../canvas/graph'
 import { clearInk } from '../canvas/ink'
@@ -207,8 +207,11 @@ function emptyState(S: Session) {
   return e
 }
 
-export function newSession(opts: { rect?: Rect; cid?: string; backend?: string } = {}) {
-  const r = opts.rect ?? nextColumn(Math.max(340, Math.min(460, innerWidth - 32)), 600) // phones: fits the screen
+/** `here`: in a free spot in the view, leaving the camera where it is (the card a reload makes when none was saved:
+ *  jumping off to the next column would lose your place). */
+export function newSession(opts: { rect?: Rect; cid?: string; backend?: string; here?: boolean } = {}) {
+  const w = Math.max(340, Math.min(460, innerWidth - 32)) // phones: fits the screen
+  const r = opts.rect ?? (opts.here ? spotBeside(null, w, 600) : nextColumn(w, 600))
   const close = iconButton(ICON.x, 'Close session', () => askClose(S), 'closebtn')
   // Claude Code's own resume list hides -p sessions, so this is how you open a card's session in a terminal
   const sidBtn = copyButton(() => S.sid ?? '', 'Copy session ID')
@@ -289,7 +292,7 @@ export function newSession(opts: { rect?: Rect; cid?: string; backend?: string }
   focus(S)
   renderCard(S)
   if (!opts.rect) {
-    centerOn(card)
+    if (!opts.here) centerOn(card)
     S.ta.focus({ preventScroll: true })
   }
   return S

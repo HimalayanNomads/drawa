@@ -47,7 +47,7 @@ document.addEventListener('pointerdown', e => {
     const i = Number(corner.dataset.c), cx = i === 1 || i === 2, cy = i >= 2, s = picked, orig = s.p.map(q => [...q]), k = unitsPerPx(s)
     const ix = orig[0][0] <= orig[1][0] === !cx ? 0 : 1, iy = orig[0][1] <= orig[1][1] === !cy ? 0 : 1
     const done = changing([s])
-    track(corner, e, (dx, dy) => { s.p[ix][0] = orig[ix][0] + dx * k; s.p[iy][1] = orig[iy][1] + dy * k; paint(s); place() }, () => {
+    track(corner, e, (dx, dy) => { s.p[ix][0] = orig[ix][0] + dx * k; s.p[iy][1] = orig[iy][1] + dy * k; paint(s); place(); changed() /* its arrows follow */ }, () => {
       if (s.p.some((q, j) => q[0] !== orig[j][0] || q[1] !== orig[j][1])) done()
       changed()
     })

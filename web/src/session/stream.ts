@@ -19,7 +19,7 @@ import { setMode, modeRefused } from './mode'
 import { TASK_TOOLS, taskCall, taskResult } from './tasks'
 import { loadSessions } from './history'
 import { meta, handoff, report } from './notices'
-import { who } from '../lib/agents'
+import { who, modesOf } from '../lib/agents'
 import { showItem } from '../canvas/tools'
 // what a refused tool call means in each mode, and what to do about it (shown under the turn)
 const REFUSED = 'It was refused. Switch this card to Allow edits, Auto or Allow everything and ask again to let it run.'
@@ -346,7 +346,10 @@ export function on(S: Session, m: Msg) {
       const i = p.tool_input ?? {}, what = i.description ?? i.command ?? i.file_path ?? ''
       return what ? `${p.tool_name} (${String(what).slice(0, 60)})` : p.tool_name
     }))]
-    if (denied.length) put(S, make('div', 'err', `Not allowed: ${denied.join(', ')}. ${DENIED_HOW[S.mode] ?? DENIED_HOW.default}`))
+    // an agent that can't ask for approval at all (Antigravity): only a session started allowing everything runs these
+    const modes = modesOf(S.backend), noAsk = modes && !modes.includes('acceptEdits')
+    const how = noAsk ? `${who(S.backend)} can't ask for approval in Drawa, so it turned this down. ${modes.includes('bypassPermissions') ? 'Start a new session in Allow everything to let it run.' : 'Run it yourself, or use another agent.'}` : DENIED_HOW[S.mode] ?? DENIED_HOW.default
+    if (denied.length) put(S, make('div', 'err', `Not allowed: ${denied.join(', ')}. ${how}`))
     // the model's real context window, when the CLI reports it
     const windows = Object.values(m.modelUsage ?? {}).map((u: any) => u?.contextWindow).filter(Boolean) as number[]
     if (windows.length) { S.ctx.max = Math.max(...windows); S.ctx.real = true }

@@ -1,12 +1,15 @@
 // Docs: Markdown windows on the canvas. Rendered like a reply (headings, lists, code blocks with copy and pin,
 // Mermaid diagrams, GitHub callouts); the pencil or a double-click edits the source, Ctrl/Cmd+Enter or Esc shows
-// it again. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with canvas_create /
-// canvas_update (kind "doc").
-import { make, ICON, iconButton, clip, uuid } from '../lib/dom'
+// it again (with Vim motions on: :q). The source is edited in the same editor as files (lib/codeedit.ts, loaded on
+// first edit), kept as you type. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with
+// canvas_create / canvas_update (kind "doc").
+import { make, ICON, iconButton, clip, uuid, pressed, toast } from '../lib/dom'
+import { prefs, onPrefs } from '../lib/prefs'
+import type { Editor } from '../lib/codeedit'
 import { persist, each } from '../lib/store'
 import { md, enhance } from '../lib/markdown'
 import { onTheme } from '../lib/theme'
-import { items, savedRect, freeSpot, viewCenter, centerOn, changed, type Rect } from '../canvas/canvas'
+import { items, savedRect, freeSpot, viewCenter, centerOn, changed, onGone, type Rect } from '../canvas/canvas'
 import { makeWindow, removeButton, winTitle } from '../canvas/window'
 import { referable } from '../canvas/refs'
 import { creatable } from '../canvas/tools'
@@ -24,6 +27,9 @@ referable('doc', {
 })
 
 const shown = new WeakMap<HTMLElement, string>() // the source each doc's view was last drawn from
+const editors = new Map<HTMLElement, Editor>() // the docs being edited, and their editors
+onPrefs(p => { for (const ed of editors.values()) ed.setVim(p.vim === 'on') })
+onGone(el => { editors.get(el)?.destroy(); editors.delete(el) }) // deleted while editing, for good
 
 /** Show the source rendered. The content sits inside the scroller so a redraw keeps the ink layer next to it. */
 function render(el: HTMLElement) {
@@ -49,7 +55,7 @@ function checked(a: Record<string, any>) {
 
 export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect; edit?: boolean } = {}) {
   const id = o.id ?? uuid(), c = viewCenter()
-  const view = make('div', 'mdoc-b'), out = make('div', 'md mdoc-md'), ta = make('textarea', 'mdoc-ed')
+  const view = make('div', 'mdoc-b'), out = make('div', 'md mdoc-md'), box = make('div', 'pvnode-ed mdoc-ed')
   const pencil = iconButton(ICON.pencil, 'Edit (double-click the text too)', () => toggle())
   const { el, body } = makeWindow({
     kind: 'doc', cls: 'mdoc', title: o.title ?? 'Scratchpad', minW: 220, minH: 140,
@@ -59,26 +65,48 @@ export function doc(o: { id?: string; title?: string; text?: string; rect?: Rect
   el.dataset.id = id
   view.dataset.ink = 'm:' + id // drawing on it scrolls with the text
   view.append(out)
-  ta.hidden = true
-  ta.spellcheck = false
-  ta.maxLength = MAX
-  ta.placeholder = '# Markdown\n\nLists, code blocks, ```mermaid diagrams, > [!NOTE] callouts…'
-  ta.setAttribute('aria-label', 'Markdown source')
-  body.append(view, ta)
-  const toggle = (edit = !!ta.hidden) => {
-    if (!edit && !ta.hidden) setSrc(el, ta.value)
-    ta.hidden = !edit
-    view.hidden = edit
-    pencil.classList.toggle('on', edit)
-    if (edit) { ta.value = el.dataset.src ?? ''; ta.focus() }
+  box.hidden = true
+  body.append(view, box)
+  let opening = false
+  const toggle = async (edit = !editors.has(el)) => {
+    const ed = editors.get(el)
+    if (!edit) {
+      if (!ed) return
+      const text = ed.text()
+      editors.delete(el)
+      ed.destroy()
+      box.hidden = true
+      view.hidden = false
+      pressed(pencil, false)
+      return setSrc(el, text)
+    }
+    if (ed || opening) return
+    opening = true
+    try {
+      const { codeEditor } = await import('../lib/codeedit')
+      const made = await codeEditor(box, {
+        path: 'scratchpad.md', text: el.dataset.src ?? '', vim: prefs().vim === 'on', leave: true, max: MAX,
+        label: 'Markdown source', hint: '# Markdown\n\nLists, code blocks, ```mermaid diagrams, > [!NOTE] callouts…',
+        save: async () => { setSrc(el, made.text()); return true },
+        quit: () => void toggle(false),
+        change: text => { el.dataset.src = clip(text, MAX); changed() }, // the draft is saved as you type (drawn when you leave)
+      })
+      if (!el.isConnected) return made.destroy() // removed while it loaded
+      editors.set(el, made)
+      box.hidden = false
+      view.hidden = true
+      pressed(pencil, true)
+      made.focus()
+    } catch (e) {
+      toast(`Couldn't open the editor: ${(e as Error).message}`)
+    } finally { opening = false }
   }
   view.addEventListener('dblclick', e => { if (!(e.target as Element).closest('a, button, .codeblock, .mermaid')) toggle(true) }) // a diagram's click zooms
-  ta.addEventListener('keydown', e => {
-    e.stopPropagation() // typing isn't a canvas shortcut
-    if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); toggle(false) }
+  box.addEventListener('keydown', e => e.stopPropagation()) // typing isn't a canvas shortcut
+  box.addEventListener('focusout', e => { // clicking away keeps what you wrote, and names an untitled doc
+    const ed = editors.get(el)
+    if (ed && !box.contains(e.relatedTarget as Node)) setSrc(el, ed.text())
   })
-  ta.addEventListener('blur', () => { if (!ta.hidden) setSrc(el, ta.value) }) // clicking away keeps what you wrote
-  ta.addEventListener('input', () => { el.dataset.src = ta.value; changed() }) // the draft is saved as you type (drawn when you leave)
   setSrc(el, o.text ?? '')
   if (o.edit) { centerOn(el); toggle(true) }
   return el
@@ -92,8 +120,8 @@ creatable('doc', {
   size: () => ({ w: 420, h: 360 }),
   create: (a, r) => doc({ text: checked(a), title: a.title == null ? undefined : String(a.title), rect: r }), // untitled: setSrc names it from its heading
   update: (el, a) => {
-    const text = checked(a), ta = el.querySelector<HTMLTextAreaElement>('.mdoc-ed')
-    if (ta && !ta.hidden) ta.value = text // being edited: Claude's text replaces the draft in the box too, so leaving edit keeps it
+    const text = checked(a)
+    editors.get(el)?.setText(text) // being edited: Claude's text replaces the draft in the editor too, so leaving edit keeps it
     setSrc(el, text)
   },
 })

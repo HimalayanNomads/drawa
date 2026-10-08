@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"drawa/internal/config"
@@ -67,7 +68,7 @@ func TestStatusInSubfolder(t *testing.T) {
 	prefixCache.ok = false
 	t.Cleanup(func() { config.Root = saved; prefixCache.ok = false })
 
-	st := gitStatus("")
+	st := gitStatus("", false)
 	got := map[string]map[string]any{}
 	for _, f := range st["files"].([]map[string]any) {
 		got[f["path"].(string)] = f
@@ -169,7 +170,7 @@ func TestUntrustedRunsNoRepoCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "f"), []byte("b\n"), 0o644)
 	run := func() bool {
 		os.Remove(marker)
-		gitStatus("")
+		gitStatus("", false)
 		GitDiff("", "f", false)
 		_, err := os.Stat(marker)
 		return err == nil
@@ -211,8 +212,11 @@ func TestNestedRepos(t *testing.T) {
 
 	saved := config.Root
 	config.Root = root
-	prefixCache.ok, nestedCache.list, stateCache.state = false, nil, nil
-	t.Cleanup(func() { config.Root = saved; prefixCache.ok, nestedCache.list, stateCache.state = false, nil, nil })
+	prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	t.Cleanup(func() {
+		config.Root = saved
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	})
 
 	if got, want := Nested(), []string{"apps/api", "web"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Nested = %v, want %v", got, want)
@@ -250,6 +254,294 @@ func TestNestedRepos(t *testing.T) {
 	}
 	if _, err := GitOp(map[string]any{"op": "init", "repo": "web"}); err == nil {
 		t.Fatal("init in a nested repo")
+	}
+}
+
+// Linked worktrees come from git worktree list: inside the project (even a hidden folder) and outside it, with their
+// branches (none when detached) and lock; a worktree lists none of its own, and one whose folder is gone is left out.
+func TestWorktrees(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	repo := filepath.Join(base, "repo")
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	os.MkdirAll(repo, 0o755)
+	run(repo, "init", "-q", "-b", "main")
+	run(repo, "commit", "-q", "--allow-empty", "-m", "first")
+	inside := filepath.Join(repo, ".claude", "worktrees", "a")
+	outside := filepath.Join(base, "wt-b")
+	gone := filepath.Join(base, "wt-gone")
+	run(repo, "worktree", "add", "-q", "-b", "feat-a", inside)
+	run(repo, "worktree", "add", "-q", "--detach", outside)
+	run(repo, "worktree", "add", "-q", "-b", "feat-gone", gone)
+	os.RemoveAll(gone)
+	locked := filepath.Join(base, "wt-locked")
+	run(repo, "worktree", "add", "-q", "-b", "feat-l", locked)
+	run(repo, "worktree", "lock", "--reason", "on a stick", locked)
+	rel := filepath.Join(base, "wt-rel")
+	run(repo, "-c", "worktree.useRelativePaths=true", "worktree", "add", "-q", "-b", "feat-r", rel) // git 2.48+; else absolute
+
+	// forged entries: git lists any existing folder an admin entry's gitdir names; neither is a worktree
+	plain, other := filepath.Join(base, "plain"), filepath.Join(base, "other")
+	os.MkdirAll(plain, 0o755)
+	os.MkdirAll(other, 0o755)
+	run(other, "init", "-q")
+	for name, target := range map[string]string{"evil": plain, "evil2": filepath.Join(other, ".git")} {
+		adm := filepath.Join(repo, ".git", "worktrees", name)
+		os.MkdirAll(adm, 0o755)
+		os.WriteFile(filepath.Join(adm, "gitdir"), []byte(target+"\n"), 0o644)
+		os.WriteFile(filepath.Join(adm, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
+		os.WriteFile(filepath.Join(adm, "commondir"), []byte("../..\n"), 0o644)
+	}
+	if out, _ := exec.Command("git", "-C", repo, "worktree", "list").Output(); !strings.Contains(string(out), plain) {
+		t.Logf("git doesn't list the forged entry here, so the check below proves less: %s", out)
+	}
+
+	got, err := worktrees(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.SortFunc(got, func(a, b Worktree) int { return strings.Compare(a.Path, b.Path) })
+	want := []Worktree{{Path: inside, Branch: "feat-a"}, {Path: outside, Branch: ""}, {Path: locked, Branch: "feat-l", Locked: true}, {Path: rel, Branch: "feat-r"}}
+	slices.SortFunc(want, func(a, b Worktree) int { return strings.Compare(a.Path, b.Path) })
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("worktrees = %+v, want %+v", got, want)
+	}
+	if w, _ := worktrees(outside); w != nil {
+		t.Fatalf("a worktree's own worktrees = %+v, want none", w)
+	}
+	if w, err := worktrees(base); w != nil || err != nil {
+		t.Fatalf("not a repo: %+v %v", w, err)
+	}
+
+	saved := config.Root
+	config.Root = repo
+	reset := func() {
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil
+	}
+	reset()
+	t.Cleanup(func() { config.Root = saved; reset() })
+	if Check(plain) == nil || Check(filepath.Join(other, ".git")) == nil || Check(outside) != nil {
+		t.Fatal("Check trusts a forged worktree, or not a real one")
+	}
+
+	// git not answering: the last good list stays; with none ever read, the repo is marked
+	Repos()
+	path := os.Getenv("PATH")
+	t.Setenv("PATH", "")
+	wtCache.list = nil
+	if l, failed := worktreeLists(); len(l) != 4 || failed != nil {
+		t.Fatalf("after a failure = %v %v", l, failed)
+	}
+	wtCache.list, wtCache.good = nil, nil
+	if l, failed := worktreeLists(); len(l) != 0 || !reflect.DeepEqual(failed, []string{""}) {
+		t.Fatalf("never read = %v %v", l, failed)
+	}
+	// the failure is cached too: with git back, calls within the 3s still get it rather than run git again
+	os.Setenv("PATH", path)
+	if l, failed := worktreeLists(); len(l) != 0 || !reflect.DeepEqual(failed, []string{""}) {
+		t.Fatalf("failure not cached: %v %v", l, failed)
+	}
+	wtCache.list = nil
+	if l, failed := worktreeLists(); len(l) != 4 || failed != nil {
+		t.Fatalf("after expiry = %v %v", l, failed)
+	}
+
+	// a folder whose .git is a link to a real worktree's .git file isn't one (git's validate_worktree wants a file)
+	link := filepath.Join(base, "wt-link")
+	os.MkdirAll(link, 0o755)
+	os.Symlink(filepath.Join(outside, ".git"), filepath.Join(link, ".git"))
+	adm := filepath.Join(repo, ".git", "worktrees", "linked")
+	os.MkdirAll(adm, 0o755)
+	os.WriteFile(filepath.Join(adm, "gitdir"), []byte(filepath.Join(link, ".git")+"\n"), 0o644)
+	os.WriteFile(filepath.Join(adm, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
+	os.WriteFile(filepath.Join(adm, "commondir"), []byte("../..\n"), 0o644)
+	if validWorktree(link, filepath.Join(repo, ".git", "worktrees")) {
+		t.Fatal("a .git symlink passes as a worktree")
+	}
+	if got, _ := worktrees(repo); slices.ContainsFunc(got, func(w Worktree) bool { return w.Path == link }) {
+		t.Fatalf("listed the linked folder: %+v", got)
+	}
+}
+
+// The porcelain parser on its own: bare and prunable entries are skipped, the main one is left out, and a list read
+// from a linked worktree (whose main entry is someone else) is empty.
+func TestParseWorktrees(t *testing.T) {
+	out := "worktree /r\x00HEAD a\x00branch refs/heads/main\x00\x00" +
+		"worktree /b\x00bare\x00\x00" +
+		"worktree /w1\x00HEAD b\x00detached\x00locked\x00\x00" +
+		"worktree /w2\x00HEAD c\x00branch refs/heads/x/y\x00locked why not\x00\x00" +
+		"worktree /gone\x00HEAD d\x00branch refs/heads/g\x00prunable gitdir file points to non-existent location\x00\x00"
+	want := []Worktree{{Path: "/w1", Locked: true}, {Path: "/w2", Branch: "x/y", Locked: true}}
+	if got := parseWorktrees(out, "/r"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("parse = %+v, want %+v", got, want)
+	}
+	if got := parseWorktrees(out, "/w1"); got != nil {
+		t.Fatalf("from a linked worktree = %+v", got)
+	}
+}
+
+// A linked worktree of a nested repo sitting beside it under Root (lib and lib-wt) is listed under lib only, not as
+// a nested repo of its own; and worktree-remove refuses Root, the nested repo and a locked worktree.
+func TestSiblingWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(dir string, args ...string) {
+		cmd := exec.Command("git", append([]string{"-c", "user.email=a@b", "-c", "user.name=a"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	lib := filepath.Join(root, "lib")
+	os.MkdirAll(lib, 0o755)
+	run(lib, "init", "-q", "-b", "main")
+	run(lib, "commit", "-q", "--allow-empty", "-m", "init")
+	run(lib, "worktree", "add", "-q", "-b", "feat", filepath.Join(root, "lib-wt"))
+	run(lib, "worktree", "add", "-q", "-b", "held", filepath.Join(root, "lib-held"))
+	run(lib, "worktree", "lock", filepath.Join(root, "lib-held"))
+
+	saved := config.Root
+	config.Root = root
+	reset := func() { prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil }
+	reset()
+	t.Cleanup(func() { config.Root = saved; reset() })
+
+	if r := Repos(); !reflect.DeepEqual(r, []string{"lib"}) {
+		t.Fatalf("Repos = %v", r)
+	}
+	nested := allStatus()["nested"].([]map[string]any)
+	wts, _ := nested[0]["worktrees"].([]map[string]any)
+	if len(wts) != 2 || wts[0]["dir"] != "lib-wt" && wts[1]["dir"] != "lib-wt" {
+		t.Fatalf("lib's worktrees = %v", wts)
+	}
+	for _, w := range wts {
+		if (w["dir"] == "lib-held") != (w["locked"] == true) {
+			t.Fatalf("locked = %v", w)
+		}
+	}
+	for _, id := range []string{"", "lib", "lib-held"} {
+		if _, err := GitOp(map[string]any{"op": "worktree-remove", "repo": id, "force": true}); err == nil {
+			t.Fatalf("removed %q", id)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "lib-held")); err != nil {
+		t.Fatal("locked worktree gone")
+	}
+	os.WriteFile(filepath.Join(root, "lib-wt", "new.txt"), []byte("x"), 0o644)
+	if r, err := GitOp(map[string]any{"op": "worktree-remove", "repo": "lib-wt"}); err != nil || r["ok"] != false || r["dirty"] != true {
+		t.Fatalf("dirty remove = %v %v", r, err)
+	}
+}
+
+// Worktrees as repos: ids for one inside Root (relative) and one outside (absolute) are accepted, any other folder
+// isn't; the inside one isn't also a nested repo; status lists them under their repo with paths relative to them; and
+// worktree-remove refuses a dirty one unless forced, keeping the branch.
+func TestWorktreeRepos(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	root := filepath.Join(base, "root")
+	run := func(dir string, args ...string) string {
+		cmd := exec.Command("git", append([]string{"-c", "user.email=a@b", "-c", "user.name=a"}, args...)...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	write := func(p, s string) { os.MkdirAll(filepath.Dir(p), 0o755); os.WriteFile(p, []byte(s), 0o644) }
+	write(filepath.Join(root, "a.txt"), "a\n")
+	run(root, "init", "-q", "-b", "main")
+	run(root, "add", ".")
+	run(root, "commit", "-qm", "init")
+	inside, outside := filepath.Join(root, "wtin"), filepath.Join(base, "out")
+	run(root, "worktree", "add", "-q", "-b", "feat-in", inside)
+	run(root, "worktree", "add", "-q", "-b", "feat-out", outside)
+	write(filepath.Join(outside, "a.txt"), "a\nb\n")
+	os.MkdirAll(filepath.Join(base, "random"), 0o755)
+
+	saved := config.Root
+	config.Root = root
+	prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	t.Cleanup(func() {
+		config.Root = saved
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list = false, nil, nil, nil
+	})
+
+	if n := Nested(); len(n) != 0 {
+		t.Fatalf("worktree listed as a nested repo: %v", n)
+	}
+	for _, id := range []string{"wtin", outside} {
+		if err := Check(id); err != nil {
+			t.Fatalf("Check(%q) = %v", id, err)
+		}
+	}
+	if Path(outside) != outside || Path("wtin") != inside {
+		t.Fatalf("Path = %q %q", Path(outside), Path("wtin"))
+	}
+	for _, id := range []string{filepath.Join(base, "random"), base, "/", "wt", "wtin/..", "../out"} {
+		if Check(id) == nil {
+			t.Fatalf("Check(%q) accepted", id)
+		}
+	}
+	st := allStatus()
+	for _, f := range st["files"].([]map[string]any) {
+		if strings.HasPrefix(f["path"].(string), "wt") {
+			t.Fatalf("root lists the worktree folder: %v", st["files"])
+		}
+	}
+	wts, _ := st["worktrees"].([]map[string]any)
+	if len(wts) == 2 && wts[0]["dir"] != outside {
+		wts[0], wts[1] = wts[1], wts[0]
+	}
+	if len(wts) != 2 || wts[0]["dir"] != outside || wts[0]["main"] != "" || wts[0]["branch"] != "feat-out" || wts[1]["dir"] != "wtin" {
+		t.Fatalf("worktrees = %v", wts)
+	}
+	if files := wts[0]["files"].([]map[string]any); len(files) != 1 || files[0]["path"] != "a.txt" {
+		t.Fatalf("outside files = %v", files)
+	}
+	if d, err := GitDiff(outside, "a.txt", false); err != nil || !strings.Contains(d["diff"].(string), "+b") {
+		t.Fatalf("diff = %v %v", d, err)
+	}
+	for _, p := range []string{"../root/a.txt", "/etc/passwd"} {
+		if _, err := GitDiff(outside, p, false); err == nil {
+			t.Fatalf("diff outside the worktree: %q", p)
+		}
+	}
+	if r, _ := GitOp(map[string]any{"op": "worktree-remove", "repo": outside}); r["ok"] != false || r["dirty"] != true || !strings.Contains(r["out"].(string), "--force") {
+		t.Fatalf("removed a dirty worktree: %v", r)
+	}
+	if r, err := GitOp(map[string]any{"op": "worktree-remove", "repo": outside, "force": true}); err != nil || r["ok"] != true {
+		t.Fatalf("forced remove: %v %v", r, err)
+	}
+	if r, err := GitOp(map[string]any{"op": "worktree-remove", "repo": "wtin"}); err != nil || r["ok"] != true {
+		t.Fatalf("clean remove: %v %v", r, err)
+	}
+	if _, err := os.Stat(outside); !os.IsNotExist(err) {
+		t.Fatal("worktree folder still there")
+	}
+	if !strings.Contains(run(root, "branch"), "feat-out") {
+		t.Fatal("branch deleted")
+	}
+	if _, err := GitOp(map[string]any{"op": "worktree-remove", "repo": ""}); err == nil {
+		t.Fatal("removed Root")
+	}
+	if wts, _ := allStatus()["worktrees"].([]map[string]any); len(wts) != 0 {
+		t.Fatalf("worktrees after remove = %v", wts)
 	}
 }
 
@@ -351,5 +643,84 @@ func TestBlobAndDiscard(t *testing.T) {
 	}
 	if run("status", "--porcelain") != "" {
 		t.Errorf("still changed after discarding: %s", run("status", "--porcelain"))
+	}
+}
+
+// Nested and Check share the worktree cache: a slow git costs one listing per repo per refresh, not one per call, and
+// no lock is held while it runs.
+func TestNestedGitOncePerRefresh(t *testing.T) {
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, d := range []string{"", "sub"} {
+		cmd := exec.Command("git", "init", "-q", filepath.Join(root, d))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("init: %v %s", err, out)
+		}
+	}
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "log")
+	script := "#!/bin/sh\ncase \" $* \" in *\" worktree \"*) echo x >> " + log + "; sleep 0.3;; esac\nexec " + real + " \"$@\"\n"
+	os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	saved := config.Root
+	config.Root = root
+	reset := func() {
+		prefixCache.ok, nestedCache.list, stateCache.state, wtCache.list, wtCache.good = false, nil, nil, nil, nil
+	}
+	reset()
+	t.Cleanup(func() { config.Root = saved; reset() })
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if n := Nested(); !reflect.DeepEqual(n, []string{"sub"}) {
+				t.Errorf("Nested = %v", n)
+			}
+			if Check("sub") != nil || Check("nope") == nil {
+				t.Error("Check")
+			}
+		}()
+	}
+	wg.Wait()
+	b, _ := os.ReadFile(log)
+	if n := strings.Count(string(b), "x"); n != 2 { // Root's repo and sub, once each
+		t.Fatalf("git worktree ran %d times", n)
+	}
+}
+
+// A worktree folder left behind after its admin entry is pruned keeps a .git file pointing at nothing: git says
+// "not a repository" there, so it isn't listed as a repo of its own.
+func TestStaleWorktreeFolder(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	base := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	repo := filepath.Join(base, "repo")
+	os.MkdirAll(repo, 0o755)
+	run(repo, "init", "-q", "-b", "main")
+	run(repo, "commit", "-q", "--allow-empty", "-m", "first")
+	run(repo, "worktree", "add", "-q", "-b", "live", filepath.Join(base, "live"))
+	run(repo, "worktree", "add", "-q", "-b", "stale", filepath.Join(base, "stale"))
+	if err := os.RemoveAll(filepath.Join(repo, ".git", "worktrees", "stale")); err != nil {
+		t.Fatal(err)
+	}
+	got := findRepos(base)
+	slices.Sort(got)
+	if want := []string{"live", "repo"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("findRepos = %v, want %v", got, want)
 	}
 }

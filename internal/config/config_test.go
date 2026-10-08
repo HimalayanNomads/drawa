@@ -120,3 +120,20 @@ func TestTrustFor(t *testing.T) {
 		}
 	}
 }
+
+// A worktree's paths are checked against its own folder: a link in it pointing out is refused.
+func TestWithinLink(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	wt := filepath.Join(base, "wt")
+	os.MkdirAll(filepath.Join(base, "out"), 0o755)
+	os.MkdirAll(wt, 0o755)
+	os.Symlink(filepath.Join(base, "out"), filepath.Join(wt, "lnk"))
+	for _, rel := range []string{"lnk", "lnk/x", "lnk/../../out"} {
+		if _, err := Within(wt, rel); err == nil {
+			t.Fatalf("Within(%q) allowed", rel)
+		}
+	}
+	if _, err := Within(wt, "a/b"); err != nil {
+		t.Fatal(err)
+	}
+}

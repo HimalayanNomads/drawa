@@ -119,7 +119,10 @@ export function makeWindow(o: WindowOpts): Win {
   // stick to screen, pin and full view: in a strip just outside the tab, so showing them on hover never moves
   // minimize and close (a narrow tab would otherwise shrink its title and shift them)
   const extra = head.appendChild(make('span', 'win-x')).appendChild(make('span'))
-  extra.append(iconButton(ICON.float, '', () => toggleFloat(el), 'floatbtn'), iconButton(ICON.pin, '', () => toggleDock(el), 'pinbtn'), iconButton(ICON.full, '', () => toggleFull(el), 'fullbtn'))
+  const moves = [iconButton(ICON.float, '', () => toggleFloat(el), 'floatbtn'), iconButton(ICON.pin, '', () => toggleDock(el), 'pinbtn'), iconButton(ICON.full, '', () => toggleFull(el), 'fullbtn')]
+  // a mouse click leaves focus where it was: typing in the window (a file being edited) carries on wherever it goes
+  for (const b of moves) b.onmousedown = e => e.preventDefault()
+  extra.append(...moves)
   const copy = copyOf(o.kind)
   if (copy) extra.prepend(copyButton(() => copy(el)))
   syncPin(el)

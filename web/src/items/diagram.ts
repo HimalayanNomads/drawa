@@ -1,12 +1,12 @@
 // Mermaid code blocks -> diagrams, plus a zoom/pan view for them.
 import type { Mermaid } from 'mermaid'
-import { $, make, ICON, iconButton, uuid } from '../lib/dom'
+import { $, make, ICON, iconButton, uuid, saveFile, toast } from '../lib/dom'
 import { persist, each } from '../lib/store'
 import { onRendered } from '../lib/markdown'
 import { openZoom } from '../lib/zoom'
 import { isDark, onTheme } from '../lib/theme'
 import { items, savedRect, dragOut, spotBeside, changed, type Rect } from '../canvas/canvas'
-import { makeWindow, removeButton } from '../canvas/window'
+import { makeWindow, removeButton, winTitle } from '../canvas/window'
 import { toggleFull, isFull } from '../canvas/fullview'
 import { referable } from '../canvas/refs'
 import { creatable } from '../canvas/tools'
@@ -177,7 +177,7 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
   })
   const { el: node, body } = makeWindow({
     kind: 'diagram', cls: 'dnode', title: title || 'Diagram', rect: r, minW: 220, minH: 160,
-    actions: [edit, removeButton('Remove from canvas')],
+    actions: [edit, iconButton(ICON.download, 'Download as SVG', () => download(node)), removeButton('Remove from canvas')],
   })
   node.dataset.src = src
   node.dataset.id = id
@@ -229,6 +229,17 @@ export function pin(src: string, title: string, r: Rect, id: string = uuid(), dr
   if (draft != null && draft !== src) { ta.value = draft; ed.hidden = false; edit.classList.add('on'); ta.dispatchEvent(new Event('input')) } // says why it isn't drawn
   changed()
   return node
+}
+
+/** Save the drawing as an SVG file, in the current theme's colors and on its background (a dark theme's light text
+ *  would vanish on a viewer's white page otherwise). Drawings on it aren't included. */
+function download(node: HTMLElement) {
+  const svg = node.querySelector<SVGSVGElement>('.dnode-b .ink-box > svg:not(.ink-local)')
+  if (!svg) return toast('Nothing drawn to download yet.')
+  const out = svg.cloneNode(true) as SVGSVGElement, vb = svg.viewBox.baseVal
+  if (vb?.width) { out.setAttribute('width', String(vb.width)); out.setAttribute('height', String(vb.height)) }
+  out.style.backgroundColor = getComputedStyle(node.querySelector('.win-b')!).backgroundColor
+  saveFile(new Blob([new XMLSerializer().serializeToString(out)], { type: 'image/svg+xml' }), (winTitle(node).trim() || 'diagram') + '.svg')
 }
 
 const draftOf = (n: HTMLElement) => n.dataset.state === 'editing' ? n.querySelector<HTMLTextAreaElement>('.dnode-ed textarea')!.value : undefined

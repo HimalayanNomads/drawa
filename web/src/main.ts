@@ -13,7 +13,7 @@ import { command } from './lib/keys'
 import { showHelp, showTip } from './lib/help'
 import { persist, restore, saveSoon } from './lib/store'
 import { onReconnect } from './lib/connection'
-import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, view as camera } from './canvas/canvas'
+import { apply, fit, zoomAt, onChange, stage, edgeGrip, rect, items, view as camera } from './canvas/canvas'
 import { redraw } from './canvas/graph'
 import { anyFull } from './canvas/fullview'
 import './canvas/nav' // pan, wheel, minimap, zoom buttons
@@ -226,7 +226,7 @@ await agentsReady // which agents there are: cards restore with theirs, and the 
 newSessionMenu()
 await restore()
 apply()
-if (!cards.length) newSession()
+if (!cards.length) newSession({ here: items().length > 0 }) // a canvas with windows on it: stay where you were looking
 document.fonts.ready.then(redraw) // card text reflow can shift edge anchors
 onChange(saveSoon)
 // server back after an outage (or a restart): pick the live streams and lists up again

@@ -5,14 +5,14 @@ import { api } from './api'
 import { make } from './dom'
 import { enhance } from './select'
 
-export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean; resume?: string }
+export interface Agent { name: string; title: string; blurb?: string; installed: boolean; install: string; modes: string[]; canWrite: boolean; canUnsend?: boolean; resume?: string; noEffort?: string; textOnly?: boolean }
 export interface Model { value: string; displayName: string; description: string; efforts?: string[] } // efforts: levels it accepts (other agents; Claude's are EFFORTS)
-export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[] }
+export interface Meta { models: Model[]; commands: { name: string; description: string; argumentHint?: string }[]; usageUtil?: number; usageResetAt?: number; weeklyUtil?: number; weeklyResetAt?: number }
 
 export let agents: Agent[] = []
 export const agentsReady: Promise<void> = api<Agent[]>('agents').then(a => { agents = a }, () => {})
 
-const TITLES: Record<string, string> = { claude: 'Claude Code', opencode: 'OpenCode', codex: 'Codex' }
+const TITLES: Record<string, string> = { claude: 'Claude Code', opencode: 'OpenCode', codex: 'Codex', agy: 'Antigravity' }
 /** What the page calls an agent: "Claude Code". */
 export const title = (name: string) => agents.find(a => a.name === name)?.title || TITLES[name] || name
 /** One line on what picking it means, for menus. */
@@ -27,6 +27,10 @@ export function copySidTip(name: string, id: string) {
 export const installed = () => agents.filter(a => a.installed)
 /** Whether a queued message can still be taken back (deleted, or edited) until the agent reads it. */
 export const canUnsend = (name: string) => !!agents.find(a => a.name === name)?.canUnsend
+/** Why an agent takes no effort from Drawa: a link, or '' when it takes one. */
+export const noEffort = (name: string) => agents.find(a => a.name === name)?.noEffort ?? ''
+/** Whether an agent takes text only (no pictures in a message). */
+export const textOnly = (name: string) => !!agents.find(a => a.name === name)?.textOnly
 /** The Drawa permission modes an agent supports (all, until the list has loaded). */
 export const modesOf = (name: string) => agents.find(a => a.name === name)?.modes
 
@@ -49,7 +53,7 @@ const metas: Record<string, Meta> = {}, asked: Record<string, Promise<Meta>> = {
 /** An agent's models and commands, asked once (slow the first time: the server asks a fresh process). */
 export function meta(name: string): Promise<Meta> {
   return asked[name] ??= api<Meta>('meta?backend=' + encodeURIComponent(name)).then(
-    m => (metas[name] = { models: m.models ?? [], commands: m.commands ?? [] }),
+    m => (metas[name] = { ...m, models: m.models ?? [], commands: m.commands ?? [] }),
     () => { delete asked[name]; return { models: [], commands: [] } })
 }
 /** What's loaded of it so far. */

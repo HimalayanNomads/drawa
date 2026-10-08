@@ -99,7 +99,7 @@ func addUsage(out map[string]any, text string, now time.Time) {
 		}
 		if m[1] == "Current session" {
 			out["usageUtil"], out["usageResetAt"] = util, resetAt
-		} else {
+		} else if out["weeklyUtil"] == nil { // "(all models)" comes first, a per-model week after it
 			out["weeklyUtil"], out["weeklyResetAt"] = util, resetAt
 		}
 	}

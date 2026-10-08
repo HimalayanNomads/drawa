@@ -3,11 +3,11 @@
 // server (a file named by its hash, `src`), so every browser and address sees them; pictures from before that live
 // in this browser's IndexedDB (lib/blobs) and move to the server the first time they're shown. Draw on it to point at things, then @ it or drop it on a
 // card: Claude gets the picture, with your drawing when there is one.
-import { make, ping, toast, typing, uuid, button, iconButton, confirmBox, ICON } from '../lib/dom'
+import { make, ping, toast, typing, uuid, button, iconButton, confirmBox, saveFile, ICON } from '../lib/dom'
 import { post } from '../lib/api'
 import { persist, each } from '../lib/store'
 import { getBlob, putBlob, dropBlob, base64 } from '../lib/blobs'
-import { items, rect, savedRect, spotBeside, toWorld, changed, freeSpot, type Rect } from '../canvas/canvas'
+import { items, rect, savedRect, toWorld, viewCenter, changed, spotAt, type Rect } from '../canvas/canvas'
 import { makeWindow, winTitle, removeButton } from '../canvas/window'
 import { onReconnect } from '../lib/connection'
 import { toggleFull, isFull } from '../canvas/fullview'
@@ -46,6 +46,7 @@ function imageWindow(o: Saved) {
     kind: 'image', cls: 'inode', title: o.title, rect: o.rect, minW: 160, minH: 100,
     aspect: () => (img.naturalWidth && !el.classList.contains('min') ? img.naturalWidth / img.naturalHeight : undefined),
     actions: [
+      iconButton(ICON.download, 'Download picture', () => download(el, img)),
       iconButton(ICON.crop, 'Crop picture', () => crop(el, box, img), 'crop-btn'),
       removeButton('Remove from canvas', () => { dropBlob(o.id).catch(() => {}); if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src) }),
     ],
@@ -86,6 +87,15 @@ function imageWindow(o: Saved) {
   return el
 }
 
+/** Save the stored picture (without the drawing on it) as a file named after the window. */
+async function download(el: HTMLElement, img: HTMLImageElement) {
+  const b = img.src && await fetch(img.src).then(r => (r.ok ? r.blob() : null), () => null)
+  if (!b) return toast("Couldn't download the picture.")
+  // the extension follows the bytes: a big WebP or GIF was stored as a JPEG
+  const ext = (b.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '')
+  saveFile(b, `${winTitle(el).replace(/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i, '').trim() || 'picture'}.${ext}`)
+}
+
 /** Crop a picture window to an area the user picks. The cut picture is stored like a new one and replaces it. */
 async function crop(el: HTMLElement, box: HTMLElement, img: HTMLImageElement) {
   if (!img.naturalWidth || el.dataset.state === 'crop') return // not loaded (or gone), or already cropping
@@ -113,15 +123,16 @@ async function crop(el: HTMLElement, box: HTMLElement, img: HTMLImageElement) {
   changed()
 }
 
-/** Put a picture on the canvas. `at`: its top-left corner in canvas pixels (default: a free spot in view). */
-export async function addImage(blob: Blob, title: string, at?: { x: number; y: number }, near?: HTMLElement | null) {
+/** Put a picture on the canvas. `at`: its top-left corner in canvas pixels (default: the middle of the view). In a
+ *  group's frame, it joins the group. */
+export async function addImage(blob: Blob, title: string, at?: { x: number; y: number }) {
   const [img] = await readImages([new File([blob], title, { type: blob.type })]) // scaled to what Claude can use
   if (!img) throw new Error("That file couldn't be read as an image.")
   URL.revokeObjectURL(img.url) // shown from the server (or IndexedDB) instead
   const size = fit(img.w!, img.h!), id = uuid()
   const src = await upload(img.data) ?? undefined
   if (!src) await putBlob(id, img.blob!) // the server is unreachable: keep it in this browser for now
-  const r = at ? freeSpot({ ...at, ...size }) : spotBeside(near, size.w, size.h, 80)
+  const c = viewCenter(), r = spotAt({ ...(at ?? { x: c.x - size.w / 2, y: c.y - size.h / 2 }), ...size })
   const el = imageWindow({ id, title, rect: r, src })
   changed()
   return el
@@ -161,6 +172,7 @@ persist('images',
   (list: Saved[]) => each(list, imageWindow))
 referable('image', {
   icon: '▣',
+  picture: true,
   content: async (el, label) => {
     const text = `Image from my canvas ("${label}")`
     // drawn on: the picture as it looks with the drawing; otherwise the stored original, full detail

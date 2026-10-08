@@ -19,6 +19,7 @@ type Opts struct {
 	Timeout time.Duration
 	Stdin   string
 	Repo    string // the repo git runs in: "" for Root, else one of Nested (checked by repoDir first)
+	Env     []string
 }
 
 // Git runs git in the project; returns (ok, output). Paths always come after `--` (never read as options).
@@ -32,6 +33,7 @@ func GitOpts(o Opts, args ...string) (bool, string) {
 		return false, err.Error()
 	}
 	env, argv := command(o.Repo, args)
+	env = append(env, o.Env...)
 	r, err := procx.RunEnv(o.Timeout, o.Stdin, env, argv...)
 	if err != nil {
 		return false, err.Error()
@@ -90,10 +92,7 @@ func GitDiff(repo, rel string, staged bool) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rel, err = rootRel(rel); err != nil {
-		return nil, err
-	}
-	if rel, err = inRepo(repo, rel); err != nil {
+	if rel, err = pathIn(repo, rel, isWorktree(repo)); err != nil {
 		return nil, err
 	}
 	args := []string{"diff"}
@@ -188,12 +187,9 @@ func GitOp(body map[string]any) (map[string]any, error) {
 			}
 		}
 	}
+	wt := isWorktree(repo)
 	for i, p := range paths {
-		rel, err := rootRel(p)
-		if err != nil {
-			return nil, err
-		}
-		if paths[i], err = inRepo(repo, rel); err != nil {
+		if paths[i], err = pathIn(repo, p, wt); err != nil {
 			return nil, err
 		}
 	}
@@ -240,16 +236,39 @@ func GitOp(body map[string]any) (map[string]any, error) {
 			return nil, ErrNoRepo // a nested repo is one already
 		}
 		ok, out = git(Opts{}, "init")
+	case "worktree-remove":
+		w, found := worktreeOf(repo)
+		if !found { // Root's repo and nested ones aren't linked worktrees
+			return nil, ErrNoRepo
+		}
+		if w.locked {
+			return nil, errors.New("this worktree is locked: unlock it with git worktree unlock first")
+		}
+		args := []string{"worktree", "remove"}
+		if force, _ := body["force"].(bool); force {
+			args = append(args, "--force")
+		}
+		// from the main repo: git won't remove the worktree it runs in. The branch stays; git's refusal (changes,
+		// untracked files) is the reply as it is, with dirty set (read in English, whatever the user's locale)
+		ok, out = GitOpts(Opts{Repo: w.main, Env: []string{"LC_ALL=C"}}, append(args, Path(repo))...)
+		forgetWorktrees()
+		if !ok && strings.Contains(out, "contains modified or untracked files") {
+			return map[string]any{"ok": false, "out": tail(out), "dirty": true}, nil
+		}
 	case "message":
 		backend, _ := body["backend"].(string)
 		return GitMessage(repo, backend), nil
 	default:
 		return map[string]any{"ok": false, "out": "unknown op " + op}, nil
 	}
+	return map[string]any{"ok": ok, "out": tail(out)}, nil
+}
+
+func tail(out string) string {
 	if len(out) > 4000 {
-		out = out[len(out)-4000:]
+		return out[len(out)-4000:]
 	}
-	return map[string]any{"ok": ok, "out": out}, nil
+	return out
 }
 
 // rootRel checks rel is inside the project and returns it relative to Root: what git gets, never the raw input (git

@@ -70,16 +70,21 @@
 .gempty{padding:28px 20px;text-align:center}.gempty p{margin:0 0 14px;color:var(--muted);font-size:13px}
 .gnote{flex:none;margin:0;padding:6px 12px;border-bottom:1px solid var(--line)}
 /* repos in subfolders: a group each, its head the sticky line (its sections scroll under it) and its commit box inside */
-.ghead{display:none}
-.grouped .ghead{position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 10px 0 6px;background:var(--bg);text-align:left;font:12.5px var(--mono);color:var(--ink)}
-.grouped .ghead:hover{background:var(--hover)}
-.ghead .gp{font-weight:600}
-.ghead .gb{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
-.ghead .n{flex:none;min-width:18px;text-align:right;font-size:11.5px;color:var(--edit)}
+.ghl{display:none}
+.grouped .ghl{position:sticky;top:0;z-index:var(--z-sticky);display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;padding:0 10px 0 6px;background:var(--code);font:12.5px var(--mono);color:var(--ink);cursor:pointer}
+.grouped .ghl:hover{background:var(--hover)} /* a repo's head sits on a faint surface (opaque: it sticks), so its files read as under it */
+/* every repo's head is two lines: chevron, name and count, then its branch (or the picker) under the name */
+.ghead{display:flex;align-items:center;gap:8px;flex:1 1 0;max-width:100%;min-width:0;height:32px;padding:0;background:none;text-align:left;font:inherit;color:inherit}
+.ghead .gp{flex:0 1 auto;max-width:none;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis} /* .gp's 60% is for file rows */
+.ghead .gd{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gtail{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;height:22px;margin-top:-6px;padding:0 0 6px 24px} /* 24px: the chevron and its gap, so it starts under the name */
+.gpick+.gb:empty{display:none}
+.ghl .gb{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--muted)}
+.ghl .n{flex:none;min-width:18px;text-align:right;font-size:11.5px;color:var(--edit)}
 .gchev{flex:none;display:grid;place-items:center;width:16px;color:var(--muted)}
 .gchev svg{width:13px;height:13px}
 .ghead[aria-expanded=false] .gchev svg{transform:rotate(-90deg)}
-.ghead[aria-expanded=false]~*{display:none}
+.ghl:has(>.ghead[aria-expanded=false])~*{display:none}
 .ggroup+.ggroup{border-top:1px solid var(--line)}
 .grouped .gsec{position:static;padding-left:28px}
 .grouped .grow{padding-left:22px}
@@ -87,6 +92,31 @@
 .ggroup .gfoot{padding:4px 10px 10px 28px;border-top:0;background:none}
 .ggroup .glog{margin-top:4px}
 .grouped .glog>summary,.grouped .gc{padding-left:28px}
+/* a repo's checkouts (its own and its worktrees): a compact picker after its name, two-line rows */
+.gpick{flex:0 1 auto;min-width:0;display:flex}
+/* the picker reads as the branch it stands in for; its edge shows when you reach for it */
+.gpick .xsel{min-width:0;height:22px;margin-left:-6px;padding:0 3px 0 6px;gap:3px;border-color:transparent;background:none;font:11.5px var(--mono);font-weight:400;color:var(--muted)}
+.gpick .xsel:hover,.gpick .xsel:focus-visible,.gpick .xsel[aria-expanded=true]{border-color:var(--field-edge);color:var(--ink)}
+.gtail[data-wt] .xsel,.gtail[data-wt] .xsel svg{color:var(--accent-text)}
+.gpick .xsel svg{width:12px;height:12px;flex:none}
+.gpick .xsel-pre{flex:none;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)} /* a label, not a value: smaller than the branch it names */
+.gpick .xsel-label{max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xsel-rich .xsel-item{grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;padding:4px 6px 4px 8px}
+.xsel-rich .xsel-item>svg{grid-column:1;grid-row:1}
+.xsel-row{min-width:0}
+.gpt{display:flex;align-items:baseline;gap:8px}
+.xsel-menu.xsel-rich{max-width:min(560px,calc(100vw - 16px))} /* room for long branches; 360px suits the plain menus */
+.gpb{min-width:0;overflow-wrap:anywhere;font:12.5px var(--mono)} /* a branch wraps rather than ending in …: it's the row's name */
+.gpn{flex:none;margin-left:auto;font-size:11.5px;color:var(--edit)} /* its changes: right-aligned, where other rows' remove button shows */
+.gpl{flex:none;padding:0 5px;line-height:16px;background:color-mix(in oklab,var(--muted) 16%,transparent);border-radius:var(--r-tag);font-size:10.5px;color:var(--muted)}
+/* the folder takes no width of its own: the branch line sets the menu's, and a long path loses its start */
+.gpf{width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;font:11px var(--mono);color:var(--muted)}
+.gpf>span{direction:ltr;unicode-bidi:embed}
+.xsel-act{width:24px;height:24px;border-radius:0}
+.xsel-act:hover,.xsel-act:focus-visible{color:var(--danger);background:color-mix(in oklab,var(--danger) 14%,transparent)}
+/* removing shows on the row you're on, so it doesn't compete with the names; touch has no hover, so it stays there */
+@media (pointer:fine){.xsel-rich .xsel-item:not(.active) .xsel-act:not(:focus-visible){visibility:hidden}}
+@media (pointer:coarse){.xsel-act{width:32px;height:32px}}
 
 /* Files window: every file a session touched, grouped by folder, changed files first */
 .flist{flex:1;min-height:0;overflow:auto;padding:4px 0 8px}
@@ -247,8 +277,10 @@
 /* a Markdown doc: rendered like a reply, scrolls inside; editing swaps in its source */
 .mdoc-b{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 18px 16px;cursor:text}
 .mdoc-md{margin:0}
-.mdoc-ed{flex:1;min-height:0;margin:8px;padding:9px 11px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12.5px/1.55 var(--mono);font-variant-ligatures:none;tab-size:2;resize:none;outline:none;cursor:text}
-.mdoc-ed:focus{border-color:var(--focus)}
+/* the source editor: the file editor's look (.pvnode-ed), in a field of its own that scrolls */
+.mdoc-ed{flex:1;min-height:0;margin:8px;overflow:auto;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);cursor:text}
+.mdoc-ed:focus-within{border-color:var(--focus)}
+.mdoc-ed .cm-placeholder{color:var(--muted)}
 
 /* ---------- groups (items/group.ts): a frame behind its windows ---------- */
 /* always under its windows; only the tab takes the pointer, the body lets clicks and the selection box through */
@@ -277,3 +309,44 @@
 .pvnode .none{padding:16px;color:var(--muted);font-size:12.5px}
 /* a drawn shape on a picture is hit anywhere inside, not just on its outline: hovering it shows its controls instead of zoom */
 body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-events:all}
+/* a file window's editor (items/fileedit.ts): CodeMirror in the theme's colors. It grows with its text and the
+   window's box scrolls, as it does for the file view, so pen strokes on the box stay on their lines. */
+.pvnode-ed{min-height:100%;display:flex}
+/* as wide as its longest line, so the box scrolls sideways to the cursor: CodeMirror would scroll this wrapper instead */
+.pvnode-s>.pvnode-ed{min-width:100%;width:max-content}
+/* the file view's metrics (.src in panels.css: 12px text on 19px lines, 10px above), so strokes drawn on one land
+   on the same lines in the other */
+.pvnode-ed .cm-editor{flex:1;min-height:100%;background:var(--bg);color:var(--ink);font-size:12px}
+.pvnode-ed .cm-editor.cm-focused{outline:none}
+.pvnode-ed .cm-scroller{font-family:var(--mono);line-height:19px;overflow:visible}
+.pvnode-ed .cm-content{padding:10px 0;tab-size:8 !important}
+.pvnode-ed .cm-line{padding:0 14px}
+.pvnode-ed .cm-lineNumbers .cm-gutterElement{padding:0 3px 0 14px} /* + the fold gutter: the view's 12px */
+.pvnode[data-state=editing] .pv-reload{display:none}
+.pvnode-ed .cm-content{caret-color:var(--ink)}
+.pvnode-ed .cm-cursor{border-left-color:var(--ink)}
+.pvnode-ed .cm-gutters{background:var(--bg);color:var(--muted);border-right:1px solid var(--line)}
+/* see-through, so a selection (Vim's visual mode too) drawn under the text shows through the current line */
+.pvnode-ed .cm-activeLine{background:color-mix(in oklab,var(--ink) 5%,transparent)}
+.pvnode-ed .cm-activeLineGutter{background:var(--hover);color:var(--ink)}
+/* as specific as CodeMirror's own focused-selection rule, or its pale default wins and hides light text */
+.pvnode-ed .cm-selectionBackground,.pvnode-ed .cm-editor.cm-focused>.cm-scroller>.cm-selectionLayer .cm-selectionBackground{background:color-mix(in oklab,var(--accent) 32%,var(--bg))}
+.pvnode-ed .cm-matchingBracket,.pvnode-ed .cm-editor.cm-focused .cm-matchingBracket{background:var(--sel);outline:1px solid var(--line-2)}
+.pvnode-ed .cm-selectionMatch{background:color-mix(in oklab,var(--accent) 18%,var(--bg))}
+.pvnode-ed .cm-searchMatch{background:color-mix(in oklab,var(--warn) 22%,var(--bg));outline:1px solid color-mix(in oklab,var(--warn) 50%,var(--bg))}
+.pvnode-ed .cm-searchMatch.cm-searchMatch-selected{background:color-mix(in oklab,var(--warn) 45%,var(--bg))}
+.pvnode-ed .cm-foldPlaceholder{background:var(--code);color:var(--muted);border:1px solid var(--line-2);border-radius:var(--r-tag)}
+.pvnode-ed .cm-foldGutter .cm-gutterElement{color:var(--muted)}
+.pvnode-ed .cm-panels{background:var(--code);color:var(--ink);border-color:var(--line)}
+.pvnode-ed .cm-vim-panel{padding:3px 10px}
+.pvnode-ed .cm-panels input,.pvnode-ed .cm-textfield{font-family:var(--mono);background:var(--bg);color:var(--ink);border:1px solid var(--field-edge);border-radius:var(--r-ctl)}
+.pvnode-ed .cm-textfield:focus{outline:2px solid var(--focus);outline-offset:-1px}
+.pvnode-ed .cm-button{background:var(--bg);background-image:none;color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-ctl)}
+.pvnode-ed .cm-button:hover{background:var(--hover)}
+.pvnode-ed .cm-panel.cm-search [name=close]{color:var(--muted)}
+.pvnode-ed .cm-yanked{background:color-mix(in oklab,var(--accent) 40%,var(--bg));border-radius:var(--r-tag)}
+.pvnode-ed .cm-fat-cursor{background:var(--accent) !important;color:var(--on-accent) !important}
+.pvnode-ed .cm-editor:not(.cm-focused) .cm-fat-cursor{background:none !important;outline:1px solid var(--accent)}
+.pvnode-ed .cm-tooltip{background:var(--bg);color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-box)}
+.pvnode-ed .cm-tooltip-autocomplete ul li[aria-selected]{background:var(--sel);color:var(--ink)}
+.pvnode[data-state=editing] .pvnode-s{cursor:auto}

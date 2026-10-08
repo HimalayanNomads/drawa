@@ -32,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "drawa/internal/agy"   // registers the agy backend
 	_ "drawa/internal/codex" // registers the codex backend
 	"drawa/internal/config"
 	"drawa/internal/live"

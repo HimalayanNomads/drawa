@@ -296,3 +296,24 @@ func resolve(p string) (string, error) {
 		p = parent
 	}
 }
+
+// Within checks rel (relative, slash or not) names a path inside dir, a folder outside Root (a linked worktree), once
+// links are resolved, and returns it cleaned: what git gets when it runs in dir.
+func Within(dir, rel string) (string, error) {
+	rel = filepath.Clean(filepath.FromSlash(rel))
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ErrOutside
+	}
+	base, err := resolve(dir)
+	if err != nil {
+		return "", err
+	}
+	p, err := resolve(filepath.Join(dir, rel))
+	if err != nil {
+		return "", err
+	}
+	if r, err := filepath.Rel(base, p); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", ErrOutside
+	}
+	return rel, nil
+}

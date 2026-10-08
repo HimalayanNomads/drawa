@@ -51,7 +51,7 @@ function build() {
   })
 }
 
-let openFile: ((path: string, line?: number) => HTMLElement) | null = null, peekFile: ((path: string, line?: number) => Promise<HTMLElement>) | null = null
+let openFile: ((path: string, line?: number, edit?: boolean) => HTMLElement) | null = null, peekFile: ((path: string, line?: number) => Promise<HTMLElement>) | null = null
 /** List project files and code symbols too: picking one calls `open`, which returns its file's window (an open one,
  *  or a new one) showing `line` when given; the highlighted one is shown beside the list with what `peek` draws. */
 export const fileOpener = (open: typeof openFile, peek: typeof peekFile) => { openFile = open; peekFile = peek }
@@ -179,10 +179,10 @@ const pick = (h: Hit) => {
   if (el) go(el)
 }
 
-/** Open a project file in its window at `line` and fly to it (a diff's go to definition); false when files can't be
- *  opened. */
-export function openFileAt(path: string, line?: number) {
-  const el = openFile?.(path, line)
+/** Open a project file in its window at `line` and fly to it (a diff's go to definition); `edit`: in its editor (the
+ *  inspector's Edit). False when files can't be opened. */
+export function openFileAt(path: string, line?: number, edit = false) {
+  const el = openFile?.(path, line, edit)
   if (el) go(el)
   return !!el
 }
