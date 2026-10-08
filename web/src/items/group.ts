@@ -294,7 +294,9 @@ document.addEventListener('moved', ev => {
     if (!went) {
       const n = notice('') // looks like the delete Undo (canvas/window.ts)
       n.classList.add('undo')
-      n.replaceChildren(make('span', '', `Moved out of "${winTitle(from)}"`), button('Undo', '', () => {
+      const text = make('span', '', `Moved out of "${winTitle(from)}"`)
+      text.title = text.textContent!
+      n.replaceChildren(text, button('Undo', '', () => {
         n.remove()
         if (!from.isConnected || !el.isConnected || groupOf(el)) return
         join(el, from)
