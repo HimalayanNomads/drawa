@@ -5,6 +5,7 @@ import { make, ICON, iconButton, button, confirmBox, project } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { changed } from '../canvas/canvas'
 import { unified, openable, openFileButton } from '../panels/diff'
+import { expandable, textOf } from '../panels/expand'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 import { ghStrip, type Strip } from './gitgh'
 
@@ -147,7 +148,9 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
   // a deleted file has nothing on disk to open; an untracked folder isn't a file. Paths are the project's: a nested
   // repo's open as they are
   const opens = !folder && word !== 'deleted'
-  r.append(name, stat, ...(opens ? [openFileButton(f.path, () => wrap.querySelector('.diff'))] : []), act)
+  // back to HEAD (or, for a Changes row, to what's staged): only a file HEAD has, so nothing new is deleted
+  const discard = 'MD'.includes(code) ? [iconButton(UNDO, 'Discard changes (git restore)', () => discardFile(v, host, f, isStaged))] : []
+  r.append(name, stat, ...(opens ? [openFileButton(f.path, () => wrap.querySelector('.diff'))] : []), ...discard, act)
   wrap.append(r)
   const toggle = async () => {
     const open = wrap.querySelector('.diff')
@@ -159,6 +162,7 @@ function row(v: RepoView, f: GitFile, isStaged: boolean, host: Host) {
       const { diff } = await api<{ diff: string }>(`git/diff?repo=${q(v.dir)}&path=${q(f.path)}&staged=${isStaged ? 1 : 0}`)
       const d = wrap.appendChild(unified(diff))
       if (opens) openable(d, f.path) // its new side is the file as staged or as it is: line numbers that match it
+      if (opens) expandable(d, textOf(isStaged ? `git/blob?repo=${q(v.dir)}&rev=&path=${q(f.path)}` : 'file?path=' + q(f.path)))
     } catch (e) { // not an empty open row: closed again, and why
       wrap.classList.remove('open')
       name.setAttribute('aria-expanded', 'false')
@@ -189,7 +193,7 @@ function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host)
       const box = wrap.appendChild(make('div', 'gshow')) // placed before the fetch so a second click closes it
       try {
         const { diff } = await api<{ diff: string }>(`git/show?repo=${q(v.dir)}&hash=${q(c.hash)}`)
-        if (box.isConnected) box.replaceWith(commitDiff(diff))
+        if (box.isConnected) box.replaceWith(commitDiff(v, c.hash, diff))
       } catch (e) {
         box.remove()
         r.setAttribute('aria-expanded', 'false')
@@ -204,14 +208,16 @@ function commitsList(v: RepoView, log: NonNullable<GitState['log']>, host: Host)
   return d
 }
 
-/** A commit's patch, one unified() diff per file under its path. */
-function commitDiff(patch: string) {
+/** A commit's patch, one unified() diff per file under its path, each showing more of the file at that commit. */
+function commitDiff(v: RepoView, hash: string, patch: string) {
   const box = make('div', 'gshow')
   const files = patch.split(/^(?=diff --git )/m).filter(f => f.startsWith('diff --git '))
   if (!files.length) box.append(make('p', 'none', 'No changes in this project folder.'))
   for (const f of files) {
     const path = /^\+\+\+ b\/(.*)$/m.exec(f)?.[1] ?? /^--- a\/(.*)$/m.exec(f)?.[1] ?? f.split('\n')[0].replace(/^diff --git a\/(.*) b\/.*$/, '$1')
-    box.append(make('div', 'gcf', path), unified(f))
+    const d = unified(f)
+    expandable(d, textOf(`git/blob?repo=${q(v.dir)}&rev=${hash}&top=1&path=${q(path)}`)) // a patch's paths are from the repo's top
+    box.append(make('div', 'gcf', path), d)
   }
   return box
 }
@@ -224,12 +230,22 @@ async function busy(v: RepoView, fn: () => Promise<void>) {
   try { await fn() } finally { v.busy = false; v.foot.ariaBusy = v.files.ariaBusy = null }
 }
 
-const op = (v: RepoView, host: Host, o: string, paths?: string[]) => busy(v, async () => {
+const op = (v: RepoView, host: Host, o: string, paths?: string[], more?: object) => busy(v, async () => {
   if (o === 'pull') say(v, 'Pulling…')
-  const r = await gitPost({ op: o, repo: v.dir, paths })
+  const r = await gitPost({ op: o, repo: v.dir, paths, ...more })
   say(v, r.ok ? (o === 'pull' ? r.out || 'Up to date.' : '') : r.out ?? 'Failed', !r.ok)
   await host.refresh() // the new buttons are drawn before another click counts
 })
+
+const UNDO = '<svg viewBox="0 0 16 16"><path d="M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7"/></svg>'
+
+/** git restore one file, once you've said so: the edits are gone for good (git keeps no copy of unstaged work). */
+async function discardFile(v: RepoView, host: Host, f: GitFile, isStaged: boolean) {
+  const both = isStaged && f.y !== ' '
+  const what = isStaged ? `its staged changes${both ? ' and the edits not staged yet' : ''} are` : 'the changes not staged yet are'
+  if (!await confirmBox(`Discard changes to ${f.path.split('/').pop()}?`, `${f.path} goes back to ${isStaged ? 'the last commit' : f.x === ' ' ? 'the last commit' : 'what is staged'}: ${what} lost, and can't be brought back.`, 'Discard')) return
+  op(v, host, 'discard', [f.path], { staged: isStaged })
+}
 
 const commit = (v: RepoView, host: Host) => busy(v, async () => {
   const message = v.msg.value.trim()

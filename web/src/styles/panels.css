@@ -145,3 +145,12 @@ body.has-dock #hint{display:none}
 .floats>.win>.win-h{cursor:grab}
 .floats>.win.dragging>.win-h{cursor:grabbing}
 body.has-full :is(#nav,#hint){display:none} /* a window in full view fills the screen: nothing to navigate, and it would cover the message box */
+.ref-t{font-family:var(--mono)}
+.ref-t mark{background:none;color:var(--accent-text);font-weight:600}
+/* a hunk header's "show more lines" (panels/expand.ts); its text at the left, where the window shows it, not centered
+   across a wide diff's whole scroll width */
+.diff>.hunk{text-align:left}
+.diff .hunk .xp{display:inline-flex;gap:2px;margin:-3px 8px -3px calc(-1 * var(--ln, 0px) - 18px);vertical-align:middle}
+.diff .hunk .xp .icon{width:24px;height:20px}
+.diff .hunk .xp .icon:hover{color:var(--accent-text)}
+.diff .hunk.tail{margin-top:0;border-bottom:0;min-height:22px}

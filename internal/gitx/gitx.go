@@ -213,6 +213,15 @@ func GitOp(body map[string]any) (map[string]any, error) {
 		} else {
 			ok, out = git(Opts{}, "reset", "-q", "--", ".")
 		}
+	case "discard": // git restore: a Changes row back to what's staged (or HEAD); a Staged row, and its edits, to HEAD
+		if len(paths) == 0 {
+			return map[string]any{"ok": false, "out": "Name the files to discard."}, nil
+		}
+		args := []string{"restore"}
+		if staged, _ := body["staged"].(bool); staged {
+			args = append(args, "--staged", "--worktree", "--source=HEAD")
+		}
+		ok, out = git(Opts{}, append(append(args, "--"), paths...)...)
 	case "commit":
 		msg, _ := body["message"].(string)
 		if msg = strings.TrimSpace(msg); msg == "" {

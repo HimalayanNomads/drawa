@@ -11,6 +11,7 @@ import { findSymbols, symbolsOn, type CodeSymbol } from '../lib/symbols'
 import { items, centerOn, front, onCanvas, hidden } from './canvas'
 import { refIcon, kindName, refStatus } from './refs'
 import { titleOf, expand, focusInput } from './window'
+import { floatAt } from './dock'
 
 const box = document.body.appendChild(make('div', 'finder'))
 box.hidden = true
@@ -184,6 +185,18 @@ export function openFileAt(path: string, line?: number) {
   const el = openFile?.(path, line)
   if (el) go(el)
   return !!el
+}
+
+/** Open a project file at `line` in a small window stuck to the screen at (x, y), without moving the canvas (a
+ *  diff's find references: you step through them with the list still open). A window the file already has is
+ *  stuck there as it is; a new one is made small first. */
+export function stickFileAt(path: string, line: number, x: number, y: number) {
+  const had = new Set(items()), el = openFile?.(path, line)
+  if (!el) return false
+  if (!had.has(el)) { el.style.width = '380px'; el.style.height = '260px' }
+  expand(el)
+  floatAt(el, x, y)
+  return true
 }
 
 /** Fly to a window: expand it if collapsed, bring it forward, and put the cursor in it when it takes typing. */

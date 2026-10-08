@@ -18,7 +18,7 @@ web/src/
   canvas/      the canvas engine: view, items, window shape, graph edges, ink, references registry
   session/     session cards: card, composer, stream rendering, asks, live connection, history
   items/       one file per kind of canvas item: notes, sketch, diagram, plan, snippet, git (the window; + gitrepo.ts, one repository's lists and commit box, a group each for repos in subfolders; gitgh.ts, a repo's pull request strip), image, github (the window and its lists; + gh.ts, its data, Send to Claude and `publish()`; ghpr.ts, ghissue.ts, ghruns.ts: a pull request, an issue, Actions and checks), agent (a sub-agent's window), doc (a Markdown window), preview (a project file opened from Ctrl+K), group (a frame holding windows and drawings; + groupgeom.ts, its geometry, groupink.ts, the drawings it holds, and groupselect.ts, grouping from the selection)
-  panels/      side panels: file tree + inspector, diffs, defs (go to definition from a diff's names)
+  panels/      side panels: file tree + inspector, diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs`, picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
 

@@ -6,7 +6,7 @@
 import { api, q } from '../lib/api'
 import { make, button, iconButton, ICON, keepOnScreen, perFrame, revealIn } from '../lib/dom'
 import { definitions, symbolsOn, type CodeSymbol } from '../lib/symbols'
-import { openFileAt } from '../canvas/find'
+import { openFileAt, stickFileAt } from '../canvas/find'
 import { sourceView } from './files'
 
 const box = document.body.appendChild(make('div', 'defs float'))
@@ -32,12 +32,12 @@ function nameAt(x: number, y: number, within: Element) {
   return x >= rc.left && x <= rc.right && y >= rc.top && y <= rc.bottom ? { name: t.slice(a, b), range } : null
 }
 
-const ROWS = '.diff > div:not(.sep)'
+const ROWS = '.diff > :is(.add, .del, .eq)' // code rows: not hunk headers, folds or a pull request's comments
 const hl = typeof Highlight === 'function' ? new Highlight() : null
 if (hl) CSS.highlights.set('def-name', hl)
 let under: HTMLElement | null = null
 const hover = perFrame((t: Element | null, x: number, y: number) => {
-  const row = symbolsOn() ? t?.closest<HTMLElement>(ROWS) : null, at = row ? nameAt(x, y, row) : null
+  const row = t?.closest<HTMLElement>(ROWS), at = row ? nameAt(x, y, row) : null
   hl?.clear()
   under?.classList.remove('def-on')
   under = at ? row! : null
@@ -46,16 +46,22 @@ const hover = perFrame((t: Element | null, x: number, y: number) => {
   row!.classList.add('def-on')
 })
 
-/** Make a diff's names lead to their definitions: hovering underlines one, clicking asks where it's defined. */
-export function definable(el: HTMLElement) {
-  el.addEventListener('pointermove', e => hover(e.target as Element, e.clientX, e.clientY))
+type Look = (name: string, x: number, y: number) => void
+/** Make the names in diffs inside `el` lead somewhere: hovering underlines one, clicking runs `look` on it (where
+ *  it's defined, or with showRefs where it's used). Such a click is `defaultPrevented`, so a diff's own click (a pull
+ *  request's line comment) can skip it. */
+export function definable(el: HTMLElement, look: Look = showDefs) {
+  const on = () => look !== showDefs || symbolsOn() // where it's used is a text search: no ctags needed
+  el.addEventListener('pointermove', e => hover(on() ? e.target as Element : null, e.clientX, e.clientY))
   el.addEventListener('pointerleave', () => hover(null, 0, 0))
   el.addEventListener('click', e => {
     const row = (e.target as Element).closest(ROWS)
-    if (!row || !symbolsOn() || !getSelection()?.isCollapsed) return // selecting text isn't asking
+    if (!row || !on() || !getSelection()?.isCollapsed) return // selecting text isn't asking
     const at = nameAt(e.clientX, e.clientY, row)
-    if (at) showDefs(at.name, e.clientX, e.clientY + 14)
-  })
+    if (!at) return
+    e.preventDefault()
+    look(at.name, e.clientX, e.clientY + 14)
+  }, true) // capturing: before the diff's own click handlers
 }
 
 /** The header box: type a name, Enter shows where it's defined. */
@@ -90,6 +96,44 @@ export async function showDefs(name: string, x: number, y: number, field?: HTMLE
   from = field ?? null; x0 = x; y0 = y
   if (defs.length === 1) one(name, defs[0])
   else several(name, defs)
+}
+
+type Ref = { path: string; line: number; text: string }
+/** Where `name` is used in the project (a whole-word search, comments and strings too), listed near (x, y). Picking
+ *  one opens its file at the line in a small window stuck to the screen beside the list, which stays open to step
+ *  through the rest. */
+export async function showRefs(name: string, x: number, y: number) {
+  const n = ++asked
+  from = null; x0 = x; y0 = y
+  show(head(name, 'Searching…'))
+  const refs = await api<Ref[]>('refs?name=' + q(name)).catch(() => [] as Ref[])
+  if (n !== asked) return
+  if (!refs.length) { show(head(name, 'no uses found in the project')); return }
+  const list = make('div', 'defs-list')
+  list.setAttribute('role', 'listbox')
+  for (const r of refs) {
+    const row = make('button', 'finder-row')
+    row.setAttribute('role', 'option')
+    row.dataset.kind = 'preview'
+    const main = make('span', 'fr-main'), text = make('small', 'ref-t')
+    const at = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).exec(r.text)
+    if (at) text.append(r.text.slice(0, at.index), make('mark', '', name), r.text.slice(at.index + name.length))
+    else text.textContent = r.text
+    main.append(make('b', '', `${r.path}:${r.line}`), text)
+    row.append(main)
+    row.onclick = () => stickFileAt(r.path, r.line, ...besideBox())
+    list.append(row)
+  }
+  show(head(name, refs.length === 200 ? 'the first 200 uses' : `${refs.length} use${refs.length > 1 ? 's' : ''}`), list)
+  list.querySelector('button')?.focus()
+}
+
+/** Where a 380×260 window fits beside the open box: right, else left, else (a phone) below or above it. */
+function besideBox(): [number, number] {
+  const b = box.getBoundingClientRect()
+  if (b.right + 388 <= innerWidth) return [b.right + 8, b.top]
+  if (b.left >= 388) return [b.left - 388, b.top]
+  return [8, b.bottom + 268 <= innerHeight ? b.bottom + 8 : Math.max(8, b.top - 268)]
 }
 
 function head(name: string, note: string, back?: () => void) {

@@ -121,8 +121,23 @@ var getRoutes = map[string]routeFunc{
 		}
 		return ok(gitx.GitShow(q.Get("repo"), h))
 	},
+	"/api/git/blob": func(q url.Values) (any, int, error) {
+		p, err := need(q, "path")
+		if err != nil {
+			return nil, 0, err
+		}
+		return ok(gitx.Blob(q.Get("repo"), q.Get("rev"), p, q.Get("top") == "1")) // top: a commit's paths, from the repo's top
+	},
+	"/api/gh/blob": func(q url.Values) (any, int, error) {
+		p, err := need(q, "path")
+		if err != nil {
+			return nil, 0, err
+		}
+		return ok(github.Blob(q.Get("repo"), q.Get("ref"), p))
+	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/symbols":   symbolsRoute,
+	"/api/refs":      func(q url.Values) (any, int, error) { return gitx.Refs(q.Get("name")), 200, nil },
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
 	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },

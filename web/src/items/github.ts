@@ -15,6 +15,7 @@ import { tally, dot, reviewWord, stateOf, REVIEW, publish, ghGet, type Pr, type 
 import { prDetail } from './ghpr'
 import { issueDetail, newIssue } from './ghissue'
 import { runList } from './ghruns'
+import { definable, showRefs } from '../panels/defs'
 
 export const GH_ICON = '<svg viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><path d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7M8.5 3 7 4.5 8.5 6"/></svg>'
 const REFRESH = '<svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/></svg>'
@@ -40,6 +41,7 @@ export function openGitHub(at?: { tab?: 'pr' | 'issue'; n?: number; sub?: View['
     })
     el.dataset.id = 'github'
     body.classList.add('ghbody')
+    definable(body, showRefs) // a pull request's diff: click a name for where it's used
     const meta = make('span', 'm')
     head.querySelector('.t')!.after(meta)
     win = { el, body, meta, view: saved ?? { tab: 'pr', state: 'open' }, more: 0, repos: api<string[]>('git/repos').catch(() => []), list: [] }

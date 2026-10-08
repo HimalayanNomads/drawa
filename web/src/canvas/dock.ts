@@ -117,15 +117,19 @@ const setAt = (el: HTMLElement, x: number, y: number) => {
 /** Stick a window to the screen where it is now, or put a floating one back on the canvas. */
 export function toggleFloat(el: HTMLElement) {
   if (el.classList.contains('full')) exitFull()
-  if (floating(el)) { unfloat(el); bringBack(el) }
-  else {
-    const b = el.getBoundingClientRect()
-    if (docked(el)) { el.classList.remove('docked'); shown() }
-    el.classList.add('floating')
-    setAt(el, b.left, b.top)
-    floats.append(el)
-    raise(el)
-  }
+  if (floating(el)) { unfloat(el); bringBack(el); sync(el); redraw(); changed(); return }
+  const b = el.getBoundingClientRect()
+  floatAt(el, b.left, b.top)
+}
+
+/** Stick a window to the screen with its top-left at (x, y) in screen pixels; one already stuck there just moves. */
+export function floatAt(el: HTMLElement, x: number, y: number) {
+  if (el.classList.contains('full')) exitFull()
+  if (docked(el)) { el.classList.remove('docked'); shown() }
+  el.classList.add('floating')
+  setAt(el, x, y)
+  if (el.parentElement !== floats) floats.append(el)
+  raise(el)
   sync(el)
   redraw()
   changed()

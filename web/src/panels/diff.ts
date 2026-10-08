@@ -168,7 +168,13 @@ export function unified(text: string) {
     if (l.startsWith('\\')) continue // "\ No newline at end of file"
     // a hunk header says where it is: git's function context, or the line number when there's none
     const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@\s?(.*)$/.exec(l)
-    if (h) { a = +h[1]; b = +h[2]; box.append(make('div', 'sep hunk', h[3] || `line ${b}`)); continue }
+    if (h) {
+      a = +h[1]; b = +h[2]
+      // the unchanged stretch above it, for expandable(): new lines from..top-1, each old one off from it
+      const s = box.appendChild(make('div', 'sep hunk', h[3] || `line ${b}`))
+      Object.assign(s.dataset, { from: String(last + 1), top: String(b), off: String(a - b) })
+      continue
+    }
     const kind = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : 'eq', row = box.appendChild(make('div', kind, l.slice(1)))
     row.dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
     if (start < 0) continue
@@ -176,6 +182,7 @@ export function unified(text: string) {
     if (kind !== 'del') row.dataset.n = String(last = b++)
   }
   box.style.setProperty('--ln', `${String(last).length + 1}ch`) // the gutter fits the biggest number
+  if (start >= 0) Object.assign(box.dataset, { from: String(last + 1), off: String(a - b) }) // and what's after the end
   return box
 }
 

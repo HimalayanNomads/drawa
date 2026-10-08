@@ -9,6 +9,7 @@ import { makeWindow } from '../canvas/window'
 import { forget } from '../canvas/graph'
 import { referable } from '../canvas/refs'
 import { openGitHub, GH_ICON } from './github'
+import { definable, showRefs } from '../panels/defs'
 import { repoView, fill, isOpen, syncText, drafts, folds, type GitState, type RepoView, type Host } from './gitrepo'
 
 let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; list: HTMLElement; note: HTMLElement; gh: number; poll: number; delay: number; stop: AbortController; views: Map<string, RepoView>; single: boolean; host: Host; last: string } | undefined
@@ -29,6 +30,7 @@ export function openGit(r?: Rect) {
   head.querySelector('.t')!.after(meta)
   const list = make('div', 'glist'), note = make('p', 'gout gnote')
   body.append(note, list)
+  definable(body, showRefs) // a diff's names (a change's, a commit's): click one for where it's used
   // refresh while it's visible and expanded: git status is cheap; GitHub is slow and rate-limited, so its own much
   // slower loop (and after pushes and commits)
   // poll only while you can see it: page visible, window open, and on screen (each poll runs git status on the server)
