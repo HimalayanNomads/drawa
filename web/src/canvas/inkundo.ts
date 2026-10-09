@@ -15,11 +15,14 @@ const push = (entry: Entry) => {
   redos.length = 0 // a new action drops anything that was undone
 }
 
-/** New strokes: undoing takes them off again. */
-export const added = (...list: Stroke[]) => push({
-  undo: () => remove(...list),
-  redo: () => restore(list),
-})
+/** New strokes: undoing takes them off again, with any arrows drawn to them since (they come back on redo). */
+export function added(...list: Stroke[]) {
+  let linkBacks: (() => void)[] = []
+  push({
+    undo: () => { linkBacks = list.map(dropLinks); remove(...list) },
+    redo: () => { restore(list); linkBacks.forEach(back => back()); linkBacks = [] },
+  })
+}
 
 /** Take strokes off the drawing as one action undo can bring back (the eraser, Delete, Erase all). */
 export function erase(...gone: Stroke[]) {
@@ -38,15 +41,16 @@ export function erase(...gone: Stroke[]) {
   push({ undo: doRestore, redo: doErase })
 }
 
+const snap = (list: Stroke[]) => list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }))
+
 /** Call before strokes change in place (moved, resized, retyped); call what it returns once they have, to record it. */
 export function changing(list: Stroke[]) {
-  const was = list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }))
+  const was = snap(list)
   return () => {
-    const now = list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }))
-    push({
-      undo: () => list.forEach((s, i) => { Object.assign(s, was[i]); paint(s) }),
-      redo: () => list.forEach((s, i) => { Object.assign(s, now[i]); paint(s) }),
-    })
+    const now = snap(list)
+    // put a copy back: a resize edits s.p in place, which would otherwise rewrite the snapshot a later redo uses
+    const put = (to: typeof was) => list.forEach((s, i) => { s.p = to[i].p.map(q => [...q]); s.t = to[i].t; paint(s) })
+    push({ undo: () => put(was), redo: () => put(now) })
   }
 }
 

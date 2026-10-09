@@ -306,6 +306,7 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
     else if (isShape(kind as Tool)) return pick(kind as Shape)
     else if (kind === 'fill') { fill = !fill; b.classList.toggle('on', fill); b.setAttribute('aria-pressed', String(fill)); return }
     else if (kind === 'undo') return undo()
+    else if (kind === 'redo') return redo()
     else if (kind === 'clear') {
       if (strokes.length) confirmBox('Erase all drawing?', 'Every stroke on the canvas is removed. Undo (Ctrl+Z) brings them back.', 'Erase all').then(ok => { if (ok) erase(...strokes) })
       return
