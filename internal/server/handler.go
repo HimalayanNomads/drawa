@@ -105,7 +105,7 @@ var getRoutes = map[string]routeFunc{
 		}
 		return ok(filesx.Get(p))
 	},
-	"/api/git":       func(q url.Values) (any, int, error) { return gitx.GitState(), 200, nil },
+	"/api/git":       gitRoute,
 	"/api/git/repos": func(q url.Values) (any, int, error) { return gitx.NonNil(gitx.Repos()), 200, nil },
 	"/api/git/diff": func(q url.Values) (any, int, error) {
 		p, err := need(q, "path")
@@ -540,4 +540,12 @@ func saveStatus(err error) int {
 func refsRoute(q url.Values) (any, int, error) {
 	refs, more := gitx.Refs(q.Get("name"))
 	return map[string]any{"refs": refs, "more": more}, 200, nil
+}
+
+// gitRoute is the shared git status; fresh=1 (the Git window's refresh button) reads it all again first.
+func gitRoute(q url.Values) (any, int, error) {
+	if q.Get("fresh") == "1" {
+		gitx.Fresh()
+	}
+	return gitx.GitState(), 200, nil
 }

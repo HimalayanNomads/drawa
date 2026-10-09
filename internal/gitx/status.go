@@ -18,6 +18,13 @@ var stateCache = struct {
 	state map[string]any
 }{}
 
+// Fresh drops every cached list (status, nested repos, worktrees), for the Git window's refresh button: the next
+// GitState reads them all again.
+func Fresh() {
+	Forget()
+	forgetWorktrees()
+}
+
 // GitState is Root's git status, with each nested repo's in "nested", shared by every page for a few seconds: each
 // open Git window polls it.
 func GitState() map[string]any {

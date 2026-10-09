@@ -23,7 +23,8 @@ export function openGit(r?: Rect) {
   const { el, head, body } = makeWindow({
     kind: 'git', cls: 'gnode', title: 'git', minW: 300, minH: 200,
     rect: r ?? spotBeside(null, 380, 520),
-    actions: [iconButton(GH_ICON, 'GitHub: pull requests and issues (Shift+G)', () => openGitHub()),
+    actions: [iconButton(ICON.reload, 'Refresh: read git status and pull requests again', () => reload(), 'grefresh'),
+      iconButton(GH_ICON, 'GitHub: pull requests and issues (Shift+G)', () => openGitHub()),
       iconButton(ICON.x, 'Close', () => { clearInterval(win!.gh); clearTimeout(win!.poll); win!.stop.abort(); forget(el); el.remove(); win = undefined; changed() }, 'closebtn')],
   })
   el.dataset.id = 'git' // one per project: arrows and pins find it again after a reload
@@ -64,11 +65,24 @@ export function openGit(r?: Rect) {
 /** A line above the lists for what isn't one repo's: the status couldn't be read, git init failed. */
 function note(text: string, bad = false) { if (!win) return; win.note.textContent = text; win.note.classList.toggle('bad', bad) }
 
+/** The refresh button: status read again past the server's few-second cache, drawn even when it's the same (open
+ *  diffs are fetched again), and each pull request strip in view asked again. */
+async function reload() {
+  const w = win
+  if (!w || w.el.ariaBusy) return
+  w.el.ariaBusy = 'true'
+  try {
+    w.last = ''
+    await refresh(true)
+    for (const v of w.views.values()) if (w.single || isOpen(v)) v.gh.refresh()
+  } finally { w.el.ariaBusy = null }
+}
+
 const UNREAD = 'Could not read git status: '
-export async function refresh() {
+export async function refresh(fresh = false) {
   if (!win) return
   let st: GitState
-  try { st = await api<GitState>('git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
+  try { st = await api<GitState>(fresh ? 'git?fresh=1' : 'git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
   if (win.note.textContent?.startsWith(UNREAD)) note('') // that was an earlier fetch's error
   const sig = JSON.stringify(st)
   if (sig === win.last) { win.delay = Math.min(win.delay * 2, SLOW); return } // nothing changed: keep the DOM (and any open diffs)

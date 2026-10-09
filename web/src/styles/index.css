@@ -30,6 +30,7 @@
   .frow.live .g{border-color:var(--kind)} /* a stopped spinner would read as a broken ring */
   .xsel[data-loading]::after{border-color:var(--accent)}
   .xsel-menu{animation:none}
+  .gnode[aria-busy=true] .grefresh{opacity:.6} /* no spin: dimmed while the Git window refreshes */
   .xsel svg{transition:none}
   .launch-tip{animation:none}
 }

@@ -56,6 +56,8 @@
 .glog>summary{padding:0 12px;border-radius:0}
 .gc{width:100%;text-align:left;color:var(--ink)}.gc:hover{background:var(--hover)}.gc[aria-expanded=true]{background:var(--sel)}
 :is(.gfiles,.gfoot)[aria-busy=true] :is(.gsec,.grow,.row) button{opacity:.6;cursor:progress}
+.gnode[aria-busy=true] .grefresh{cursor:progress}
+.gnode[aria-busy=true] .grefresh svg{animation:spin .8s linear infinite} /* the refresh button while status is read again */
 .gshow{max-height:420px;overflow:auto;border-block:1px solid var(--line);background:var(--code)}
 .gcf{position:sticky;top:0;z-index:var(--z-sticky);padding:3px 12px;font:12px var(--mono);color:var(--muted);background:var(--code);border-bottom:1px solid var(--line)}
 .gc{display:flex;align-items:baseline;gap:8px;padding:3px 12px;font-size:12px}
