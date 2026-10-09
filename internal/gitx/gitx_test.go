@@ -677,6 +677,31 @@ func TestBlobAndDiscard(t *testing.T) {
 	if b, err := os.ReadFile(nf); err != nil || string(b) != "keep\n" {
 		t.Errorf("new file after a refused discard: %q, %v", b, err)
 	}
+	// nor a folder (it passes "is it in HEAD", and would restore, so delete, every new file under it), nor the root
+	for _, dir := range []string{"sub", "."} {
+		for _, staged := range []bool{true, false} {
+			if r, _ := GitOp(map[string]any{"op": "discard", "staged": staged, "paths": []any{dir}}); r["ok"] != false {
+				t.Errorf("discarded folder %q (staged %v): %v", dir, staged, r)
+			}
+		}
+	}
+	if b, err := os.ReadFile(nf); err != nil || string(b) != "keep\n" {
+		t.Errorf("new file after refused folder discards: %q, %v", b, err)
+	}
+	// a staged deletion with a new file at the same path: discarding would overwrite the new one
+	run("rm", "-q", "--cached", "sub/new.txt")
+	run("rm", "-q", "sub/a.txt")
+	os.WriteFile(f, []byte("brand new\n"), 0o644)
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/a.txt"}}); r["ok"] != false {
+		t.Errorf("discarded a staged deletion over a new file: %v", r)
+	}
+	if read() != "brand new\n" {
+		t.Errorf("new file at a deleted path: %q", read())
+	}
+	os.Remove(f) // with nothing there, the deletion is discarded: the file is back
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/a.txt"}}); r["ok"] != true || read() != "one\n" {
+		t.Errorf("discarding a staged deletion: %v, file %q", r, read())
+	}
 }
 
 // Nested and Check share the worktree cache: a slow git costs one listing per repo per refresh, not one per call, and

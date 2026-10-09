@@ -213,15 +213,14 @@ func GitOp(body map[string]any) (map[string]any, error) {
 		if len(paths) == 0 {
 			return map[string]any{"ok": false, "out": "Name the files to discard."}, nil
 		}
-		args := []string{"restore"}
-		if staged, _ := body["staged"].(bool); staged {
-			// restoring from HEAD deletes a path HEAD doesn't have, from disk too: only files HEAD has (the page offers
-			// no others, but it isn't the only check)
-			for _, p := range paths {
-				if has, _ := git(Opts{}, "cat-file", "-e", "HEAD:./"+filepath.ToSlash(p)); !has {
-					return map[string]any{"ok": false, "out": p + " isn't in the last commit: unstage it instead."}, nil
-				}
+		staged, _ := body["staged"].(bool)
+		for _, p := range paths {
+			if why := undiscardable(repo, p, staged); why != "" {
+				return map[string]any{"ok": false, "out": why}, nil
 			}
+		}
+		args := []string{"restore"}
+		if staged {
 			args = append(args, "--staged", "--worktree", "--source=HEAD")
 		}
 		ok, out = git(Opts{}, append(append(args, "--"), paths...)...)
@@ -294,4 +293,28 @@ func rootRel(rel string) (string, error) {
 		return "", config.ErrOutside // "../x" can resolve back inside through a link, but git would take it literally
 	}
 	return r, nil
+}
+
+// undiscardable says why discarding p (relative to repo's folder) would lose more than the one file's edits, or "".
+// Only single files: a folder would restore everything under it, and restoring from HEAD deletes what HEAD doesn't
+// have, from disk too (the page offers neither, but it isn't the only check).
+func undiscardable(repo, p string, staged bool) string {
+	spec := ":./" + filepath.ToSlash(p) // the index: an unstaged discard restores from it
+	if staged {
+		spec = "HEAD:./" + filepath.ToSlash(p)
+	}
+	if ok, kind := GitOpts(Opts{Repo: repo}, "cat-file", "-t", spec); !ok || kind != "blob" {
+		where := "what's staged"
+		if staged {
+			where = "the last commit"
+		}
+		return p + " isn't a file in " + where + ": discard files one at a time, and unstage a new file instead."
+	}
+	// a staged deletion with a new file put at the same path: restoring HEAD's would overwrite that file
+	if inIndex, _ := GitOpts(Opts{Repo: repo}, "cat-file", "-e", ":./"+filepath.ToSlash(p)); staged && !inIndex {
+		if _, err := os.Lstat(filepath.Join(Path(repo), p)); err == nil {
+			return p + " was deleted in what's staged, and a new file is there now: discarding would replace it with the last commit's. Move the new file first."
+		}
+	}
+	return ""
 }

@@ -25,6 +25,7 @@ export interface GitState {
 /** What a repo's view needs from the window around it. */
 export interface Host {
   refresh(): Promise<void> | void
+  current(): Promise<boolean> // the lists shown are git's now; when not, they're drawn again and the answer is false
   redraw(): void // draw the last status again (a different checkout picked)
   open: Set<string> // the diffs you opened, kept open across refreshes
 }
@@ -268,10 +269,13 @@ async function discardFile(v: RepoView, host: Host, f: GitFile, isStaged: boolea
   const both = isStaged && f.y !== ' '
   const what = isStaged ? `its staged changes${both ? ' and the edits not staged yet' : ''} are` : 'the changes not staged yet are'
   if (!await confirmBox(`Discard changes to ${f.path.split('/').pop()}?`, `${f.path} goes back to ${isStaged ? 'the last commit' : f.x === ' ' ? 'the last commit' : 'what is staged'}: ${what} lost, and can't be brought back.`, 'Discard')) return
+  if (!await host.current()) return say(v, `The lists changed since you looked: check ${f.path} again, then discard.`, true)
   op(v, host, 'discard', [f.path], { staged: isStaged })
 }
 
 const commit = (v: RepoView, host: Host) => busy(v, async () => {
+  // first: the staged list shown may be old (a poll holds changes while you read a diff), and git commits what it has
+  if (!await host.current()) return say(v, 'The lists changed since you looked: check what is staged, then commit again.', true)
   const message = v.msg.value.trim()
   const st = v.st, files = st?.files ?? []
   // a capped list can hide staged files; then the server's commit op says if there's nothing to commit
@@ -285,6 +289,7 @@ const commit = (v: RepoView, host: Host) => busy(v, async () => {
 const push = (v: RepoView, host: Host) => busy(v, async () => {
   const where = v.dir ? ` of ${v.dir}` : ''
   if (!await confirmBox('Push to the remote?', `Your commits on this branch${where} are uploaded to the remote repository, where others can see them.`, 'Push')) return
+  if (!await host.current()) return say(v, 'The commits changed since you looked: check them, then push again.', true)
   say(v, 'Pushing…')
   const r = await gitPost({ op: 'push', repo: v.dir })
   if (r.ok) v.gh.refresh()

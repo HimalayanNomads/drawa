@@ -52,7 +52,7 @@ export function openGit(r?: Rect) {
   el.addEventListener('pointerdown', wake, { signal })
   el.addEventListener('collapse', wake, { signal })
   // a commit or push in the project's own repo can change its pull request; GitHub knows nothing of the nested ones here
-  const host: Host = { refresh: () => refresh('apply'), redraw: () => { if (win?.st) draw(win.st) }, open: new Set() }
+  const host: Host = { refresh: () => refresh('apply'), current, redraw: () => { if (win?.st) draw(win.st) }, open: new Set() }
   // each repo's pull request, while you can see it: the window on screen, and its group open (or no groups)
   const ghTick = () => { if (showing()) for (const v of win!.views.values()) if (win!.single || isOpen(v)) v.gh.tick() }
   win = { el, meta, body, list, note, gh: setInterval(ghTick, 15_000), poll: 0, delay: FAST, stop, views: new Map(), single: true, host, last: '', held: '', again }
@@ -78,12 +78,22 @@ async function reload() {
   } finally { w.el.ariaBusy = null }
 }
 
-/** The refresh button is on only while there's something new it would show. */
+/** The refresh button is lit while there's something new it would show; it can always be pressed, since a poll can't
+ *  see everything (a repo cloned into a subfolder shows after a cache, an edit that keeps a file's counts not at all). */
 function stale(on: boolean) {
   const b = win!.again
-  b.disabled = !on
-  const t = on ? 'New changes: refresh to show them (the open diffs are read again)' : 'Up to date: nothing new since the last read'
+  b.classList.toggle('new', on)
+  const t = on ? 'New changes: refresh to show them (the open diffs are read again)' : 'Refresh: read git status and pull requests again'
   b.title = t; b.setAttribute('aria-label', t)
+}
+
+/** Is what the window shows what git has now? Read fresh before a commit, push or discard acts on it: when it isn't,
+ *  the new lists are drawn and the caller stops, so nothing you haven't seen is committed, pushed or lost. */
+async function current() {
+  if (!win) return false
+  const shown = win.last
+  await refresh('check')
+  return win.last === shown // a read that failed changes nothing: the server's own checks still apply
 }
 
 // a status's signature, without its commits' ages ("80 seconds ago"): those change every poll, and aren't a change
@@ -104,12 +114,13 @@ function retime(st: GitState) {
 const reading = () => !!win?.list.querySelector('.gfile .diff, .gshow')
 
 const UNREAD = 'Could not read git status: '
-/** Read git status and draw what changed. A poll that finds changes while you read a diff holds them and turns the
- *  refresh button on; `apply` (after your own stage, commit, push...) and `fresh` (the button) always draw. */
-export async function refresh(how?: 'apply' | 'fresh') {
+/** Read git status and draw what changed. A poll that finds changes while you read a diff holds them and lights the
+ *  refresh button; `apply` (after your own stage, commit, push...) draws them; `check` does too, read past the
+ *  server's cache; `fresh` (the button) reads past it and draws even when nothing changed (open diffs read again). */
+export async function refresh(how?: 'apply' | 'check' | 'fresh') {
   if (!win) return
   let st: GitState
-  try { st = await api<GitState>(how === 'fresh' ? 'git?fresh=1' : 'git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
+  try { st = await api<GitState>(how === 'fresh' || how === 'check' ? 'git?fresh=1' : 'git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
   if (win.note.textContent?.startsWith(UNREAD)) note('') // that was an earlier fetch's error
   const sig = sigOf(st)
   if (sig === win.last && how !== 'fresh') { // nothing changed (or a held change was undone): keep the DOM, and any open diffs
