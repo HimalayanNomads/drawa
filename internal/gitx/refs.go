@@ -4,6 +4,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"drawa/internal/procx"
 )
 
 // Ref is one line in the project that uses a name.
@@ -16,8 +19,10 @@ type Ref struct {
 var refName = regexp.MustCompile(`^[A-Za-z_$][\w$]{0,99}$`)
 
 const (
-	refsMax    = 200
-	refTextMax = 200
+	refsMax     = 200
+	refsPerFile = 20
+	refTextMax  = 200
+	refsOutMax  = 1 << 20
 )
 
 // Refs lists the lines in the project's files that use `name` as a whole word (find references from a diff's
@@ -28,22 +33,32 @@ func Refs(name string) []Ref {
 	if !refName.MatchString(name) {
 		return out
 	}
-	ok, text := GitOpts(Opts{}, "grep", "-n", "-I", "-w", "-F", "--no-color", "--max-count=20", "--untracked", "-e", name, "--", ".")
-	if !ok { // exit 1 is "no match"; anything else (not a repo) is nothing to show either
+	// no --max-count (git 2.38+): the cap per file is counted here, and RunLimit keeps a common name's output bounded
+	env, argv := command("", []string{"grep", "-n", "-z", "-I", "-w", "-F", "--no-color", "--untracked", "-e", name, "--", "."})
+	r, err := procx.RunLimit(30*time.Second, refsOutMax, "", env, argv...)
+	if err != nil || (r.Code != 0 && !r.Truncated) { // exit 1 is "no match"; anything else (not a repo) is nothing to show either
 		return out
 	}
-	for _, l := range strings.Split(text, "\n") {
-		path, rest, ok1 := strings.Cut(l, ":")
-		num, line, ok2 := strings.Cut(rest, ":")
-		n, err := strconv.Atoi(num)
-		if !ok1 || !ok2 || err != nil {
+	lines := strings.Split(r.Stdout, "\n")
+	if r.Truncated {
+		lines = lines[:len(lines)-1] // the last one was cut off
+	}
+	per := map[string]int{}
+	for _, l := range lines {
+		f := strings.SplitN(l, "\x00", 3) // -z: path\0line\0text, so a path with a colon still splits right
+		if len(f) < 3 {
 			continue
 		}
-		line = strings.TrimSpace(line)
+		n, err := strconv.Atoi(f[1])
+		if err != nil || per[f[0]] == refsPerFile {
+			continue
+		}
+		per[f[0]]++
+		line := strings.TrimSpace(f[2])
 		if len(line) > refTextMax {
 			line = strings.ToValidUTF8(line[:refTextMax], "") + "…"
 		}
-		out = append(out, Ref{Path: path, Line: n, Text: line})
+		out = append(out, Ref{Path: f[0], Line: n, Text: line})
 		if len(out) == refsMax {
 			break
 		}

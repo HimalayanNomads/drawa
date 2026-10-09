@@ -12,7 +12,7 @@ const UP = '<svg viewBox="0 0 16 16"><path d="M4 9.5 8 5.5l4 4"/></svg>', DOWN =
 export const textOf = (path: string) => () => api<{ text: string | null }>(path).then(r => r.text, () => null)
 
 export function expandable(diff: HTMLElement, load: () => Promise<string | null>) {
-  if (!diff.dataset.from) return // no hunks: nothing around them
+  if (!diff.dataset.from) return // no hunks, or a new or deleted file: nothing around them
   let lines: Promise<string[] | null> | undefined
   const text = () => lines ??= load().then(t => t == null ? null : t.replace(/\n$/, '').split('\n'))
   for (const s of diff.querySelectorAll<HTMLElement>(':scope > .sep.hunk')) controls(s, text, s === diff.firstElementChild)
@@ -27,6 +27,7 @@ function controls(s: HTMLElement, text: () => Promise<string[] | null>, first: b
   const bar = make('span', 'xp'), tail = s.classList.contains('tail')
   const show = async (up: boolean) => {
     const all = await text()
+    if (!s.isConnected) return // a quicker click already showed the rest of this stretch
     if (!all) { bar.remove(); if (tail) s.remove(); return } // the new side can't be read: no more to show
     if (tail) s.dataset.top = String(all.length + 1)
     const from = n('from'), top = n('top')

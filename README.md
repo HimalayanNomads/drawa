@@ -41,7 +41,7 @@ Drawa runs entirely on your machine. It drives the agent CLIs you already have, 
 | [OpenCode](https://opencode.ai) | Or, instead or as well: `opencode` on `PATH`, for any other provider or its free models. See below. Tested with OpenCode 1.18.32. |
 | [Codex](https://developers.openai.com/codex/cli) | Or: `codex` on `PATH` and logged in, for your ChatGPT plan or an OpenAI API key. See below. Tested with Codex 0.158.0. |
 | [Antigravity](https://antigravity.google) | Or: `agy` on `PATH`, signed in once by running `agy` in a terminal. Limited: see below. Tested with agy 1.2.16. |
-| `git` | Optional. Powers the Git window and file history. |
+| `git` | Optional, 2.36 or later. Powers the Git window and file history. |
 | [`gh`](https://cli.github.com) | Optional. Powers the GitHub window. |
 | [universal-ctags](https://github.com/universal-ctags/ctags) | Optional. Code symbols: `Ctrl+K` finds functions, classes and the like by name, and clicking a name in a diff shows where it's defined. `brew install universal-ctags` on a Mac. Turn it off in Settings. |
 | OS | macOS or Linux. Windows isn't supported yet. |

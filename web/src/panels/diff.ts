@@ -182,7 +182,8 @@ export function unified(text: string) {
     if (kind !== 'del') row.dataset.n = String(last = b++)
   }
   box.style.setProperty('--ln', `${String(last).length + 1}ch`) // the gutter fits the biggest number
-  if (start >= 0) Object.assign(box.dataset, { from: String(last + 1), off: String(a - b) }) // and what's after the end
+  // and what's after the end: none in a new file (it's all shown) or a deleted one (no new side to show it from)
+  if (start >= 0 && !/^(new|deleted) file mode/m.test(text)) Object.assign(box.dataset, { from: String(last + 1), off: String(a - b) })
   return box
 }
 

@@ -21,6 +21,9 @@ echo "GH_REPO=$GH_REPO $*" >> "` + log + `"
   "repo view --json"*) echo '{"nameWithOwner":"up/drawa","url":"https://github.com/up/drawa"}' ;;
   "repo view "*" --json owner"*) echo fork ;;
   "pr create"*) cat >/dev/null; echo https://github.com/up/drawa/pull/1 ;;
+  "api repos/{owner}/{repo}/contents/f.txt?"*) echo '{"type":"file","encoding":"base64","content":"aGkK"}' ;;
+  "api repos/{owner}/{repo}/contents/dir?"*) echo '[{"type":"file","name":"x"}]' ;;
+  "api repos/{owner}/{repo}/contents/sub?"*) echo '{"type":"submodule"}' ;;
 esac
 `}[fails]
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
@@ -82,5 +85,28 @@ func TestRepoFailureKept(t *testing.T) {
 	}
 	if views != 1 {
 		t.Errorf("repo view asked %d times: %q", views, calls(t, log))
+	}
+}
+
+// A pull request's file from GitHub when its commit isn't here: only a file's content, never a folder's or a
+// submodule's listing. A commit that is here answers alone, even for a file it doesn't have.
+func TestBlobFromGitHub(t *testing.T) {
+	log := fakeGh(t, false)
+	missing := strings.Repeat("ab", 20)
+	for path, want := range map[string]any{"f.txt": "hi\n", "dir": nil, "sub": nil} {
+		if b, err := Blob("", missing, path); err != nil || b["text"] != want {
+			t.Errorf("Blob(%s) = %v, %v; want %q", path, b, err, want)
+		}
+	}
+	head, _ := exec.Command("git", "-C", config.Root, "rev-parse", "HEAD").Output()
+	before := len(calls(t, log))
+	if b, err := Blob("", strings.TrimSpace(string(head)), "gone.txt"); err != nil || b["text"] != nil {
+		t.Errorf("a file the local commit doesn't have = %v, %v", b, err)
+	}
+	if got := calls(t, log); len(got) != before {
+		t.Errorf("asked GitHub for a commit that is here: %q", got[before:])
+	}
+	if _, err := Blob("", "", "f.txt"); err == nil {
+		t.Error("no commit read something (the index)")
 	}
 }

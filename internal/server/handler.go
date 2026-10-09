@@ -133,7 +133,11 @@ var getRoutes = map[string]routeFunc{
 		if err != nil {
 			return nil, 0, err
 		}
-		return ok(github.Blob(q.Get("repo"), q.Get("ref"), p))
+		ref, err := need(q, "ref") // none would read the index, not the pull request's head
+		if err != nil {
+			return nil, 0, err
+		}
+		return ok(github.Blob(q.Get("repo"), ref, p))
 	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/symbols":   symbolsRoute,

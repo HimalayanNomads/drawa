@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"drawa/internal/config"
 	"drawa/internal/procx"
 )
 
@@ -30,6 +31,11 @@ func Blob(repo, rev, path string, top bool) (map[string]any, error) {
 		if !filepath.IsLocal(path) {
 			return nil, errors.New("not a path in the repo")
 		}
+		// Root may be a subfolder of its repo: a path from the top must still be inside it (a nested repo or a
+		// worktree is git's top itself, as GitShow's `-- .` shows it)
+		if repo == "" && !strings.HasPrefix(filepath.ToSlash(path), prefix()) {
+			return nil, config.ErrOutside
+		}
 		spec = rev + ":" + filepath.ToSlash(path)
 	} else {
 		rel, err := pathIn(repo, path, isWorktree(repo))
@@ -44,4 +50,13 @@ func Blob(repo, rev, path string, top bool) (map[string]any, error) {
 		return map[string]any{"text": nil}, nil
 	}
 	return map[string]any{"text": string(bytes.ToValidUTF8([]byte(r.Stdout), []byte("�")))}, nil
+}
+
+// HasCommit tells whether rev is a commit the repo has locally.
+func HasCommit(repo, rev string) bool {
+	if !hashRe.MatchString(rev) {
+		return false
+	}
+	ok, _ := GitOpts(Opts{Repo: repo}, "cat-file", "-e", rev+"^{commit}")
+	return ok
 }

@@ -561,6 +561,8 @@ func TestRefs(t *testing.T) {
 	repo, _ := filepath.EvalSymlinks(t.TempDir())
 	os.WriteFile(filepath.Join(repo, "a.go"), []byte("func fooBar() {}\nvar x = fooBarBaz\n"), 0o644)
 	os.WriteFile(filepath.Join(repo, "b.go"), []byte("// calls\n  fooBar()\n"), 0o644)
+	os.MkdirAll(filepath.Join(repo, "d:x"), 0o755)
+	os.WriteFile(filepath.Join(repo, "d:x", "c.go"), []byte(strings.Repeat("fooBar\n", 30)), 0o644)
 	cmd := exec.Command("git", "init", "-q")
 	cmd.Dir = repo
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -572,6 +574,9 @@ func TestRefs(t *testing.T) {
 
 	got := Refs("fooBar") // untracked files count: what you just wrote is searched too
 	want := []Ref{{"a.go", 1, "func fooBar() {}"}, {"b.go", 2, "fooBar()"}}
+	for i := 1; i <= 20; i++ { // a colon in the path, and 20 a file at most
+		want = append(want, Ref{"d:x/c.go", i, "fooBar"})
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Refs = %v, want %v", got, want)
 	}
@@ -609,7 +614,8 @@ func TestBlobAndDiscard(t *testing.T) {
 
 	saved := config.Root
 	config.Root = repo
-	t.Cleanup(func() { config.Root = saved })
+	prefixCache.ok = false
+	t.Cleanup(func() { config.Root = saved; prefixCache.ok = false })
 
 	text := func(rev, path string, top bool) any {
 		b, err := Blob("", rev, path, top)
@@ -632,6 +638,20 @@ func TestBlobAndDiscard(t *testing.T) {
 			t.Errorf("Blob(%q, %q) took it", bad[0], bad[1])
 		}
 	}
+	if !HasCommit("", head) || HasCommit("", strings.Repeat("0", 40)) || HasCommit("", "HEAD") {
+		t.Errorf("HasCommit is wrong about %s, a missing commit or a name", head)
+	}
+
+	config.Root, prefixCache.ok = filepath.Join(repo, "sub"), false // Root below the repo's top: nothing above it is read
+	if got := text(head, "sub/a.txt", true); got != "one\n" {
+		t.Errorf("inside Root = %q", got)
+	}
+	for _, rev := range []string{head, ""} {
+		if _, err := Blob("", rev, "secret.txt", true); err == nil {
+			t.Errorf("Blob(%q, secret.txt) read outside Root", rev)
+		}
+	}
+	config.Root, prefixCache.ok = repo, false
 
 	read := func() string { b, _ := os.ReadFile(f); return string(b) }
 	if r, _ := GitOp(map[string]any{"op": "discard", "paths": []any{"sub/a.txt"}}); r["ok"] != true || read() != "two\n" {
