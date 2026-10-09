@@ -16,6 +16,7 @@ export function expandable(diff: HTMLElement, load: () => Promise<string | null>
   let lines: Promise<string[] | null> | undefined
   const text = () => lines ??= load().then(t => t == null ? null : t.replace(/\n$/, '').split('\n'))
   for (const s of diff.querySelectorAll<HTMLElement>(':scope > .sep.hunk')) controls(s, text, s === diff.firstElementChild)
+  if ('end' in diff.dataset) return // the last change reaches the end of the file: nothing after it
   const tail = diff.appendChild(make('div', 'sep hunk tail'))
   Object.assign(tail.dataset, { from: diff.dataset.from, off: diff.dataset.off, top: String(Number.MAX_SAFE_INTEGER) })
   controls(tail, text, false)

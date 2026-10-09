@@ -572,16 +572,19 @@ func TestRefs(t *testing.T) {
 	config.Root = repo
 	t.Cleanup(func() { config.Root = saved })
 
-	got := Refs("fooBar") // untracked files count: what you just wrote is searched too
+	got, more := Refs("fooBar") // untracked files count: what you just wrote is searched too
 	want := []Ref{{"a.go", 1, "func fooBar() {}"}, {"b.go", 2, "fooBar()"}}
 	for i := 1; i <= 20; i++ { // a colon in the path, and 20 a file at most
 		want = append(want, Ref{"d:x/c.go", i, "fooBar"})
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Refs = %v, want %v", got, want)
+	if !reflect.DeepEqual(got, want) || !more { // c.go's last 10 are left out
+		t.Fatalf("Refs = %v (more %v), want %v (more)", got, more, want)
+	}
+	if _, more := Refs("fooBarBaz"); more {
+		t.Error("a complete list says there are more")
 	}
 	for _, bad := range []string{"", "-e", "1x", "a b", "--open-files-in-pager=sh"} {
-		if r := Refs(bad); len(r) != 0 {
+		if r, _ := Refs(bad); len(r) != 0 {
 			t.Errorf("Refs(%q) = %v, want none", bad, r)
 		}
 	}

@@ -5,7 +5,7 @@ import { api, q } from '../lib/api'
 import { enhanceMarked } from '../lib/markdown'
 import { enhance as enhanceSelect } from '../lib/select'
 import { changed } from '../canvas/canvas'
-import { unified, openable, openFileButton } from '../panels/diff'
+import { unified, openable, openFileButton, diffPath } from '../panels/diff'
 import { expandable, textOf } from '../panels/expand'
 import { ghPost, getPr, getChecks, tally, stateOf, REVIEW, sendToClaude, sendLabel, publish, whoami, here as ghRepo, type Pr, type Inline, type What } from './gh'
 import { win, load, header, conversation, note, writeBox, commentOn, ghLink, show, still } from './github'
@@ -114,7 +114,7 @@ function files(p: Pr) {
   }, () => {})
   return parts.map(part => {
     const d = make('details', 'ghfile'), s = make('summary')
-    const path = /^diff --git a\/.+? b\/(.+)$/m.exec(part)?.[1] ?? 'file'
+    const path = diffPath(part) || 'file'
     const body = part.slice(part.search(/^@@/m) >>> 0) // counts from the first hunk: the header's ---/+++ lines aren't changes
     const add = (body.match(/^\+/gm) ?? []).length, del = (body.match(/^-/gm) ?? []).length
     const here = p.inline.filter(c => c.path === path)

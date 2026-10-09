@@ -161,15 +161,15 @@ export function unified(text: string) {
   const box = make('div', 'diff num')
   const lines = text.replace(/\n$/, '').split('\n')
   const start = lines.findIndex(l => l.startsWith('@@'))
-  let a = 0, b = 0, last = 0
+  let a = 0, b = 0, last = 0, after = 0, end = false, prev = '' // after: unchanged lines since the last change
   // no hunk: git's header says why (an empty new file, a binary one, only its mode changed)
   const none = /^Binary files /m.test(text) ? '(binary file)' : /^(new|deleted) file mode/m.test(text) ? '(empty file)' : '(no textual changes)'
   for (const l of start < 0 ? [' ' + none] : lines.slice(start)) { // ' ': a context line, its marker sliced off
-    if (l.startsWith('\\')) continue // "\ No newline at end of file"
+    if (l.startsWith('\\')) { end ||= prev !== 'del'; continue } // "\ No newline at end of file": after a new-side line, the file ends there
     // a hunk header says where it is: git's function context, or the line number when there's none
     const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@\s?(.*)$/.exec(l)
     if (h) {
-      a = +h[1]; b = +h[2]
+      a = +h[1]; b = +h[2]; after = 0
       // the unchanged stretch above it, for expandable(): new lines from..top-1, each old one off from it
       const s = box.appendChild(make('div', 'sep hunk', h[3] || `line ${b}`))
       Object.assign(s.dataset, { from: String(last + 1), top: String(b), off: String(a - b) })
@@ -177,6 +177,7 @@ export function unified(text: string) {
     }
     const kind = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : 'eq', row = box.appendChild(make('div', kind, l.slice(1)))
     row.dataset.s = kind === 'add' ? '+' : kind === 'del' ? '−' : ''
+    prev = kind; after = kind === 'eq' ? after + 1 : 0
     if (start < 0) continue
     if (kind !== 'add') row.dataset.a = String(a++)
     if (kind !== 'del') row.dataset.n = String(last = b++)
@@ -184,7 +185,32 @@ export function unified(text: string) {
   box.style.setProperty('--ln', `${String(last).length + 1}ch`) // the gutter fits the biggest number
   // and what's after the end: none in a new file (it's all shown) or a deleted one (no new side to show it from)
   if (start >= 0 && !/^(new|deleted) file mode/m.test(text)) Object.assign(box.dataset, { from: String(last + 1), off: String(a - b) })
+  // git shows 3 unchanged lines after a change unless the file ends first: fewer means nothing comes after (ponytail:
+  // assumes git's default context, which every diff the server sends uses)
+  if (end || after < 3) box.dataset.end = ''
   return box
+}
+
+/** The new side's path in one file's `git diff`, from its `+++` line (else `---`, else the `diff --git` line).
+ *  git quotes a path with unusual characters ("b/caf\303\251.txt"): read back as the name it is. */
+export function diffPath(part: string) {
+  const m = /^\+\+\+ (?!\/dev\/null)(.+)$/m.exec(part) ?? /^--- (?!\/dev\/null)(.+)$/m.exec(part)
+  const raw = m?.[1] ?? /^diff --git (?:"a\/(?:[^"\\]|\\.)*"|a\/.+?) ("b\/(?:[^"\\]|\\.)*"|b\/.*)$/m.exec(part)?.[1] ?? ''
+  return unquote(raw.replace(/\t$/, '')).replace(/^[ab]\//, '') // git adds a tab after a name with a space in it
+}
+
+const ESC: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 }
+/** git's C-style quoted path back to its bytes (octal escapes are UTF-8 bytes); one without quotes as it is. */
+function unquote(p: string) {
+  if (!p.startsWith('"') || !p.endsWith('"')) return p
+  const bytes: number[] = []
+  for (let i = 1; i < p.length - 1; i++) {
+    const c = p[i]
+    if (c !== '\\') { bytes.push(...new TextEncoder().encode(c)); continue }
+    const o = /^[0-7]{3}/.exec(p.slice(i + 1))
+    if (o) { bytes.push(parseInt(o[0], 8)); i += 3 } else bytes.push(ESC[p[++i]] ?? p.charCodeAt(i))
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes))
 }
 
 /** Let a unified() diff of `path` open the file: clicking a line number opens it in its window at that line. Only

@@ -4,7 +4,7 @@
 import { make, ICON, iconButton, button, confirmBox, project } from '../lib/dom'
 import { api, post, q } from '../lib/api'
 import { changed } from '../canvas/canvas'
-import { unified, openable, openFileButton } from '../panels/diff'
+import { unified, openable, openFileButton, diffPath } from '../panels/diff'
 import { expandable, textOf } from '../panels/expand'
 import { writer, setWriter, who, installed, blurb, chooser } from '../lib/agents'
 import { ghStrip, type Strip } from './gitgh'
@@ -238,7 +238,7 @@ function commitDiff(v: RepoView, hash: string, patch: string) {
   const files = patch.split(/^(?=diff --git )/m).filter(f => f.startsWith('diff --git '))
   if (!files.length) box.append(make('p', 'none', 'No changes in this project folder.'))
   for (const f of files) {
-    const path = /^\+\+\+ b\/(.*)$/m.exec(f)?.[1] ?? /^--- a\/(.*)$/m.exec(f)?.[1] ?? f.split('\n')[0].replace(/^diff --git a\/(.*) b\/.*$/, '$1')
+    const path = diffPath(f)
     const d = unified(f)
     expandable(d, textOf(`git/blob?repo=${q(v.dir)}&rev=${hash}&top=1&path=${q(path)}`)) // a patch's paths are from the repo's top
     box.append(make('div', 'gcf', path), d)

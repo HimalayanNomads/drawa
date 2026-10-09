@@ -4,6 +4,7 @@
 // beside the list; picking one opens its file in a window (see fileOpener), at the symbol's line. Commands
 // (lib/keys.ts entries with `run`) matching the query are listed above.
 import { api, q as enc } from '../lib/api'
+import { persist } from '../lib/store'
 import { enhanceMarked } from '../lib/markdown'
 import { $, make, ping, reducedMotion, revealIn } from '../lib/dom'
 import { command, commands, MOD } from '../lib/keys'
@@ -188,6 +189,9 @@ export function openFileAt(path: string, line?: number, edit = false) {
 }
 
 let peekWin: HTMLElement | null = null // the small window stickFileAt made last: the next pick takes its place
+// still the peek after a reload, so a later pick replaces it rather than leaving one more behind; phase 2: after windows
+persist('refpeek', () => peekWin?.isConnected ? peekWin.dataset.id ?? null : null,
+  (id: string | null) => { peekWin = id ? items().find(el => el.dataset.id === id) ?? null : null }, 2)
 /** Open a project file at `line` in a small window stuck to the screen at (x, y), without moving the canvas (a
  *  diff's find references: you step through them with the list still open). One such window is reused from pick to
  *  pick. A window the file already has stays where you put it: it's brought into view at the line instead. */

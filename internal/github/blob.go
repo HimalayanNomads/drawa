@@ -11,8 +11,6 @@ import (
 	"drawa/internal/gitx"
 )
 
-const blobMax = 1 << 20
-
 // Blob is a file's text at a pull request's head commit (path from the repo's top), for its diff's "show more lines".
 // From the local repo when the commit is there, else from GitHub: a pull request nobody fetched is the usual case.
 // The text is nil when the file isn't there (deleted), isn't a file (a submodule), is binary or is over 1 MB.
@@ -32,11 +30,11 @@ func Blob(repo, sha, path string) (map[string]any, error) {
 	var f struct{ Type, Encoding, Content string }
 	err = GhJSON(repo, 30*time.Second, "", &f, "api", "repos/{owner}/{repo}/contents/"+strings.Join(segs, "/")+"?ref="+sha)
 	if err != nil || f.Type != "file" || f.Encoding != "base64" {
-		return map[string]any{"text": nil}, nil
+		return gitx.BlobText(nil), nil
 	}
 	b, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(f.Content, "\n", ""))
-	if err != nil || len(b) > blobMax || strings.IndexByte(string(b), 0) >= 0 {
-		return map[string]any{"text": nil}, nil
+	if err != nil {
+		return gitx.BlobText(nil), nil
 	}
-	return map[string]any{"text": strings.ToValidUTF8(string(b), "�")}, nil
+	return gitx.BlobText(b), nil
 }

@@ -141,7 +141,7 @@ var getRoutes = map[string]routeFunc{
 	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/symbols":   symbolsRoute,
-	"/api/refs":      func(q url.Values) (any, int, error) { return gitx.Refs(q.Get("name")), 200, nil },
+	"/api/refs":      refsRoute,
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
 	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
@@ -534,4 +534,10 @@ func saveStatus(err error) int {
 		return 413
 	}
 	return 500
+}
+
+// refsRoute is where a name is used; more: the list stops before the last of them.
+func refsRoute(q url.Values) (any, int, error) {
+	refs, more := gitx.Refs(q.Get("name"))
+	return map[string]any{"refs": refs, "more": more}, 200, nil
 }

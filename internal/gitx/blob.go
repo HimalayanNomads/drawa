@@ -46,10 +46,19 @@ func Blob(repo, rev, path string, top bool) (map[string]any, error) {
 	}
 	env, argv := command(repo, []string{"cat-file", "blob", spec})
 	r, err := procx.RunLimit(30*time.Second, blobMax, "", env, argv...)
-	if err != nil || r.Code != 0 || r.Truncated || strings.IndexByte(r.Stdout, 0) >= 0 {
-		return map[string]any{"text": nil}, nil
+	if err != nil || r.Code != 0 || r.Truncated {
+		return BlobText(nil), nil
 	}
-	return map[string]any{"text": string(bytes.ToValidUTF8([]byte(r.Stdout), []byte("�")))}, nil
+	return BlobText([]byte(r.Stdout)), nil
+}
+
+// BlobText is a diff's "show more lines" answer for a file's bytes, wherever they came from (git here, GitHub's API):
+// its text, or nil when there's none to show (b is nil), it's binary or it's over 1 MB.
+func BlobText(b []byte) map[string]any {
+	if b == nil || len(b) > blobMax || bytes.IndexByte(b, 0) >= 0 {
+		return map[string]any{"text": nil}
+	}
+	return map[string]any{"text": string(bytes.ToValidUTF8(b, []byte("�")))}
 }
 
 // HasCommit tells whether rev is a commit the repo has locally.

@@ -26,22 +26,23 @@ const (
 )
 
 // Refs lists the lines in the project's files that use `name` as a whole word (find references from a diff's
-// names), up to 20 a file. Paths are relative to Root. ponytail: a word match with git grep in the project's own repo, not a
-// language server: it finds comments and strings too, and skips nested repos and projects that aren't repos.
-func Refs(name string) []Ref {
+// names), up to 20 a file; more says some were left out. Paths are relative to Root. ponytail: a word match with git
+// grep in the project's own repo, not a language server: it finds comments and strings too, and skips nested repos
+// and projects that aren't repos.
+func Refs(name string) (refs []Ref, more bool) {
 	out := []Ref{}
 	if !refName.MatchString(name) {
-		return out
+		return out, false
 	}
 	// no --max-count (git 2.38+): the cap per file is counted here, and RunLimit keeps a common name's output bounded
 	env, argv := command("", []string{"grep", "-n", "-z", "-I", "-w", "-F", "--no-color", "--untracked", "-e", name, "--", "."})
 	r, err := procx.RunLimit(30*time.Second, refsOutMax, "", env, argv...)
 	if err != nil || (r.Code != 0 && !r.Truncated) { // exit 1 is "no match"; anything else (not a repo) is nothing to show either
-		return out
+		return out, false
 	}
 	lines := strings.Split(r.Stdout, "\n")
 	if r.Truncated {
-		lines = lines[:len(lines)-1] // the last one was cut off
+		lines, more = lines[:len(lines)-1], true // the last one was cut off
 	}
 	per := map[string]int{}
 	for _, l := range lines {
@@ -50,7 +51,14 @@ func Refs(name string) []Ref {
 			continue
 		}
 		n, err := strconv.Atoi(f[1])
-		if err != nil || per[f[0]] == refsPerFile {
+		if err != nil {
+			continue
+		}
+		if per[f[0]] == refsPerFile || len(out) == refsMax {
+			more = true
+			if len(out) == refsMax {
+				break
+			}
 			continue
 		}
 		per[f[0]]++
@@ -59,9 +67,6 @@ func Refs(name string) []Ref {
 			line = strings.ToValidUTF8(line[:refTextMax], "") + "…"
 		}
 		out = append(out, Ref{Path: f[0], Line: n, Text: line})
-		if len(out) == refsMax {
-			break
-		}
 	}
-	return out
+	return out, more
 }

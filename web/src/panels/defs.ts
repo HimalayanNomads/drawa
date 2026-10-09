@@ -106,26 +106,35 @@ export async function showRefs(name: string, x: number, y: number) {
   const n = ++asked
   from = null; x0 = x; y0 = y
   show(head(name, 'Searching…'))
-  const refs = await api<Ref[]>('refs?name=' + q(name)).catch(() => [] as Ref[])
+  const { refs, more } = await api<{ refs: Ref[]; more: boolean }>('refs?name=' + q(name)).catch(() => ({ refs: [] as Ref[], more: false }))
   if (n !== asked) return
   if (!refs.length) { show(head(name, 'no uses found in the project')); return }
+  const at = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`)
+  const list = listOf(refs, r => {
+    const text = make('small', 'ref-t'), m = at.exec(r.text)
+    if (m) text.append(r.text.slice(0, m.index), make('mark', '', name), r.text.slice(m.index + name.length))
+    else text.textContent = r.text
+    return [make('b', '', `${r.path}:${r.line}`), text]
+  }, r => stickFileAt(r.path, r.line, ...besideBox()))
+  show(head(name, more ? `the first ${refs.length} uses` : `${refs.length} use${refs.length > 1 ? 's' : ''}`), list)
+  list.querySelector('button')?.focus()
+}
+
+/** A list of places to pick from (definitions, uses), rows styled as Ctrl+K's: `main` is a row's text, `kind` its
+ *  tag on the right. */
+function listOf<T>(all: T[], main: (t: T) => HTMLElement[], pick: (t: T) => void, kind?: (t: T) => string) {
   const list = make('div', 'defs-list')
   list.setAttribute('role', 'listbox')
-  for (const r of refs) {
-    const row = make('button', 'finder-row')
+  for (const t of all) {
+    const row = make('button', 'finder-row'), m = make('span', 'fr-main')
     row.setAttribute('role', 'option')
     row.dataset.kind = 'preview'
-    const main = make('span', 'fr-main'), text = make('small', 'ref-t')
-    const at = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).exec(r.text)
-    if (at) text.append(r.text.slice(0, at.index), make('mark', '', name), r.text.slice(at.index + name.length))
-    else text.textContent = r.text
-    main.append(make('b', '', `${r.path}:${r.line}`), text)
-    row.append(main)
-    row.onclick = () => stickFileAt(r.path, r.line, ...besideBox())
+    m.append(...main(t))
+    row.append(m, ...(kind ? [make('span', 'fr-k', kind(t))] : []))
+    row.onclick = () => pick(t)
     list.append(row)
   }
-  show(head(name, refs.length === 200 ? 'the first 200 uses' : `${refs.length} use${refs.length > 1 ? 's' : ''}`), list)
-  list.querySelector('button')?.focus()
+  return list
 }
 
 /** Where a 380×260 window fits beside the open box: right, else left, else (a phone) below or above it. */
@@ -146,18 +155,7 @@ function head(name: string, note: string, back?: () => void) {
 const where = (s: CodeSymbol) => `${s.path}:${s.line}`
 
 function several(name: string, defs: CodeSymbol[]) {
-  const list = make('div', 'defs-list')
-  list.setAttribute('role', 'listbox')
-  for (const s of defs) {
-    const row = make('button', 'finder-row')
-    row.setAttribute('role', 'option')
-    row.dataset.kind = 'preview'
-    const main = make('span', 'fr-main')
-    main.append(make('b', '', where(s)), ...(s.scope ? [make('small', '', s.scope)] : []))
-    row.append(main, make('span', 'fr-k', s.kind))
-    row.onclick = () => one(name, s, () => several(name, defs))
-    list.append(row)
-  }
+  const list = listOf(defs, s => [make('b', '', where(s)), ...(s.scope ? [make('small', '', s.scope)] : [])], s => one(name, s, () => several(name, defs)), s => s.kind)
   show(head(name, `${defs.length} definitions`), list)
   list.querySelector('button')?.focus()
 }
