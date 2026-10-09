@@ -664,6 +664,16 @@ func TestBlobAndDiscard(t *testing.T) {
 	if run("status", "--porcelain") != "" {
 		t.Errorf("still changed after discarding: %s", run("status", "--porcelain"))
 	}
+	// a staged new file isn't discarded: restoring it from HEAD would delete it from disk
+	nf := filepath.Join(repo, "sub", "new.txt")
+	os.WriteFile(nf, []byte("keep\n"), 0o644)
+	run("add", ".")
+	if r, _ := GitOp(map[string]any{"op": "discard", "staged": true, "paths": []any{"sub/new.txt"}}); r["ok"] != false {
+		t.Errorf("discarded a file HEAD doesn't have: %v", r)
+	}
+	if b, err := os.ReadFile(nf); err != nil || string(b) != "keep\n" {
+		t.Errorf("new file after a refused discard: %q, %v", b, err)
+	}
 }
 
 // Nested and Check share the worktree cache: a slow git costs one listing per repo per refresh, not one per call, and

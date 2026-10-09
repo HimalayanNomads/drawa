@@ -196,7 +196,6 @@ export function stickFileAt(path: string, line: number, x: number, y: number) {
   if (!el) return false
   // still the peek: not docked or put on the canvas since, and not holding an edit you haven't finished
   const ours = peekWin?.isConnected && peekWin.classList.contains('floating') && peekWin.dataset.state !== 'editing' ? peekWin : null
-  if (ours && ours !== el) removeQuietly(ours)
   expand(el)
   if (had.has(el) && el !== ours) { // the user's own window
     if (onCanvas(el)) { front(el); centerOn(el) }
@@ -204,6 +203,7 @@ export function stickFileAt(path: string, line: number, x: number, y: number) {
     setTimeout(() => ping(el), 300)
     return true
   }
+  if (ours && ours !== el) removeQuietly(ours) // only now: a pick that goes to your own window keeps the peek
   if (el !== ours) { el.style.width = '380px'; el.style.height = '260px' }
   peekWin = el
   floatAt(el, x, y)

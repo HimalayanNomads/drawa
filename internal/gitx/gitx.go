@@ -215,6 +215,13 @@ func GitOp(body map[string]any) (map[string]any, error) {
 		}
 		args := []string{"restore"}
 		if staged, _ := body["staged"].(bool); staged {
+			// restoring from HEAD deletes a path HEAD doesn't have, from disk too: only files HEAD has (the page offers
+			// no others, but it isn't the only check)
+			for _, p := range paths {
+				if has, _ := git(Opts{}, "cat-file", "-e", "HEAD:./"+filepath.ToSlash(p)); !has {
+					return map[string]any{"ok": false, "out": p + " isn't in the last commit: unstage it instead."}, nil
+				}
+			}
 			args = append(args, "--staged", "--worktree", "--source=HEAD")
 		}
 		ok, out = git(Opts{}, append(append(args, "--"), paths...)...)

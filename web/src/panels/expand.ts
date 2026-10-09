@@ -8,8 +8,8 @@ import { api } from '../lib/api'
 const STEP = 10
 const UP = '<svg viewBox="0 0 16 16"><path d="M4 9.5 8 5.5l4 4"/></svg>', DOWN = '<svg viewBox="0 0 16 16"><path d="m4 6.5 4 4 4-4"/></svg>'
 
-/** The new side's text from an API answer: null when there's none to show (deleted, binary, unreadable). */
-export const textOf = (path: string) => () => api<{ text: string | null }>(path).then(r => r.text, () => null)
+/** The new side's text from an API answer: null when there's none to show (deleted, binary, unreadable, over 1 MB). */
+export const textOf = (path: string) => () => api<{ text: string | null; cut?: boolean }>(path).then(r => r.cut ? null : r.text, () => null) // cut: only its first 1 MB
 
 export function expandable(diff: HTMLElement, load: () => Promise<string | null>) {
   if (!diff.dataset.from) return // no hunks, or a new or deleted file: nothing around them
@@ -34,8 +34,10 @@ function controls(s: HTMLElement, text: () => Promise<string[] | null>, first: b
     const a = up ? Math.max(from, top - STEP) : from, b = up ? top : Math.min(top, from + STEP) // new lines a..b-1
     const rows = all.slice(a - 1, b - 1).map((t, i) => row(t, a + i, n('off')))
     if (up) { s.after(...rows); s.dataset.top = String(a) } else { s.before(...rows); s.dataset.from = String(b) }
-    const box = s.parentElement!
-    box.style.setProperty('--ln', `${String(Math.max(b - 1, Number(box.dataset.from))).length + 1}ch`)
+    // the gutter fits the biggest number shown so far: a later stretch above can't narrow what the tail widened
+    const box = s.parentElement!, most = Math.max(b - 1, Number(box.dataset.most ?? box.dataset.from))
+    box.dataset.most = String(most)
+    box.style.setProperty('--ln', `${String(most).length + 1}ch`)
     if (n('top') <= n('from')) s.remove() // the stretch is all shown: the header between its lines goes
     else label()
   }

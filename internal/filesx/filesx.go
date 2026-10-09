@@ -289,6 +289,9 @@ func Get(rel string) (map[string]any, error) {
 	}
 	// noEdit: why the editor can't save this text back (cut off, re-encoded, read-only...); absent when it can
 	out := map[string]any{"text": toUTF8(data[:min(len(data), maxRead)])}
+	if len(data) > maxRead {
+		out["cut"] = true // only the first 1 MB: a diff's "show more lines" can't take this as the whole file
+	}
 	if why := uneditable(data); why != "" {
 		out["noEdit"] = why
 	} else if !writable(f.Name()) {
