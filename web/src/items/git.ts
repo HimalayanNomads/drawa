@@ -12,7 +12,7 @@ import { openGitHub, GH_ICON } from './github'
 import { definable, showRefs } from '../panels/defs'
 import { repoView, repoName, fill, isOpen, syncText, drafts, folds, picks, type GitState, type RepoView, type Host } from './gitrepo'
 
-let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; list: HTMLElement; note: HTMLElement; gh: number; poll: number; delay: number; stop: AbortController; views: Map<string, RepoView>; single: boolean; host: Host; last: string; st?: GitState } | undefined
+let win: { el: HTMLElement; meta: HTMLElement; body: HTMLElement; list: HTMLElement; note: HTMLElement; gh: number; poll: number; delay: number; stop: AbortController; views: Map<string, RepoView>; single: boolean; host: Host; last: string; held: string; again: HTMLButtonElement; st?: GitState } | undefined
 
 const FAST = 4000, SLOW = 30_000 // git status polling: FAST after a change, doubling up to SLOW while nothing changes
 
@@ -20,11 +20,11 @@ const FAST = 4000, SLOW = 30_000 // git status polling: FAST after a change, dou
 export function openGit(r?: Rect) {
   if (win) { centerOn(win.el); ping(win.el); return }
   const meta = make('span', 'm')
+  const again = iconButton(ICON.reload, '', () => reload(), 'grefresh')
   const { el, head, body } = makeWindow({
     kind: 'git', cls: 'gnode', title: 'git', minW: 300, minH: 200,
     rect: r ?? spotBeside(null, 380, 520),
-    actions: [iconButton(ICON.reload, 'Refresh: read git status and pull requests again', () => reload(), 'grefresh'),
-      iconButton(GH_ICON, 'GitHub: pull requests and issues (Shift+G)', () => openGitHub()),
+    actions: [again, iconButton(GH_ICON, 'GitHub: pull requests and issues (Shift+G)', () => openGitHub()),
       iconButton(ICON.x, 'Close', () => { clearInterval(win!.gh); clearTimeout(win!.poll); win!.stop.abort(); forget(el); el.remove(); win = undefined; changed() }, 'closebtn')],
   })
   el.dataset.id = 'git' // one per project: arrows and pins find it again after a reload
@@ -52,10 +52,11 @@ export function openGit(r?: Rect) {
   el.addEventListener('pointerdown', wake, { signal })
   el.addEventListener('collapse', wake, { signal })
   // a commit or push in the project's own repo can change its pull request; GitHub knows nothing of the nested ones here
-  const host: Host = { refresh, redraw: () => { if (win?.st) draw(win.st) }, open: new Set() }
+  const host: Host = { refresh: () => refresh('apply'), redraw: () => { if (win?.st) draw(win.st) }, open: new Set() }
   // each repo's pull request, while you can see it: the window on screen, and its group open (or no groups)
   const ghTick = () => { if (showing()) for (const v of win!.views.values()) if (win!.single || isOpen(v)) v.gh.tick() }
-  win = { el, meta, body, list, note, gh: setInterval(ghTick, 15_000), poll: 0, delay: FAST, stop, views: new Map(), single: true, host, last: '' }
+  win = { el, meta, body, list, note, gh: setInterval(ghTick, 15_000), poll: 0, delay: FAST, stop, views: new Map(), single: true, host, last: '', held: '', again }
+  stale(false)
   refresh()
   win.poll = setTimeout(tick, FAST)
   if (!r) centerOn(el) // a free spot can be off-screen: bring the new window into view
@@ -65,29 +66,67 @@ export function openGit(r?: Rect) {
 /** A line above the lists for what isn't one repo's: the status couldn't be read, git init failed. */
 function note(text: string, bad = false) { if (!win) return; win.note.textContent = text; win.note.classList.toggle('bad', bad) }
 
-/** The refresh button: status read again past the server's few-second cache, drawn even when it's the same (open
- *  diffs are fetched again), and each pull request strip in view asked again. */
+/** The refresh button: the changes held back while you read a diff, drawn, with status read again past the server's
+ *  few-second cache and each pull request strip in view asked again. */
 async function reload() {
   const w = win
   if (!w || w.el.ariaBusy) return
   w.el.ariaBusy = 'true'
   try {
-    w.last = ''
-    await refresh(true)
+    await refresh('fresh')
     for (const v of w.views.values()) if (w.single || isOpen(v)) v.gh.refresh()
   } finally { w.el.ariaBusy = null }
 }
 
+/** The refresh button is on only while there's something new it would show. */
+function stale(on: boolean) {
+  const b = win!.again
+  b.disabled = !on
+  const t = on ? 'New changes: refresh to show them (the open diffs are read again)' : 'Up to date: nothing new since the last read'
+  b.title = t; b.setAttribute('aria-label', t)
+}
+
+// a status's signature, without its commits' ages ("80 seconds ago"): those change every poll, and aren't a change
+const sigOf = (x: unknown) => JSON.stringify(x, (k, v) => k === 'when' ? undefined : v)
+
+/** The commits' ages updated where they're shown: no redraw, so open diffs stay as they are. */
+function retime(st: GitState) {
+  const when = new Map<string, string>()
+  const all = (s: GitState) => { for (const c of s.log ?? []) when.set(c.hash, c.when); s.nested?.forEach(all); s.worktrees?.forEach(all) }
+  all(st)
+  for (const r of win!.list.querySelectorAll<HTMLElement>('.gc')) {
+    const hash = r.querySelector('code')?.textContent ?? '', t = when.get(hash), gw = r.querySelector('.gw')
+    if (t && gw && gw.textContent !== t) { r.title = r.title.replace(gw.textContent!, t); gw.textContent = t }
+  }
+}
+
+/** Something you're reading would be thrown away by a redraw: a file's diff or a commit's, open (and maybe expanded). */
+const reading = () => !!win?.list.querySelector('.gfile .diff, .gshow')
+
 const UNREAD = 'Could not read git status: '
-export async function refresh(fresh = false) {
+/** Read git status and draw what changed. A poll that finds changes while you read a diff holds them and turns the
+ *  refresh button on; `apply` (after your own stage, commit, push...) and `fresh` (the button) always draw. */
+export async function refresh(how?: 'apply' | 'fresh') {
   if (!win) return
   let st: GitState
-  try { st = await api<GitState>(fresh ? 'git?fresh=1' : 'git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
+  try { st = await api<GitState>(how === 'fresh' ? 'git?fresh=1' : 'git') } catch (e) { return note(`${UNREAD}${(e as Error).message}`, true) }
   if (win.note.textContent?.startsWith(UNREAD)) note('') // that was an earlier fetch's error
-  const sig = JSON.stringify(st)
-  if (sig === win.last) { win.delay = Math.min(win.delay * 2, SLOW); return } // nothing changed: keep the DOM (and any open diffs)
-  win.last = sig
+  const sig = sigOf(st)
+  if (sig === win.last && how !== 'fresh') { // nothing changed (or a held change was undone): keep the DOM, and any open diffs
+    win.delay = Math.min(win.delay * 2, SLOW)
+    retime(st)
+    if (win.held) { win.held = ''; stale(false) }
+    return
+  }
+  if (!how && reading()) {
+    win.delay = sig === win.held ? Math.min(win.delay * 2, SLOW) : FAST
+    win.held = sig
+    retime(st)
+    return stale(true)
+  }
+  win.last = sig; win.held = ''
   win.delay = FAST
+  stale(false)
   draw(st)
 }
 
@@ -102,7 +141,7 @@ function draw(st: GitState) {
       if (!await confirmBox('Initialize a git repository?', `Runs git init in ${project.root}. Nothing is committed until you commit.`, 'Initialize')) return
       const r = await post('git', { op: 'init' }).catch(e => ({ ok: false, out: (e as Error).message }))
       if (!r.ok) note(r.out ?? 'git init failed', true)
-      refresh()
+      refresh('apply')
     }))
   }
   // each repo shows the checkout picked for it: its own, or one of its worktrees. A pick that's gone is forgotten; one
@@ -121,7 +160,7 @@ function draw(st: GitState) {
     if (!v) w.views.set(dir, v = repoView(dir, repo, w.host))
     const own = repos.find(([d]) => d === repo)![1]
     v.checkouts = own.worktrees?.length ? [own, ...own.worktrees] : []
-    const sig = JSON.stringify([s, v.checkouts.length && own]) // the picker lists the repo's checkouts
+    const sig = sigOf([s, v.checkouts.length && own]) // the picker lists the repo's checkouts
     if (sig !== v.sig) { v.sig = sig; fill(v, s, w.host) } // only the repos that changed: the others keep their open diffs
     return v
   })
