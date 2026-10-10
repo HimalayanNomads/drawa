@@ -83,6 +83,8 @@
 /* a state that lasts (another tab owns the canvas, storage full, a new version): information, not an error */
 .toast.notice{flex-wrap:wrap;row-gap:6px;color:var(--ink)}
 .toast.notice>span{flex:1 1 220px}
+.toast.completion{max-width:100%}
+.toast.completion>span{min-width:0;overflow-wrap:anywhere}
 .toast.undo{flex-wrap:nowrap;max-width:100%}
 /* "Deleted · Undo": one line; a long window title ("Moved out of …") is cut short so Undo stays in the toast */
 .toast.undo>span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
