@@ -18,7 +18,7 @@ import { clearInk } from '../../canvas/ink/stroke';
 import { snapshot } from '../../canvas/core/snapshot';
 import { referable } from '../../canvas/core/refs';
 import { renderCard } from '../../session/card/render';
-import type { Session } from '../../session/card/types';
+import type { Session } from '../../types/session';
 import { send } from '../../session/card/live';
 import { setMode } from '../../session/card/mode';
 import { removable } from '../../canvas/core/select';

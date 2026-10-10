@@ -6,8 +6,8 @@
 import { agentMeta, getPref, metaNow, noEffort, setPref, title } from '../../lib/agents';
 import { make } from '../../lib/dom';
 import { saveSoon } from '../../lib/store';
+import type { Session } from '../../types/session';
 import { cards, meta } from './session';
-import type { Session } from './types';
 
 /** The models a card's agent offers. */
 // Claude Code's models come with its other account-wide info (meta, main.ts); another agent's from lib/agents.ts

@@ -12,7 +12,7 @@ import { changed } from '../core/view';
 import { makeWindow } from '../core/window';
 import { referable } from '../core/refs';
 import { redraw, forget, type Act } from './graph'; // used only inside functions (graph.ts imports this module)
-import type { Session } from '../../session/card/types';
+import type { Session } from '../../types/session';
 import type { Change } from '../../panels/diff';
 
 /** Everything known about one file across sessions: its diffs (for the inspector) and where it's shown. */

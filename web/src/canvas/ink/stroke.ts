@@ -162,26 +162,31 @@ export function clearInk(host: HTMLElement) {
 }
 
 /* ---------- persistence (saved with the canvas layout) ---------- */
-type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb'>;
+/** A stroke as data: what's saved with the layout, and what actions carry (canvas/ink/inkactions.ts). */
+export type Saved = Omit<Stroke, 'el' | 'host' | 'row' | 'bb' | 'sel' | 'dx' | 'dy'>;
+/** A stroke as data, rounded. */
+export const strokeData = ({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }: Stroke): Saved => ({
+  c,
+  s: +s.toFixed(2),
+  sim,
+  h,
+  ...(id ? { id } : {}),
+  ...(g ? { g } : {}),
+  p: p.map(q => q.map(n => +n.toFixed(1))),
+  ...(t != null ? { t } : {}),
+  ...(sh ? { sh, ...(f ? { f } : {}) } : {}),
+  ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}),
+});
+/** The window a stroke's data belongs to, if it names one: undefined when it's on the canvas, null when its window
+ *  isn't there. */
+export const hostOf = (saved: Saved) =>
+  saved.h ? (document.querySelector<HTMLElement>(`[data-ink="${CSS.escape(saved.h)}"]`) ?? null) : undefined;
 /** The drawing as saved: strokes whose windows are still there, rounded, plus the ones still waiting for their
  *  window. */
 const savedInk = () => [
   ...strokes
     .filter(s => !s.host || s.host.isConnected) // a closed window's ink goes with it
-    .map(
-      ({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }): Saved => ({
-        c,
-        s: +s.toFixed(2),
-        sim,
-        h,
-        ...(id ? { id } : {}),
-        ...(g ? { g } : {}),
-        p: p.map(q => q.map(n => +n.toFixed(1))),
-        ...(t != null ? { t } : {}),
-        ...(sh ? { sh, ...(f ? { f } : {}) } : {}),
-        ...(a != null ? { a, o: Math.round(o!), k, ...(rid ? { rid } : {}) } : {}),
-      }),
-    ),
+    .map(strokeData),
   ...waiting,
 ];
 // strokes whose window isn't on the canvas (yet): kept and written back, so a window that loads late (or failed to
@@ -201,10 +206,8 @@ persist(
 function attachWaiting() {
   tried = performance.now();
   waiting = waiting.filter(s => {
-    const host = s.h
-      ? (document.querySelector<HTMLElement>(`[data-ink="${CSS.escape(s.h)}"]`) ?? undefined)
-      : undefined;
-    if (s.h && !host) return true;
+    const host = hostOf(s);
+    if (host === null) return true;
     const st: Stroke = { ...s, host };
     strokes.push(st);
     paint(st);

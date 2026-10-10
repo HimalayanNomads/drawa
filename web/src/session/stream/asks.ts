@@ -6,9 +6,9 @@ import { who } from '../../lib/agents';
 import { post } from '../../lib/api';
 import { button, confirmBox, make, relPath } from '../../lib/dom';
 import { change, inFile } from '../../panels/diff';
+import type { Session } from '../../types/session';
 import { notify } from '../card/notify';
 import { appendToLog, renderCard } from '../card/render';
-import type { Session } from '../card/types';
 import { type Msg, toolArg } from './stream';
 
 /** Claude wants to use a tool that needs your OK (or presents a plan, see plan.ts). */

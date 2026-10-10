@@ -4,8 +4,8 @@
 import { centerOn } from '../../canvas/core/placement';
 import { who } from '../../lib/agents';
 import { make, project } from '../../lib/dom';
+import type { Session } from '../../types/session';
 import { focus } from './session';
-import type { Session } from './types';
 
 let unread = 0;
 /** Are you looking elsewhere (another tab or app)? */

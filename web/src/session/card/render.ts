@@ -4,8 +4,8 @@ import './session'; // entering here still loads the card module first, so sub-a
 import { runningAgents } from '../../items/agent';
 import { copySidTip, installed, title, who } from '../../lib/agents';
 import { sendCombo } from '../../lib/sendkey';
+import type { Session } from '../../types/session';
 import { renderInfo } from './gen';
-import type { Session } from './types';
 
 /** Header, status classes and composer placeholder from the session's current state. */
 export function renderCard(S: Session) {

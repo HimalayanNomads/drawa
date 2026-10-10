@@ -23,7 +23,7 @@ import {
 } from '../../items/agent';
 import { appendToLog, follow, renderCard } from '../card/render';
 import { clearSession } from '../card/session';
-import type { Session, ToolRow, Block } from '../card/types';
+import type { Session, ToolRow, Block } from '../../types/session';
 import { approval, withdrawAsk } from './asks';
 import { thumbnail } from '../composer/images';
 import { notify } from '../card/notify';

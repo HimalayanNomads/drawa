@@ -4,7 +4,7 @@
 import { uuid } from '../../lib/dom';
 import type { Mover } from '../core/drag';
 import { changed, view } from '../core/view';
-import { changing } from './inkundo';
+import { recordStrokesMoved } from './inkactions';
 import { SHAPE_NAME } from './shapegeom';
 import { FIT, inkPlaced, isFitHost, paint, type Stroke, strokes, unitsPerHostPx } from './stroke';
 
@@ -102,8 +102,9 @@ export const markStroke = (s: Stroke, on: boolean) => {
 };
 /** A mover for these strokes, given the total offset from where they are now in canvas units (a stroke on a window
  *  converts it to its window's units). While moving it only shifts their elements (a transform: no re-tracing of
- *  hundreds of pen outlines per frame); `end()` writes the new points and repaints once. `record`: the move is one step
- *  undo can take back (off when they only ride along with something undo doesn't track: a window, a settling group). */
+ *  hundreds of pen outlines per frame); `end()` writes the new points and repaints once. `record`: the move is an
+ *  action undo can take back (canvas/ink/inkactions.ts; off when nobody moved them: a group settling, an action being
+ *  applied). */
 export function strokeMover(list: Stroke[], record = true): Mover {
   const f = list.map(s => view.k * unitsPerPx(s)),
     base = list.map(s => s.el?.getAttribute('transform') ?? '');
@@ -122,8 +123,7 @@ export function strokeMover(list: Stroke[], record = true): Mover {
   };
   return Object.assign(move, {
     end: () => {
-      const moved = !!(dx || dy),
-        done = moved && record ? changing(list) : null;
+      const moved = !!(dx || dy);
       list.forEach((s, i) => {
         delete s.dx;
         delete s.dy;
@@ -133,7 +133,7 @@ export function strokeMover(list: Stroke[], record = true): Mover {
         s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r]);
         paint(s);
       });
-      done?.();
+      if (moved && record) recordStrokesMoved(list, dx, dy);
       if (moved) inkPlaced(list);
     },
   });

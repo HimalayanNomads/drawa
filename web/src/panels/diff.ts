@@ -5,7 +5,7 @@ import { openFileAt } from '../canvas/core/find';
 import { files, paintFile } from '../canvas/graph/sessionwins';
 import { api, q } from '../lib/api';
 import { ICON, iconButton, make } from '../lib/dom';
-import type { Session } from '../session/card/types';
+import type { Session } from '../types/session';
 import { defField, definable } from './defs';
 import { openInspector } from './files';
 

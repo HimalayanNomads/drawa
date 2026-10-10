@@ -4,8 +4,8 @@
 
 import { who } from '../../lib/agents';
 import { ICON, iconButton, make, truncate } from '../../lib/dom';
+import type { Session } from '../../types/session';
 import { appendToLog, follow } from '../card/render';
-import type { Session } from '../card/types';
 
 interface Run {
   cmd: string;

@@ -2,15 +2,18 @@
 // box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item (or, in Select mode, empty canvas
 // inside the selection box) moves them all; Delete (or the bar by the selection) removes them, each through its own
 // remove path. Only items laid out on the canvas take part: pinned, floating and full-view windows don't.
+
+import { asOneUndoStep } from '../../lib/actions';
 import { button, confirmBox, EDITABLE, ICON, iconButton, keepOnScreen, make, toast } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { redraw } from '../graph/graph';
 import { drawing } from '../ink/ink';
+import { eraseStrokes } from '../ink/inkactions';
 import { canvasStrokes, inkOf, inkWith, markStroke, objectAt, siblings, strokeMover, strokeRect } from '../ink/inksel';
-import { erase } from '../ink/inkundo';
 import type { Stroke } from '../ink/stroke';
 import { type Mover, movesWith, moveWith, setMoveAlong, swallowNext, track } from './drag';
 import { anyFull } from './fullview';
+import { recordItemMoves } from './itemactions';
 import { hidden, onCanvas, overlaps, place, placed, type Rect, rect } from './items';
 import { handDrag } from './mode';
 import { changed, onChange, stage, toWorld, view } from './view';
@@ -79,7 +82,7 @@ export const onSelect = (f: () => void) => watchers.push(f);
 export function selectionMover(): Mover {
   const els = [...new Set([...sel].filter(el => !el.dataset.locked).flatMap(movesWith))],
     starts = els.map(rect),
-    ink = strokeMover([...new Set([...inkSel, ...inkOf(els)])], !els.length); // with windows: no undo step (moving windows has none)
+    ink = strokeMover([...new Set([...inkSel, ...inkOf(els)])]);
   /** Move the selection by an offset from where it started. */
   const move = (dx: number, dy: number) => {
     els.forEach((el, i) => place(el, starts[i].x + dx, starts[i].y + dy));
@@ -89,7 +92,10 @@ export function selectionMover(): Mover {
   // a move like a drag's: 'moved' on each, so what reacts to drags (groups pushing each other aside) reacts to this too
   return Object.assign(move, {
     end: () => {
-      ink.end();
+      asOneUndoStep(() => {
+        ink.end();
+        recordItemMoves(els, starts);
+      });
       changed();
       els.forEach(el => el.dispatchEvent(new CustomEvent('moved', { bubbles: true })));
     },
@@ -141,7 +147,7 @@ inkWith(el => (sel.has(el) ? [...inkSel] : []));
 // drawings carried by a dragged window or group: no undo step of their own, or Ctrl+Z would move them out from under it
 setMoveAlong(el => {
   const ink = inkOf(movesWith(el));
-  return ink.length ? strokeMover(ink, false) : null;
+  return ink.length ? strokeMover(ink) : null;
 });
 
 /* ---------- the bar by the selection: how many, delete, clear ---------- */
@@ -247,14 +253,11 @@ async function removeSelected() {
   /** Take the selected drawings off (one action Undo can bring back). */
   const drop = () => {
     ink.forEach(s => setInk(s, false));
-    erase(...ink);
+    eraseStrokes(...ink);
   };
   if (!gone.length) {
     // drawings only: one goes like the eraser; more ask first
-    if (
-      ink.length === 1 ||
-      (await confirmBox(`Delete ${ink.length} drawings?`, 'Undo in Draw mode (Ctrl+Z) brings them back.', 'Delete'))
-    )
+    if (ink.length === 1 || (await confirmBox(`Delete ${ink.length} drawings?`, 'Ctrl+Z brings them back.', 'Delete')))
       drop();
     syncSelection();
     return;
@@ -269,8 +272,10 @@ async function removeSelected() {
     ))
   )
     return;
-  drop();
-  for (const el of gone) removeItem(el);
+  asOneUndoStep(() => {
+    drop();
+    for (const el of gone) removeItem(el);
+  }); // one Ctrl+Z brings the whole selection back
   syncSelection();
   changed();
 }

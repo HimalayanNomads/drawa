@@ -22,7 +22,7 @@ import { attach } from './live';
 import { lastMode } from './mode';
 import { pinToBottom, renderCard } from './render';
 import './saved'; // the cards' saved-layout slices, and what makes them removable and referable
-import type { Session } from './types';
+import type { Session } from '../../types/session';
 
 export const cards: Session[] = [];
 export let cur: Session | undefined; // the focused card

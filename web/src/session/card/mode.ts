@@ -5,7 +5,7 @@ import { modesOf } from '../../lib/agents';
 import { post } from '../../lib/api';
 import { make, toast } from '../../lib/dom';
 import { saveSoon } from '../../lib/store';
-import type { Session } from './types';
+import type { Session } from '../../types/session';
 
 export const MODES: [string, string, string][] = [
   ['default', 'Ask first', 'Asks before editing files or running commands'],

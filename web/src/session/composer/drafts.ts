@@ -5,8 +5,8 @@ import { byIds } from '../../canvas/core/items';
 import { type Ref, refOf } from '../../canvas/core/refs';
 import { base64, dropBlob, getBlob, putBlob } from '../../lib/blobs';
 import { persist } from '../../lib/store';
+import type { Session } from '../../types/session';
 import { cards } from '../card/session';
-import type { Session } from '../card/types';
 import { putBack } from './composer';
 import type { Pasted } from './images';
 

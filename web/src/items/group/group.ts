@@ -25,8 +25,8 @@ import { lockedHint, onSelect, removable, removeItem } from '../../canvas/core/s
 import { changed, onChange, toWorld, viewCenter, world } from '../../canvas/core/view';
 import { makeWindow, removeUndoably, titleOf, undoable, winTitle } from '../../canvas/core/window';
 import { forget, redraw } from '../../canvas/graph/graph';
+import { eraseStrokes } from '../../canvas/ink/inkactions';
 import { inkWith, strokeMover } from '../../canvas/ink/inksel';
-import { erase } from '../../canvas/ink/inkundo';
 import { button, confirmBox, ICON, iconButton, make, notice, perFrame, uuid } from '../../lib/dom';
 import { each, persist } from '../../lib/store';
 import { groupInk, hideInk, inkIds, inkRects, setInkIds } from './groupink';
@@ -322,7 +322,7 @@ async function deleteGroup(g: HTMLElement) {
     return;
   if (g.classList.contains('min')) hide(g, false); // so each window's own remove path finds it (it hides again on Undo)
   ms.forEach(removeItem);
-  erase(...ink); // (Undo in Draw mode brings them back)
+  eraseStrokes(...ink); // (Ctrl+Z brings them back)
   removeUndoably(g); // one Undo brings the frame back with its windows, title, lock and members
 }
 
