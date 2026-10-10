@@ -18,15 +18,15 @@ export interface Action {
   type: string;
   [field: string]: unknown;
 }
-interface ActionKind<ThisAction extends Action> {
+interface ActionKind<SpecificAction extends Action> {
   /** Make the change. false: it couldn't (what it refers to is gone for good), so it's left out. */
-  apply: (action: ThisAction) => boolean;
+  apply: (action: SpecificAction) => boolean;
   /** The action that takes it back. */
-  invert: (action: ThisAction) => Action;
+  invert: (action: SpecificAction) => Action;
 }
 const kinds = new Map<string, ActionKind<Action>>();
 /** Register a kind of action: how to apply it and how to invert it. */
-export function defineAction<ThisAction extends Action>(type: string, kind: ActionKind<ThisAction>) {
+export function defineAction<SpecificAction extends Action>(type: string, kind: ActionKind<SpecificAction>) {
   kinds.set(type, kind as unknown as ActionKind<Action>);
 }
 
