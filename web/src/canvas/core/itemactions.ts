@@ -9,8 +9,8 @@ import {
   type Move,
   type PositionAndSizeStyles,
 } from '../../types/canvas';
+import { redraw } from '../graph/graph';
 import { byIds, place, rect } from './items';
-import { changed } from './view';
 
 // moves: one step per drag, nudge or selection move
 defineAction<ItemsMove>(ItemActionType.Move, {
@@ -18,7 +18,7 @@ defineAction<ItemsMove>(ItemActionType.Move, {
     const itemsById = byIds();
     const found = action.moves.filter(move => itemsById.has(move.id));
     for (const move of found) place(itemsById.get(move.id)!, ...move.to);
-    if (found.length) changed();
+    if (found.length) redraw(); // a session's arrows to its windows move only on redraw; it calls changed() too
     return found.length > 0;
   },
   invert: action => ({
@@ -56,7 +56,7 @@ defineAction<ItemResize>(ItemActionType.Resize, {
     const item = byIds().get(action.id);
     if (!item) return false;
     for (const style of POSITION_AND_SIZE_STYLE_NAMES) item.style.setProperty(style, action.to[style] || null);
-    changed();
+    redraw();
     return true;
   },
   invert: action => ({ ...action, from: action.to, to: action.from }),
