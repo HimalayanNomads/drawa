@@ -1,6 +1,13 @@
 // A note as it's made and saved, and the notes' actions (lib/actions.ts, items/notes.ts). Moving, resizing and
 // removing with × are every item's actions (types/canvas.ts).
 
+/** The kinds of note action. The values are what the action log holds: don't change them. */
+export enum NoteActionType {
+  Add = 'note.add',
+  Remove = 'note.remove',
+  Edit = 'note.edit',
+}
+
 /** What makes a note: saved with the layout, or given when one is made. */
 export interface Note {
   id?: string;
@@ -17,15 +24,15 @@ export type NoteData = {
   text: string;
   x: number;
   y: number;
-  w?: number;
+  width?: number; // a width the user set
 };
 
 /** A note added (once it has text), or taken away by emptying it. */
-export type NoteAdd = { t: 'note.add' | 'note.remove' } & NoteData;
+export type NoteAdd = { type: NoteActionType.Add | NoteActionType.Remove } & NoteData;
 
 /** A note's text edited. */
 export type NoteEdit = {
-  t: 'note.edit';
+  type: NoteActionType.Edit;
   id: string;
   from: string;
   to: string;

@@ -1,6 +1,16 @@
 // The actions every canvas item can go through (lib/actions.ts): moved and resized (canvas/core/itemactions.ts),
 // renamed, collapsed and removed (canvas/core/window.ts). Items are named by their data-id.
 
+/** The kinds of item action. The values are what the action log holds: don't change them. */
+export enum ItemActionType {
+  Move = 'items.move',
+  Resize = 'item.resize',
+  Rename = 'item.rename',
+  Collapse = 'item.collapse',
+  Remove = 'item.remove',
+  Restore = 'item.restore',
+}
+
 /** One item's move, in canvas units. */
 export type Move = {
   id: string;
@@ -10,7 +20,7 @@ export type Move = {
 
 /** Items moved together: a drag, a nudge, a selection moved. */
 export type ItemsMove = {
-  t: 'items.move';
+  type: ItemActionType.Move;
   moves: Move[];
 };
 
@@ -19,7 +29,7 @@ export type Box = Record<'left' | 'top' | 'width' | 'height' | '--fx' | '--fy', 
 
 /** An item resized (from a left or top edge it moves too). */
 export type ItemResize = {
-  t: 'item.resize';
+  type: ItemActionType.Resize;
   id: string;
   from: Box;
   to: Box;
@@ -27,7 +37,7 @@ export type ItemResize = {
 
 /** A window renamed. */
 export type ItemRename = {
-  t: 'item.rename';
+  type: ItemActionType.Rename;
   id: string;
   from: string;
   to: string;
@@ -35,13 +45,13 @@ export type ItemRename = {
 
 /** A window collapsed to its tab (`min`), or opened again. */
 export type ItemCollapse = {
-  t: 'item.collapse';
+  type: ItemActionType.Collapse;
   id: string;
   min: boolean;
 };
 
 /** A window taken off the canvas, or put back while its Undo toast still holds it. */
 export type ItemRemove = {
-  t: 'item.remove' | 'item.restore';
+  type: ItemActionType.Remove | ItemActionType.Restore;
   id: string;
 };

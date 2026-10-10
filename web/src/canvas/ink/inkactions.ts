@@ -1,115 +1,117 @@
 // The drawing's changes as actions (lib/actions.ts), so they share the canvas's one undo history and its log: strokes
 // added, removed, changed in place (resized, retyped) and moved. Actions carry strokes as data, by id; a stroke removed
 // in this page is kept (with the arrows that went with it) so undo puts back the same stroke, arrows and all.
+// (A stroke's own fields, p for its points and t for its text, are the layout's saved format: they keep their names.)
 
 import { defineAction, recordActions } from '../../lib/actions';
 import { uuid } from '../../lib/dom';
-import type { InkAdd, InkChange, InkMove, StrokeSnapshot } from '../../types/ink';
+import { InkActionType, type InkAdd, type InkChange, type InkMove, type StrokeSnapshot } from '../../types/ink';
 import { changed } from '../core/view';
 import { dropLinks } from '../graph/links';
 import { strokeMover } from './inksel';
 import { hostOf, paint, remove, type Saved, type Stroke, strokeData, strokes } from './stroke';
 
 /** A stroke's id, given now if it has none: actions name strokes by it. */
-const idOf = (s: Stroke) => (s.id ??= uuid());
+const idOf = (stroke: Stroke) => (stroke.id ??= uuid());
 /** The strokes on the page with these ids, in that order (missing ones left out). */
-const byId = (ids: string[]) => {
-  const all = new Map(strokes.map(s => [s.id, s]));
-  return ids.map(id => all.get(id)).filter((s): s is Stroke => !!s);
+const strokesWithIds = (ids: string[]) => {
+  const strokesById = new Map(strokes.map(stroke => [stroke.id, stroke]));
+  return ids.map(id => strokesById.get(id)).filter((stroke): stroke is Stroke => !!stroke);
 };
 /** Strokes taken off in this page, with what puts their arrows back. */
-const gone = new Map<string, { s: Stroke; arrows: () => void }>();
+const takenOff = new Map<string, { stroke: Stroke; putArrowsBack: () => void }>();
 
 /** Put a stroke back: the same one if it was taken off in this page (its arrows too), else one made from its data;
  *  not when its window has closed since. */
-function putBack(d: Saved) {
-  if (d.id && strokes.some(s => s.id === d.id)) return false;
-  const was = d.id ? gone.get(d.id) : undefined,
-    host = hostOf(d);
+function putBack(saved: Saved) {
+  if (saved.id && strokes.some(stroke => stroke.id === saved.id)) return false;
+  const earlier = saved.id ? takenOff.get(saved.id) : undefined;
+  const host = hostOf(saved);
   if (host === null) return false;
-  const s: Stroke = was?.s ?? { ...d, p: d.p.map(q => [...q]), host };
-  if (s.host && !s.host.isConnected) return false;
-  s.el = undefined; // painted afresh
-  s.sel = false;
-  strokes.push(s);
-  paint(s);
-  if (was) {
-    gone.delete(d.id!);
-    was.arrows();
+  const stroke: Stroke = earlier?.stroke ?? { ...saved, p: saved.p.map(point => [...point]), host };
+  if (stroke.host && !stroke.host.isConnected) return false;
+  stroke.el = undefined; // painted afresh
+  stroke.sel = false;
+  strokes.push(stroke);
+  paint(stroke);
+  if (earlier) {
+    takenOff.delete(saved.id!);
+    earlier.putArrowsBack();
   }
   return true;
 }
-defineAction<InkAdd>('ink.add', {
-  apply: a => {
-    const any = a.strokes.map(putBack).some(Boolean);
-    if (any) changed();
-    return any;
+defineAction<InkAdd>(InkActionType.Add, {
+  apply: action => {
+    const anyBack = action.strokes.map(putBack).some(Boolean);
+    if (anyBack) changed();
+    return anyBack;
   },
-  invert: a => ({ t: 'ink.remove', strokes: a.strokes }),
+  invert: action => ({ type: InkActionType.Remove, strokes: action.strokes }),
 });
 /** Take strokes off, keeping them (and their arrows) for undo. */
 function takeOff(list: Stroke[]) {
-  for (const s of list) gone.set(idOf(s), { s, arrows: dropLinks(s) });
+  for (const stroke of list) takenOff.set(idOf(stroke), { stroke, putArrowsBack: dropLinks(stroke) });
   remove(...list);
 }
-defineAction<InkAdd>('ink.remove', {
-  apply: a => {
-    const list = byId(a.strokes.map(d => d.id!));
+defineAction<InkAdd>(InkActionType.Remove, {
+  apply: action => {
+    const list = strokesWithIds(action.strokes.map(saved => saved.id!));
     takeOff(list);
     return list.length > 0;
   },
-  invert: a => ({ t: 'ink.add', strokes: a.strokes }),
+  invert: action => ({ type: InkActionType.Add, strokes: action.strokes }),
 });
-defineAction<InkChange>('ink.change', {
-  apply: a => {
-    const list = byId(a.ids);
-    list.forEach(s => {
-      const i = a.ids.indexOf(s.id!);
-      s.p = a.after[i].p.map(q => [...q]);
-      s.t = a.after[i].t;
-      paint(s);
-    });
+defineAction<InkChange>(InkActionType.Change, {
+  apply: action => {
+    const list = strokesWithIds(action.ids);
+    for (const stroke of list) {
+      const after = action.after[action.ids.indexOf(stroke.id!)];
+      stroke.p = after.points.map(point => [...point]);
+      stroke.t = after.text;
+      paint(stroke);
+    }
     if (list.length) changed();
     return list.length > 0;
   },
-  invert: a => ({ t: 'ink.change', ids: a.ids, before: a.after, after: a.before }),
+  invert: action => ({ type: InkActionType.Change, ids: action.ids, before: action.after, after: action.before }),
 });
-defineAction<InkMove>('ink.move', {
-  apply: a => {
-    const list = byId(a.ids);
+defineAction<InkMove>(InkActionType.Move, {
+  apply: action => {
+    const list = strokesWithIds(action.ids);
     if (!list.length) return false;
-    const m = strokeMover(list, false);
-    m(a.dx, a.dy);
-    m.end();
+    const mover = strokeMover(list, false);
+    mover(action.offsetX, action.offsetY);
+    mover.end();
     return true;
   },
-  invert: a => ({ ...a, dx: -a.dx, dy: -a.dy }),
+  invert: action => ({ ...action, offsetX: -action.offsetX, offsetY: -action.offsetY }),
 });
 
-/** As data, with ids. */
-const asData = (list: Stroke[]) => list.map(s => strokeData({ ...s, id: idOf(s) }));
+/** Strokes in their saved form, each with an id. */
+const savedForms = (list: Stroke[]) => list.map(stroke => strokeData({ ...stroke, id: idOf(stroke) }));
 
 /** New strokes, already drawn: undo takes them off again (with any arrows drawn to them since), redo puts them back. */
-export const recordAdded = (...list: Stroke[]) => recordActions({ t: 'ink.add', strokes: asData(list) });
+export const recordAdded = (...list: Stroke[]) => recordActions({ type: InkActionType.Add, strokes: savedForms(list) });
 
 /** Take strokes off the drawing as one action undo can bring back (the eraser, Delete, Erase all). */
 // Taken off here, then recorded: the eraser has already rubbed some of them out mid-swipe.
 export function erase(...list: Stroke[]) {
   if (!list.length) return;
-  const data = asData(list);
+  const saved = savedForms(list);
   takeOff(list);
-  recordActions({ t: 'ink.remove', strokes: data });
+  recordActions({ type: InkActionType.Remove, strokes: saved });
 }
 
 /** A copy of the strokes' points and text, which later edits to the strokes can't reach. */
-const snapshot = (list: Stroke[]): StrokeSnapshot[] => list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }));
+const snapshotOf = (list: Stroke[]): StrokeSnapshot[] =>
+  list.map(stroke => ({ points: stroke.p.map(point => [...point]), text: stroke.t }));
 
 /** Call before strokes change in place (resized, retyped); call what it returns once they have, to record it. */
 export function changing(list: Stroke[]) {
-  const before = snapshot(list);
-  return () => recordActions({ t: 'ink.change', ids: list.map(idOf), before, after: snapshot(list) });
+  const before = snapshotOf(list);
+  return () => recordActions({ type: InkActionType.Change, ids: list.map(idOf), before, after: snapshotOf(list) });
 }
 
 /** Record strokes moved by an offset in canvas units (already moved). */
-export const recordMoved = (list: Stroke[], dx: number, dy: number) =>
-  recordActions({ t: 'ink.move', ids: list.map(idOf), dx, dy });
+export const recordMoved = (list: Stroke[], offsetX: number, offsetY: number) =>
+  recordActions({ type: InkActionType.Move, ids: list.map(idOf), offsetX, offsetY });

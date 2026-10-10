@@ -1,4 +1,4 @@
-// Every change the user makes to the canvas as an action: a plain JSON object ({ t: 'items.move', moves: [...] })
+// Every change the user makes to the canvas as an action: a plain JSON object ({ type: 'items.move', moves: [...] })
 // whose kind a module registers with `defineAction()`, saying how to apply it and how to invert it. Two things are
 // built on them:
 // - one undo/redo history for the whole canvas: a step is the actions one thing the user did made, undone by applying
@@ -7,135 +7,136 @@
 //   it (`replay`) does again what happened. The start of event sourcing: a server stream, a save file, other users.
 // The log is saved with the layout (its 'actions' key), the undo history isn't: after a reload there's nothing to
 // undo.
-// ponytail: only the newest actions that fit in KEEP characters are saved (localStorage's ~5 MB is shared by every
+// ponytail: only the newest actions that fit in KEEP_CHARACTERS are saved (localStorage's ~5 MB is shared by every
 // project's layout); a server-side log (~/.drawa) comes next. An action that refers to something removed earlier in
 // the session (item.restore) relies on it still being parked in this page.
 import { command } from './keys';
 import { persist } from './store';
 
-/** One change, as data: `t` names its kind, the rest is the kind's own (JSON only, ids rather than elements). */
+/** One change, as data: `type` names its kind, the rest is the kind's own (JSON only, ids rather than elements). */
 export interface Action {
-  t: string;
-  [k: string]: unknown;
+  type: string;
+  [field: string]: unknown;
 }
-interface Kind<A extends Action> {
+interface ActionKind<ThisAction extends Action> {
   /** Make the change. false: it couldn't (what it refers to is gone for good), so it's left out. */
-  apply: (a: A) => boolean;
+  apply: (action: ThisAction) => boolean;
   /** The action that takes it back. */
-  invert: (a: A) => Action;
+  invert: (action: ThisAction) => Action;
 }
-const kinds = new Map<string, Kind<Action>>();
+const kinds = new Map<string, ActionKind<Action>>();
 /** Register a kind of action: how to apply it and how to invert it. */
-export function defineAction<A extends Action>(t: string, k: Kind<A>) {
-  kinds.set(t, k as unknown as Kind<Action>);
+export function defineAction<ThisAction extends Action>(type: string, kind: ActionKind<ThisAction>) {
+  kinds.set(type, kind as unknown as ActionKind<Action>);
 }
 
-const MAX = 200; // undo steps kept; ponytail: oldest fall off
-const LOG = 5000; // actions kept in the page's log
-const undos: Action[][] = [],
-  redos: Action[][] = [],
-  log: Action[] = [],
-  listeners: ((a: Action) => void)[] = [];
-let batch: Action[] | null = null;
+const MAX_UNDO_STEPS = 200; // ponytail: the oldest fall off
+const MAX_LOG_ACTIONS = 5000; // kept in the page's log
+const undoSteps: Action[][] = [];
+const redoSteps: Action[][] = [];
+const log: Action[] = [];
+const listeners: ((action: Action) => void)[] = [];
+let openStep: Action[] | null = null; // collecting what `together()` records
 
 /** Apply one action; false when it couldn't be. */
-function run(a: Action) {
-  const k = kinds.get(a.t);
-  if (!k) throw new Error(`unknown action ${a.t}`);
-  return k.apply(a);
+function run(action: Action) {
+  const kind = kinds.get(action.type);
+  if (!kind) throw new Error(`unknown action ${action.type}`);
+  return kind.apply(action);
 }
 /** Append applied actions to the log and tell the listeners. */
-function emit(list: Action[]) {
-  for (const a of list) {
-    log.push(a);
-    listeners.forEach(f => f(a));
+function emit(actions: Action[]) {
+  for (const action of actions) {
+    log.push(action);
+    listeners.forEach(listener => listener(action));
   }
-  if (log.length > LOG) log.splice(0, log.length - LOG);
+  if (log.length > MAX_LOG_ACTIONS) log.splice(0, log.length - MAX_LOG_ACTIONS);
 }
 /** A new step: undo can take it back, and what was undone before it can't be redone any more. */
-function push(step: Action[]) {
-  undos.push(step);
-  if (undos.length > MAX) undos.shift();
-  redos.length = 0;
+function pushStep(step: Action[]) {
+  undoSteps.push(step);
+  if (undoSteps.length > MAX_UNDO_STEPS) undoSteps.shift();
+  redoSteps.length = 0;
 }
 
 /** Record actions whose change already happened (a drag that ended, a note left): one step undo can take back. */
-export function recordActions(...list: Action[]) {
-  if (!list.length) return;
-  emit(list);
-  if (batch) batch.push(...list);
-  else push(list);
+export function recordActions(...actions: Action[]) {
+  if (!actions.length) return;
+  emit(actions);
+  if (openStep) openStep.push(...actions);
+  else pushStep(actions);
 }
 /** Make changes as actions: applied, logged, and one step undo can take back. */
-export const doActions = (...list: Action[]) => recordActions(...list.filter(run));
-/** Everything recorded while `fn` runs is one undo step (deleting a selection takes windows and drawings at once). */
-export function together(fn: () => void) {
-  if (batch) return fn();
-  batch = [];
+export const doActions = (...actions: Action[]) => recordActions(...actions.filter(run));
+/** Everything recorded while `changes` runs is one undo step (deleting a selection takes windows and drawings at
+ *  once). */
+export function together(changes: () => void) {
+  if (openStep) return changes();
+  openStep = [];
   try {
-    fn();
+    changes();
   } finally {
-    const step = batch;
-    batch = null;
-    if (step.length) push(step);
+    const step = openStep;
+    openStep = null;
+    if (step.length) pushStep(step);
   }
 }
 /** Apply actions from elsewhere (a log being replayed): logged, but not something to undo here. */
-export const replay = (list: readonly Action[]) => emit(list.filter(run));
+export const replay = (actions: readonly Action[]) => emit(actions.filter(run));
 
 /** Take back the last step. A step whose things are gone for good (a deleted window after its Undo ran out) can't
  *  be, and is passed over for the one before it. */
 export function undo() {
-  while (undos.length) {
-    const step = undos.pop()!;
-    const done = [...step]
+  while (undoSteps.length) {
+    const step = undoSteps.pop()!;
+    const applied = [...step]
       .reverse()
-      .map(a => kinds.get(a.t)!.invert(a))
+      .map(action => kinds.get(action.type)!.invert(action))
       .filter(run);
-    if (!done.length) continue;
-    emit(done);
-    redos.push(step);
+    if (!applied.length) continue;
+    emit(applied);
+    redoSteps.push(step);
     return true;
   }
   return false;
 }
 /** Do the last undone step again. */
 export function redo() {
-  while (redos.length) {
-    const step = redos.pop()!;
-    const done = step.filter(run);
-    if (!done.length) continue;
-    emit(done);
-    undos.push(step);
+  while (redoSteps.length) {
+    const step = redoSteps.pop()!;
+    const applied = step.filter(run);
+    if (!applied.length) continue;
+    emit(applied);
+    undoSteps.push(step);
     return true;
   }
   return false;
 }
 
-const KEEP = 500_000;
-/** The newest actions whose JSON fits in KEEP characters: what's saved. */
-function newest() {
-  let size = 0;
-  let i = log.length;
-  while (i > 0) {
-    size += JSON.stringify(log[i - 1]).length;
-    if (size > KEEP) break;
-    i--;
+const KEEP_CHARACTERS = 500_000;
+/** The newest actions whose JSON fits in KEEP_CHARACTERS: what's saved. */
+function newestActions() {
+  let characters = 0;
+  let start = log.length;
+  while (start > 0) {
+    characters += JSON.stringify(log[start - 1]).length;
+    if (characters > KEEP_CHARACTERS) break;
+    start--;
   }
-  return log.slice(i);
+  return log.slice(start);
 }
 /** Take back the saved log. Not applied again: the state it led to comes back with the layout. */
-function loadLog(list: Action[]) {
-  if (!Array.isArray(list)) return;
-  log.splice(0, log.length, ...list);
+function loadLog(saved: Action[]) {
+  if (!Array.isArray(saved)) return;
+  log.splice(0, log.length, ...saved);
 }
-persist('actions', newest, loadLog, 0); // phase 0: back before anything records new actions
+persist('actions', newestActions, loadLog, 0); // phase 0: back before anything records new actions
 
-/** Every action applied to this canvas, oldest first: the saved ones, then this page's (the last LOG of them). */
+/** Every action applied to this canvas, oldest first: the saved ones, then this page's (the last MAX_LOG_ACTIONS). */
 export const actionLog = (): readonly Action[] => log;
 /** Hear every action as it's applied: recorded, undone, redone or replayed. */
-export function onAction(f: (a: Action) => void) {
-  listeners.push(f);
+export function onAction(listener: (action: Action) => void) {
+  listeners.push(listener);
 }
 
 command({ label: 'Undo', group: 'Canvas', keys: ['$mod+z'], run: () => void undo() });

@@ -13,7 +13,7 @@ import { toggleDock, toggleFloat, syncPin } from './dock';
 import { toggleFull, syncFull } from './fullview';
 import { refIcon, refOf, winTitle, copyOf } from './refs';
 import { tipText } from '../../lib/tooltip';
-import type { ItemCollapse, ItemRemove, ItemRename } from '../../types/canvas';
+import { type ItemCollapse, ItemActionType, type ItemRemove, type ItemRename } from '../../types/canvas';
 
 interface WindowOpts {
   kind: string; // data-kind: minimap color, saved layout, references
@@ -29,27 +29,27 @@ interface WindowOpts {
 export { winTitle }; // its home is refs.ts
 /** What to call any canvas item: its window title, else its reference label, else its title attribute. */
 export const titleOf = (el: HTMLElement) => (winTitle(el) || refOf(el)?.label || tipText(el)).trim();
-// each window's collapse toggle; `record`: the user did it (an action undo can take back), not something that follows
-// from another change (a session folding its windows, full view, a restore)
-const toggles = new WeakMap<HTMLElement, (record: boolean) => void>();
+// each window's collapse toggle; `byUser`: the user did it (an action undo can take back), not something that
+// follows from another change (a session folding its windows, full view, a restore)
+const collapseToggles = new WeakMap<HTMLElement, (byUser: boolean) => void>();
 /** Open a collapsed window. */
 export const expand = (el: HTMLElement) => {
-  if (el.classList.contains('min')) toggles.get(el)?.(false);
+  if (el.classList.contains('min')) collapseToggles.get(el)?.(false);
 };
 /** Collapse an open window to its tab. */
 export const collapse = (el: HTMLElement) => {
-  if (!el.classList.contains('min')) toggles.get(el)?.(false);
+  if (!el.classList.contains('min')) collapseToggles.get(el)?.(false);
 };
 /** Collapse or expand a window as the user's own action (M, the menu): undo can take it back. */
-export const toggleCollapse = (el: HTMLElement) => toggles.get(el)?.(true);
-defineAction<ItemCollapse>('item.collapse', {
-  apply: a => {
-    const el = byIds().get(a.id);
-    if (!el || el.classList.contains('min') === a.min) return false;
-    toggles.get(el)?.(false);
+export const toggleCollapse = (el: HTMLElement) => collapseToggles.get(el)?.(true);
+defineAction<ItemCollapse>(ItemActionType.Collapse, {
+  apply: action => {
+    const item = byIds().get(action.id);
+    if (!item || item.classList.contains('min') === action.min) return false;
+    collapseToggles.get(item)?.(false);
     return true;
   },
-  invert: a => ({ ...a, min: !a.min }),
+  invert: action => ({ ...action, min: !action.min }),
 });
 /** Put the cursor in a window's message box, if it has one. */
 export const focusInput = (el: HTMLElement) =>
@@ -64,14 +64,14 @@ export function setTitle(el: HTMLElement, name: string) {
   changed();
 }
 
-defineAction<ItemRename>('item.rename', {
-  apply: a => {
-    const el = byIds().get(a.id);
-    if (!el) return false;
-    setTitle(el, a.to);
+defineAction<ItemRename>(ItemActionType.Rename, {
+  apply: action => {
+    const item = byIds().get(action.id);
+    if (!item) return false;
+    setTitle(item, action.to);
     return true;
   },
-  invert: a => ({ ...a, from: a.to, to: a.from }),
+  invert: action => ({ ...action, from: action.to, to: action.from }),
 });
 
 /** The × that takes an item off the canvas: its arrows go, it's removed, the layout is saved, and a toast offers
@@ -119,17 +119,17 @@ let undo: {
 } | null = null;
 /** Take an item off the canvas with an Undo toast (removeButton's ×; a group's frame deleted with a selection), as an
  *  action: Ctrl+Z brings it back too, while the toast's Undo still could. */
-export function removeUndoably(el: HTMLElement, also?: (el: HTMLElement) => void) {
-  takeOff(el, also);
-  recordActions({ t: 'item.remove', id: el.dataset.id! });
+export function removeUndoably(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
+  takeOff(item, cleanup);
+  recordActions({ type: ItemActionType.Remove, id: item.dataset.id! });
 }
-const alsos = new WeakMap<HTMLElement, (el: HTMLElement) => void>(); // a removed item's own cleanup, for a redo
+const cleanups = new WeakMap<HTMLElement, (el: HTMLElement) => void>(); // a removed item's own cleanup, for a redo
 /** Take an item off the canvas, parked: the Undo toast can put it back until it times out. */
-function takeOff(el: HTMLElement, also?: (el: HTMLElement) => void) {
-  const arrows = forget(el),
-    links = dropLinks(el),
-    put = park(el);
-  if (also) alsos.set(el, also);
+function takeOff(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
+  const putArrowsBack = forget(item);
+  const putLinksBack = dropLinks(item);
+  const putItemBack = park(item);
+  if (cleanup) cleanups.set(item, cleanup);
   changed();
   if (!undo) {
     const toast = notice(''); // stacks with the other notices (lib/dom.ts)
@@ -137,12 +137,12 @@ function takeOff(el: HTMLElement, also?: (el: HTMLElement) => void) {
     undo = { toast, timer: 0, items: [] };
   }
   undo.items.push({
-    el,
-    also,
+    el: item,
+    also: cleanup,
     back: () => {
-      put();
-      arrows();
-      links();
+      putItemBack();
+      putArrowsBack();
+      putLinksBack();
     },
   });
   sayDeleted();
@@ -151,27 +151,27 @@ function takeOff(el: HTMLElement, also?: (el: HTMLElement) => void) {
 }
 /** The Undo toast's text: how many items it would bring back. */
 function sayDeleted() {
-  const n = undo!.items.length;
+  const deleted = undo!.items.length;
   undo!.toast.replaceChildren(
-    make('span', '', n === 1 ? 'Deleted' : `Deleted ${n} items`),
+    make('span', '', deleted === 1 ? 'Deleted' : `Deleted ${deleted} items`),
     button('Undo', '', () => settle(true)),
   );
 }
-defineAction<ItemRemove>('item.remove', {
-  apply: a => {
-    const el = byIds().get(a.id);
-    if (!el) return false;
-    takeOff(el, alsos.get(el));
+defineAction<ItemRemove>(ItemActionType.Remove, {
+  apply: action => {
+    const item = byIds().get(action.id);
+    if (!item) return false;
+    takeOff(item, cleanups.get(item));
     return true;
   },
-  invert: a => ({ ...a, t: 'item.restore' }),
+  invert: action => ({ ...action, type: ItemActionType.Restore }),
 });
 // only while the Undo toast still holds it: once that times out, its stored data is gone and it can't come back
-defineAction<ItemRemove>('item.restore', {
-  apply: a => {
-    const i = undo?.items.findIndex(it => it.el.dataset.id === a.id) ?? -1;
-    if (i < 0) return false;
-    undo!.items.splice(i, 1)[0].back();
+defineAction<ItemRemove>(ItemActionType.Restore, {
+  apply: action => {
+    const index = undo?.items.findIndex(entry => entry.el.dataset.id === action.id) ?? -1;
+    if (index < 0) return false;
+    undo!.items.splice(index, 1)[0].back();
     if (undo!.items.length) sayDeleted();
     else {
       clearTimeout(undo!.timer);
@@ -181,7 +181,7 @@ defineAction<ItemRemove>('item.restore', {
     changed();
     return true;
   },
-  invert: a => ({ ...a, t: 'item.remove' }),
+  invert: action => ({ ...action, type: ItemActionType.Remove }),
 });
 /** Whether `el` was deleted and Undo can still bring it back. */
 export const undoable = (el: HTMLElement) => !!undo?.items.some(it => it.el === el);
@@ -281,7 +281,7 @@ export function rename(el: HTMLElement) {
     t.textContent = before;
     if (!keep || !name || name === before) return;
     setTitle(el, name);
-    recordActions({ t: 'item.rename', id: el.dataset.id!, from: before, to: name });
+    recordActions({ type: ItemActionType.Rename, id: el.dataset.id!, from: before, to: name });
   };
   /** Keys while renaming: Enter keeps the title, Esc puts the old one back. */
   const key = (k: KeyboardEvent) => {
@@ -316,20 +316,20 @@ function minimizable(el: HTMLElement, head: HTMLElement, onToggle: () => void, s
     b.setAttribute('aria-expanded', String(!min));
   };
   /** Collapse the window to its tab, or expand it again (it remembers its full height). */
-  const toggle = (user: boolean) => {
+  const toggle = (byUser: boolean) => {
     if (!el.classList.contains('min')) el.dataset.fullH = String(el.offsetHeight);
     const min = el.classList.toggle('min');
     sync();
     onToggle();
     changed();
     el.dispatchEvent(new CustomEvent('collapse', { detail: min, bubbles: true })); // e.g. a session takes its windows along
-    if (user) recordActions({ t: 'item.collapse', id: el.dataset.id!, min });
+    if (byUser) recordActions({ type: ItemActionType.Collapse, id: el.dataset.id!, min });
   };
-  toggles.set(el, toggle);
+  collapseToggles.set(el, toggle);
   // a click from code (a session folding its windows along) follows from another change: not one to undo
-  b.onclick = e => {
-    e.stopPropagation();
-    toggle(e.isTrusted);
+  b.onclick = event => {
+    event.stopPropagation();
+    toggle(event.isTrusted);
   };
   head.addEventListener('dblclick', e => {
     if (!(e.target as Element).closest('button, input, .t')) toggle(true);
