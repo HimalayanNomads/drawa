@@ -9,7 +9,7 @@ import { command } from '../../lib/keys';
 import { rowAt } from './inkrows';
 import { startLink } from '../graph/links';
 import { SHAPES, constrain, type Shape } from './shapegeom';
-import { recordAdded, erase, undo } from './inkundo';
+import { recordAdded, erase, undo, redo } from './inkundo';
 import { strokes, paint, remove, inkPlaced, type Stroke } from './stroke';
 import { placeAt, toCanvas, type Place } from './inkplace';
 import { writeAt, finishText } from './inktext';
@@ -82,6 +82,7 @@ for (const [label, keys] of [
   ['Ellipse', 'O 4'],
   ['Line', 'L 6'],
   ['Undo', 'Ctrl+Z'],
+  ['Redo', 'Ctrl+Shift+Z Ctrl+Y'],
   ['Stop drawing', 'Esc'],
 ])
   command({ label, group: 'Draw', keys: keys.split(' ') });
@@ -219,7 +220,11 @@ function eraseAt(e: PointerEvent, gone: Stroke[]) {
 
 addEventListener('keydown', e => {
   if (!drawing || e.defaultPrevented || !shortcutOk(e)) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+  const key = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && ((key === 'z' && e.shiftKey) || key === 'y')) {
+    e.preventDefault();
+    redo();
+  } else if ((e.ctrlKey || e.metaKey) && key === 'z') {
     e.preventDefault();
     undo();
   } else if (e.key === 'Escape') {
@@ -254,6 +259,7 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
       b.setAttribute('aria-pressed', String(fill));
       return;
     } else if (kind === 'undo') return undo();
+    else if (kind === 'redo') return redo();
     else if (kind === 'clear') {
       if (strokes.length)
         confirmBox(
