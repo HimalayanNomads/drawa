@@ -23,25 +23,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json # the version in its packageManager field
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Biome (format + lint)
-        run: npx biome ci --reporter=github
+        run: pnpm exec biome ci --reporter=github
 
       - name: Typecheck and build
-        run: npm run build
+        run: pnpm run build
 
       - name: Color contrast
-        run: npm run contrast
+        run: pnpm run contrast
 
       - name: Pure-logic checks
-        run: for f in $(find src -name '*.check.ts'); do npx --yes tsx "$f"; done
+        run: for f in $(find src -name '*.check.ts'); do pnpm dlx tsx "$f"; done
 
   go:
     runs-on: ubuntu-latest

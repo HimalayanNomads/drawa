@@ -348,7 +348,7 @@ func serveRaw(w http.ResponseWriter, r *http.Request, rel string) {
 	http.ServeContent(w, r, "", info.ModTime(), f)
 }
 
-var errNoUI = errors.New("UI not built: run `npm install && npm run build` in web/")
+var errNoUI = errors.New("UI not built: run `pnpm install && pnpm run build` in web/")
 
 func static(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/")

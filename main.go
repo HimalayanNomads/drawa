@@ -7,9 +7,9 @@
 //	drawa --version
 //
 // --net also listens on the machine's network address, so another device on the same network can open it;
-// without it the server only answers on localhost. Builds web/ on first run (needs npm); after UI changes run
-// `npm run build` in web/, or use `npm run dev` for UI work. DRAWA_PORT overrides the port; CLAUDE_CONFIG_DIR
-// overrides where Claude Code's own config/sessions live (see internal/config).
+// without it the server only answers on localhost. Builds web/ on first run (with pnpm, fetched through npm if it
+// isn't installed); after UI changes run `pnpm run build` in web/, or use `pnpm run dev` for UI work. DRAWA_PORT
+// overrides the port; CLAUDE_CONFIG_DIR overrides where Claude Code's own config/sessions live (see internal/config).
 package main
 
 import (
@@ -331,11 +331,13 @@ func main() {
 		// binary skips this: its UI is embedded, and config.Repo (baked in at its own build time) names a path
 		// that only existed on the machine that built it.
 		fmt.Println("Building the UI (first run only)...")
-		cmd := exec.Command("sh", "-c", "npm install && npm run build")
+		// pnpm if it's installed, else npm fetches it (pnpm 10 then switches to the version in package.json's
+		// packageManager), so Node alone is enough
+		cmd := exec.Command("sh", "-c", `if command -v pnpm >/dev/null 2>&1; then p=pnpm; else p="npx --yes pnpm@10"; fi; $p install --frozen-lockfile && $p run build`)
 		cmd.Dir = filepath.Join(config.Repo, "web")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Println("UI build failed. Needs Node.js 18+ (npm on PATH).")
+			fmt.Println("UI build failed. Needs Node.js 20.19+ (and pnpm, or npm to fetch it).")
 			os.Exit(1)
 		}
 	}
