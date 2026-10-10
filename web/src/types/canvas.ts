@@ -24,15 +24,16 @@ export type ItemsMove = {
   moves: Move[];
 };
 
-/** A window's box as its styles say it, a floating window's screen spot (--fx, --fy) included. */
-export type Box = Record<'left' | 'top' | 'width' | 'height' | '--fx' | '--fy', string>;
+/** An item's position and size as its inline styles say them, a floating window's screen spot (--fx, --fy)
+ *  included: strings, so undo puts back exactly what was there (`rect()` gives numbers). */
+export type PositionAndSizeStyles = Record<'left' | 'top' | 'width' | 'height' | '--fx' | '--fy', string>;
 
 /** An item resized (from a left or top edge it moves too). */
 export type ItemResize = {
   type: ItemActionType.Resize;
   id: string;
-  from: Box;
-  to: Box;
+  from: PositionAndSizeStyles;
+  to: PositionAndSizeStyles;
 };
 
 /** A window renamed. */

@@ -4,7 +4,7 @@
 import { uuid } from '../../lib/dom';
 import type { Mover } from '../core/drag';
 import { changed, view } from '../core/view';
-import { recordMoved } from './inkactions';
+import { recordStrokesMoved } from './inkactions';
 import { SHAPE_NAME } from './shapegeom';
 import { FIT, inkPlaced, isFitHost, paint, type Stroke, strokes, unitsPerHostPx } from './stroke';
 
@@ -133,7 +133,7 @@ export function strokeMover(list: Stroke[], record = true): Mover {
         s.p = s.p.map(([x, y, ...r]) => [x + dx * f[i], y + dy * f[i], ...r]);
         paint(s);
       });
-      if (moved && record) recordMoved(list, dx, dy);
+      if (moved && record) recordStrokesMoved(list, dx, dy);
       if (moved) inkPlaced(list);
     },
   });

@@ -1,9 +1,9 @@
 // Dragging: moving items (and what moves with them), resize grips, edge grips on side panels, dragging something
 // out of a window onto the canvas, and `track()`, the one pointer-press follower they all use.
 
-import { together } from '../../lib/actions';
+import { asOneUndoStep } from '../../lib/actions';
 import { EDITABLE, make, perFrame } from '../../lib/dom';
-import { boxOf, recordMoves, recordResize } from './itemactions';
+import { positionAndSizeStyles, recordItemMoves, recordItemResize } from './itemactions';
 import { bringToFront, onCanvas, place, rect } from './items';
 import { changed, toWorld, view } from './view';
 
@@ -108,9 +108,9 @@ export function draggable(
         onMove();
       }
       if (moved)
-        together(() => {
+        asOneUndoStep(() => {
           along?.end();
-          recordMoves([el, ...group], [o, ...starts]);
+          recordItemMoves([el, ...group], [o, ...starts]);
         });
       else along?.end();
       if (moved) {
@@ -280,7 +280,7 @@ export function resizable(
         ex = body ? h - body.clientHeight : 0; // the window around the content
       el.style.setProperty('--resize-cursor', getComputedStyle(grip).cursor); // before .resizing overrides it: a side edge stays ew/ns
       el.classList.add('resizing');
-      const from = boxOf(el);
+      const from = positionAndSizeStyles(el);
       track(
         grip,
         e,
@@ -311,7 +311,7 @@ export function resizable(
         () => {
           el.classList.remove('resizing');
           el.style.removeProperty('--resize-cursor');
-          recordResize(el, from);
+          recordItemResize(el, from);
           changed();
         },
       );

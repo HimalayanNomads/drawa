@@ -11,7 +11,7 @@ import { handDrag } from '../core/mode';
 import { inkSelected, onSelect, selected, selectedInk, selectInk, selectionMover } from '../core/select';
 import { changed, onChange, view } from '../core/view';
 import { drawing } from './ink';
-import { changing } from './inkactions';
+import { startStrokeChange } from './inkactions';
 import { objectAt, unitsPerPx } from './inksel';
 import { paint, type Stroke } from './stroke';
 
@@ -72,7 +72,7 @@ document.addEventListener(
         k = unitsPerPx(s);
       const ix = orig[0][0] <= orig[1][0] === !cx ? 0 : 1,
         iy = orig[0][1] <= orig[1][1] === !cy ? 0 : 1;
-      const done = changing([s]);
+      const done = startStrokeChange([s]);
       track(
         corner,
         e,

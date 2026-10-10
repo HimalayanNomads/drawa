@@ -1,7 +1,7 @@
 // Text on the drawing: click to write (the Text tool); click your text again to change it.
 import { closestAt } from '../../lib/dom';
 import { changed } from '../core/view';
-import { changing, erase, recordAdded } from './inkactions';
+import { eraseStrokes, recordStrokesAdded, startStrokeChange } from './inkactions';
 import { placeAt } from './inkplace';
 import { rowAt } from './inkrows';
 import { inkPlaced, paint, type Stroke, strokes } from './stroke';
@@ -56,14 +56,14 @@ export function writeAt(e: PointerEvent, color: string, size: number) {
     const text = ta.value.replace(/\s+$/, '');
     if (old?.el) old.el.style.visibility = '';
     if (!text) {
-      if (old) erase(old);
+      if (old) eraseStrokes(old);
       return;
     }
-    const done = old && text !== old.t ? changing([old]) : null;
+    const done = old && text !== old.t ? startStrokeChange([old]) : null;
     s.t = text;
     if (!old) {
       strokes.push(s);
-      recordAdded(s);
+      recordStrokesAdded(s);
     }
     paint(s);
     done?.();

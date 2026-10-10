@@ -289,8 +289,8 @@ onChange(viewOnly => {
   }
   todo.forEach(w => w());
 });
-// arrows whose drawing left before erase() could take them (the eraser removes strokes mid-swipe): dropLinks hands
-// them over, so undoing the erase brings them back
+// arrows whose drawing left before eraseStrokes() could take them (the eraser removes strokes mid-swipe): dropLinks
+// hands them over, so undoing the erase brings them back
 const lost = new WeakMap<Stroke, Link[]>();
 /** An arrow to a drawing that's gone (erased, maybe undone later) waits for it to come back. */
 function waitForEnd(l: Link) {

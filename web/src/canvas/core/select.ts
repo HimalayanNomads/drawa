@@ -3,17 +3,17 @@
 // inside the selection box) moves them all; Delete (or the bar by the selection) removes them, each through its own
 // remove path. Only items laid out on the canvas take part: pinned, floating and full-view windows don't.
 
-import { together } from '../../lib/actions';
+import { asOneUndoStep } from '../../lib/actions';
 import { button, confirmBox, EDITABLE, ICON, iconButton, keepOnScreen, make, toast } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { redraw } from '../graph/graph';
 import { drawing } from '../ink/ink';
-import { erase } from '../ink/inkactions';
+import { eraseStrokes } from '../ink/inkactions';
 import { canvasStrokes, inkOf, inkWith, markStroke, objectAt, siblings, strokeMover, strokeRect } from '../ink/inksel';
 import type { Stroke } from '../ink/stroke';
 import { type Mover, movesWith, moveWith, setMoveAlong, swallowNext, track } from './drag';
 import { anyFull } from './fullview';
-import { recordMoves } from './itemactions';
+import { recordItemMoves } from './itemactions';
 import { hidden, onCanvas, overlaps, place, placed, type Rect, rect } from './items';
 import { handDrag } from './mode';
 import { changed, onChange, stage, toWorld, view } from './view';
@@ -92,9 +92,9 @@ export function selectionMover(): Mover {
   // a move like a drag's: 'moved' on each, so what reacts to drags (groups pushing each other aside) reacts to this too
   return Object.assign(move, {
     end: () => {
-      together(() => {
+      asOneUndoStep(() => {
         ink.end();
-        recordMoves(els, starts);
+        recordItemMoves(els, starts);
       });
       changed();
       els.forEach(el => el.dispatchEvent(new CustomEvent('moved', { bubbles: true })));
@@ -253,7 +253,7 @@ async function removeSelected() {
   /** Take the selected drawings off (one action Undo can bring back). */
   const drop = () => {
     ink.forEach(s => setInk(s, false));
-    erase(...ink);
+    eraseStrokes(...ink);
   };
   if (!gone.length) {
     // drawings only: one goes like the eraser; more ask first
@@ -272,7 +272,7 @@ async function removeSelected() {
     ))
   )
     return;
-  together(() => {
+  asOneUndoStep(() => {
     drop();
     for (const el of gone) removeItem(el);
   }); // one Ctrl+Z brings the whole selection back

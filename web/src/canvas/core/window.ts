@@ -120,16 +120,16 @@ let undo: {
 /** Take an item off the canvas with an Undo toast (removeButton's ×; a group's frame deleted with a selection), as an
  *  action: Ctrl+Z brings it back too, while the toast's Undo still could. */
 export function removeUndoably(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
-  takeOff(item, cleanup);
+  removeWithUndoToast(item, cleanup);
   recordActions({ type: ItemActionType.Remove, id: item.dataset.id! });
 }
-const cleanups = new WeakMap<HTMLElement, (el: HTMLElement) => void>(); // a removed item's own cleanup, for a redo
+const cleanupAfterRemoval = new WeakMap<HTMLElement, (el: HTMLElement) => void>(); // a removed item's own cleanup, for a redo
 /** Take an item off the canvas, parked: the Undo toast can put it back until it times out. */
-function takeOff(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
+function removeWithUndoToast(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
   const putArrowsBack = forget(item);
   const putLinksBack = dropLinks(item);
   const putItemBack = park(item);
-  if (cleanup) cleanups.set(item, cleanup);
+  if (cleanup) cleanupAfterRemoval.set(item, cleanup);
   changed();
   if (!undo) {
     const toast = notice(''); // stacks with the other notices (lib/dom.ts)
@@ -145,12 +145,12 @@ function takeOff(item: HTMLElement, cleanup?: (el: HTMLElement) => void) {
       putLinksBack();
     },
   });
-  sayDeleted();
+  updateUndoToastText();
   clearTimeout(undo.timer);
   undo.timer = setTimeout(() => settle(false), 8000);
 }
 /** The Undo toast's text: how many items it would bring back. */
-function sayDeleted() {
+function updateUndoToastText() {
   const deleted = undo!.items.length;
   undo!.toast.replaceChildren(
     make('span', '', deleted === 1 ? 'Deleted' : `Deleted ${deleted} items`),
@@ -161,7 +161,7 @@ defineAction<ItemRemove>(ItemActionType.Remove, {
   apply: action => {
     const item = byIds().get(action.id);
     if (!item) return false;
-    takeOff(item, cleanups.get(item));
+    removeWithUndoToast(item, cleanupAfterRemoval.get(item));
     return true;
   },
   invert: action => ({ ...action, type: ItemActionType.Restore }),
@@ -172,7 +172,7 @@ defineAction<ItemRemove>(ItemActionType.Restore, {
     const index = undo?.items.findIndex(entry => entry.el.dataset.id === action.id) ?? -1;
     if (index < 0) return false;
     undo!.items.splice(index, 1)[0].back();
-    if (undo!.items.length) sayDeleted();
+    if (undo!.items.length) updateUndoToastText();
     else {
       clearTimeout(undo!.timer);
       undo!.toast.remove();

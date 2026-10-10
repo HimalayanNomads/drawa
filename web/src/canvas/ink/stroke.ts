@@ -179,8 +179,8 @@ export const strokeData = ({ c, s, sim, p, h, t, sh, f, a, o, k, rid, id, g }: S
 });
 /** The window a stroke's data belongs to, if it names one: undefined when it's on the canvas, null when its window
  *  isn't there. */
-export const hostOf = (d: Saved) =>
-  d.h ? (document.querySelector<HTMLElement>(`[data-ink="${CSS.escape(d.h)}"]`) ?? null) : undefined;
+export const hostOf = (saved: Saved) =>
+  saved.h ? (document.querySelector<HTMLElement>(`[data-ink="${CSS.escape(saved.h)}"]`) ?? null) : undefined;
 /** The drawing as saved: strokes whose windows are still there, rounded, plus the ones still waiting for their
  *  window. */
 const savedInk = () => [

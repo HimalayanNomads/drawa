@@ -2,7 +2,13 @@
 // moved) and resized. Window-only ones (renamed, collapsed, removed) are in canvas/core/window.ts, with what they
 // change.
 import { defineAction, recordActions } from '../../lib/actions';
-import { type Box, ItemActionType, type ItemResize, type ItemsMove, type Move } from '../../types/canvas';
+import {
+  ItemActionType,
+  type ItemResize,
+  type ItemsMove,
+  type Move,
+  type PositionAndSizeStyles,
+} from '../../types/canvas';
 import { byIds, place, rect } from './items';
 import { changed } from './view';
 
@@ -21,7 +27,7 @@ defineAction<ItemsMove>(ItemActionType.Move, {
   }),
 });
 /** Record items that moved from these spots (in the same order) to where they are now. */
-export function recordMoves(items: HTMLElement[], startedAt: { x: number; y: number }[]) {
+export function recordItemMoves(items: HTMLElement[], startedAt: { x: number; y: number }[]) {
   const moves = items
     .map((item, index): Move => {
       const now = rect(item);
@@ -32,15 +38,24 @@ export function recordMoves(items: HTMLElement[], startedAt: { x: number; y: num
 }
 
 // a window's box as its styles say (a floating window keeps its screen spot in --fx / --fy)
-const BOX_STYLES: (keyof Box)[] = ['left', 'top', 'width', 'height', '--fx', '--fy'];
+const POSITION_AND_SIZE_STYLE_NAMES: (keyof PositionAndSizeStyles)[] = [
+  'left',
+  'top',
+  'width',
+  'height',
+  '--fx',
+  '--fy',
+];
 /** An item's box, from its styles. */
-export const boxOf = (item: HTMLElement) =>
-  Object.fromEntries(BOX_STYLES.map(style => [style, item.style.getPropertyValue(style)])) as Box;
+export const positionAndSizeStyles = (item: HTMLElement) =>
+  Object.fromEntries(
+    POSITION_AND_SIZE_STYLE_NAMES.map(style => [style, item.style.getPropertyValue(style)]),
+  ) as PositionAndSizeStyles;
 defineAction<ItemResize>(ItemActionType.Resize, {
   apply: action => {
     const item = byIds().get(action.id);
     if (!item) return false;
-    for (const style of BOX_STYLES) item.style.setProperty(style, action.to[style] || null);
+    for (const style of POSITION_AND_SIZE_STYLE_NAMES) item.style.setProperty(style, action.to[style] || null);
     changed();
     return true;
   },
@@ -48,8 +63,8 @@ defineAction<ItemResize>(ItemActionType.Resize, {
 });
 
 /** Record an item resized from this box to the one it has now. */
-export function recordResize(item: HTMLElement, from: Box) {
-  const to = boxOf(item);
-  const resized = BOX_STYLES.some(style => from[style] !== to[style]);
+export function recordItemResize(item: HTMLElement, from: PositionAndSizeStyles) {
+  const to = positionAndSizeStyles(item);
+  const resized = POSITION_AND_SIZE_STYLE_NAMES.some(style => from[style] !== to[style]);
   if (item.dataset.id && resized) recordActions({ type: ItemActionType.Resize, id: item.dataset.id, from, to });
 }

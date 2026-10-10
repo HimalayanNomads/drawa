@@ -10,7 +10,7 @@ import { command } from '../../lib/keys';
 import { rowAt } from './inkrows';
 import { startLink } from '../graph/links';
 import { SHAPES, constrain, type Shape } from './shapegeom';
-import { recordAdded, erase } from './inkactions';
+import { recordStrokesAdded, eraseStrokes } from './inkactions';
 import { undo, redo } from '../../lib/actions';
 import { strokes, paint, remove, inkPlaced, type Stroke } from './stroke';
 import { placeAt, toCanvas, type Place } from './inkplace';
@@ -97,7 +97,7 @@ capture.addEventListener('pointerdown', e => {
     return listen(
       e,
       ev => eraseAt(ev, gone),
-      () => erase(...gone),
+      () => eraseStrokes(...gone),
     );
   }
   const at = placeAt(e),
@@ -128,7 +128,7 @@ capture.addEventListener('pointerdown', e => {
     () => {
       thin(s);
       paint(s);
-      recordAdded(s);
+      recordStrokesAdded(s);
       inkPlaced([s]);
       changed();
     },
@@ -181,7 +181,7 @@ function drawShape(e: PointerEvent, sh: Shape, at: Place) {
       const [[x0, y0], [x1, y1]] = s.p;
       if (Math.hypot(x1 - x0, y1 - y0) / scale < 4) return remove(s); // a click, not a drag
       paint(s);
-      recordAdded(s);
+      recordStrokesAdded(s);
       inkPlaced([s]);
       changed();
     },
@@ -245,7 +245,7 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
           'Every stroke on the canvas is removed. Undo (Ctrl+Z) brings them back.',
           'Erase all',
         ).then(ok => {
-          if (ok) erase(...strokes);
+          if (ok) eraseStrokes(...strokes);
         });
       return;
     } else if (kind === 'done') return setDrawing(false);
