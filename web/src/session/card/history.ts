@@ -11,10 +11,10 @@ import { api, q, type SavedMessage, type SessionInfo } from '../../lib/api';
 import { $, ago, button, copyButton, make, quietPings } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
 import { save } from '../../lib/store';
+import type { Session } from '../../types/session';
 import { replay } from '../stream/stream';
 import { pinToBottom, renderCard } from './render';
 import { cards, focus, newSession } from './session';
-import type { Session } from './types';
 
 /** List this folder's saved conversations in the History panel (the open ones marked). */
 export async function loadSessions() {

@@ -4,15 +4,11 @@
 
 import { defineAction, recordActions } from '../../lib/actions';
 import { uuid } from '../../lib/dom';
+import type { InkAdd, InkChange, InkMove, StrokeSnapshot } from '../../types/ink';
 import { changed } from '../core/view';
 import { dropLinks } from '../graph/links';
 import { strokeMover } from './inksel';
 import { hostOf, paint, remove, type Saved, type Stroke, strokeData, strokes } from './stroke';
-
-type Shape = { p: number[][]; t?: string };
-type InkAdd = { t: 'ink.add' | 'ink.remove'; strokes: Saved[] };
-type InkChange = { t: 'ink.change'; ids: string[]; before: Shape[]; after: Shape[] };
-type InkMove = { t: 'ink.move'; ids: string[]; dx: number; dy: number };
 
 /** A stroke's id, given now if it has none: actions name strokes by it. */
 const idOf = (s: Stroke) => (s.id ??= uuid());
@@ -106,7 +102,7 @@ export function erase(...list: Stroke[]) {
 }
 
 /** A copy of the strokes' points and text, which later edits to the strokes can't reach. */
-const snapshot = (list: Stroke[]): Shape[] => list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }));
+const snapshot = (list: Stroke[]): StrokeSnapshot[] => list.map(s => ({ p: s.p.map(q => [...q]), t: s.t }));
 
 /** Call before strokes change in place (resized, retyped); call what it returns once they have, to record it. */
 export function changing(list: Stroke[]) {

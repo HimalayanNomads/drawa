@@ -1,7 +1,7 @@
 // Claude's task list, as a live checklist pinned above the message box. Fed by the TodoWrite tool (the whole list
 // at once) and by TaskCreate / TaskUpdate (one task at a time; a created task's number comes back in the result).
 import { make } from '../../lib/dom';
-import type { Session } from '../card/types';
+import type { Session } from '../../types/session';
 
 type Status = 'pending' | 'in_progress' | 'completed';
 interface Task {

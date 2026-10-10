@@ -5,8 +5,8 @@ import { refIcon } from '../../canvas/core/refs';
 import { agentTitle } from '../../items/agent';
 import { make } from '../../lib/dom';
 import { enhance, md } from '../../lib/markdown';
+import type { Session } from '../../types/session';
 import { appendToLog } from '../card/render';
-import type { Session } from '../card/types';
 import { toolRow } from './stream';
 
 /** Render `text` as Markdown into the row the first time it's opened (a skill or a report can be pages long). */

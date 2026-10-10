@@ -5,7 +5,7 @@
 import { make, ping, truncate } from '../../lib/dom';
 import { each, persist } from '../../lib/store';
 import type { Change } from '../../panels/diff';
-import type { Session } from '../../session/card/types';
+import type { Session } from '../../types/session';
 import { byIds, hidden, items, liveRect, onCanvas, place, rect } from '../core/items';
 import { changed, onChange, view, world } from '../core/view';
 import {

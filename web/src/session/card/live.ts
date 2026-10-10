@@ -7,7 +7,7 @@ import { requestEnded } from '../../canvas/graph/graph';
 import { toContent, type Ref } from '../../canvas/core/refs';
 import { cards } from './session';
 import { appendToLog, renderCard } from './render';
-import type { Session } from './types';
+import type { Session } from '../../types/session';
 import { refChip, putBack } from '../composer/composer';
 import { handleMessage, type Msg } from '../stream/stream';
 import { thumbnail, imageBlock, type Pasted } from '../composer/images';

@@ -2,12 +2,11 @@
 // moved) and resized. Window-only ones (renamed, collapsed, removed) are in canvas/core/window.ts, with what they
 // change.
 import { defineAction, recordActions } from '../../lib/actions';
+import type { Box, ItemResize, ItemsMove, Move } from '../../types/canvas';
 import { byIds, place, rect } from './items';
 import { changed } from './view';
 
 // moves: one step per drag, nudge or selection move
-type Move = { id: string; from: [number, number]; to: [number, number] };
-type ItemsMove = { t: 'items.move'; moves: Move[] };
 defineAction<ItemsMove>('items.move', {
   apply: a => {
     const by = byIds(),
@@ -27,9 +26,7 @@ export function recordMoves(els: HTMLElement[], from: { x: number; y: number }[]
 }
 
 // a window's box as its styles say (a floating window keeps its screen spot in --fx / --fy)
-const BOX = ['left', 'top', 'width', 'height', '--fx', '--fy'] as const;
-type Box = Record<(typeof BOX)[number], string>;
-type ItemResize = { t: 'item.resize'; id: string; from: Box; to: Box };
+const BOX: (keyof Box)[] = ['left', 'top', 'width', 'height', '--fx', '--fy'];
 /** An item's box, from its styles. */
 export const boxOf = (el: HTMLElement) => Object.fromEntries(BOX.map(k => [k, el.style.getPropertyValue(k)])) as Box;
 defineAction<ItemResize>('item.resize', {

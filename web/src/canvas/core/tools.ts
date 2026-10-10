@@ -3,7 +3,7 @@
 // (`creatable`); reading reuses what `referable` already knows about each kind.
 import { post } from '../../lib/api';
 import { ping, toast, uuid } from '../../lib/dom';
-import type { Session } from '../../session/card/types';
+import type { Session } from '../../types/session';
 import { link } from '../graph/graph';
 import { addLink, endById, userLinks } from '../graph/links';
 import { canvasStrokes, hasInkOver, shapesOn, strokeRect, textsOn } from '../ink/inksel';

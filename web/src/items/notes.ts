@@ -10,15 +10,7 @@ import { forget } from '../canvas/graph/graph';
 import { defineAction, recordActions } from '../lib/actions';
 import { make, uuid } from '../lib/dom';
 import { each, persist } from '../lib/store';
-
-interface Note {
-  id?: string;
-  text?: string;
-  x: number;
-  y: number;
-  w?: number;
-  edit?: boolean;
-}
+import type { Note, NoteAdd, NoteData, NoteEdit } from '../types/notes';
 
 // each note's text as last recorded as an action: a new note is recorded once it has some, an edit from this
 const recorded = new WeakMap<HTMLElement, string>();
@@ -92,14 +84,12 @@ const setText = (el: HTMLElement, t: string) => {
 };
 
 /* ---------- notes' changes as actions (lib/actions.ts); moving, resizing and × are every item's ---------- */
-type NoteData = { id: string; text: string; x: number; y: number; w?: number };
 /** A note as data, with this text. */
 const noteData = (el: HTMLElement, text: string): NoteData => {
   const r = rect(el);
   return { id: el.dataset.id!, text, x: r.x, y: r.y, ...(el.style.width ? { w: r.w } : {}) };
 };
 const noteEl = (id: string) => items('note').find(n => n.dataset.id === id);
-type NoteAdd = { t: 'note.add' | 'note.remove' } & NoteData;
 defineAction<NoteAdd>('note.add', {
   apply: a => {
     if (noteEl(a.id)) return false;
@@ -120,7 +110,6 @@ defineAction<NoteAdd>('note.remove', {
   },
   invert: a => ({ ...a, t: 'note.add' }),
 });
-type NoteEdit = { t: 'note.edit'; id: string; from: string; to: string };
 defineAction<NoteEdit>('note.edit', {
   apply: a => {
     const el = noteEl(a.id);

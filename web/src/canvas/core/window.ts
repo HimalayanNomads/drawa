@@ -13,6 +13,7 @@ import { toggleDock, toggleFloat, syncPin } from './dock';
 import { toggleFull, syncFull } from './fullview';
 import { refIcon, refOf, winTitle, copyOf } from './refs';
 import { tipText } from '../../lib/tooltip';
+import type { ItemCollapse, ItemRemove, ItemRename } from '../../types/canvas';
 
 interface WindowOpts {
   kind: string; // data-kind: minimap color, saved layout, references
@@ -41,7 +42,6 @@ export const collapse = (el: HTMLElement) => {
 };
 /** Collapse or expand a window as the user's own action (M, the menu): undo can take it back. */
 export const toggleCollapse = (el: HTMLElement) => toggles.get(el)?.(true);
-type ItemCollapse = { t: 'item.collapse'; id: string; min: boolean };
 defineAction<ItemCollapse>('item.collapse', {
   apply: a => {
     const el = byIds().get(a.id);
@@ -64,7 +64,6 @@ export function setTitle(el: HTMLElement, name: string) {
   changed();
 }
 
-type ItemRename = { t: 'item.rename'; id: string; from: string; to: string };
 defineAction<ItemRename>('item.rename', {
   apply: a => {
     const el = byIds().get(a.id);
@@ -158,7 +157,6 @@ function sayDeleted() {
     button('Undo', '', () => settle(true)),
   );
 }
-type ItemRemove = { t: 'item.remove' | 'item.restore'; id: string };
 defineAction<ItemRemove>('item.remove', {
   apply: a => {
     const el = byIds().get(a.id);

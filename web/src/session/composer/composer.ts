@@ -10,7 +10,7 @@ import { link, unlink, onForget } from '../../canvas/graph/graph';
 import { canvasRefs, refOf, refIcon, isPicture, type Ref } from '../../canvas/core/refs';
 import { cards, focus, meta, clearSession } from '../card/session';
 import { renderCard } from '../card/render';
-import type { Session } from '../card/types';
+import type { Session } from '../../types/session';
 import { send } from '../card/live';
 import { readImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';

@@ -15,7 +15,7 @@ import { makeWindow, expand, winTitle } from '../canvas/core/window';
 import { link, savedPos, forget } from '../canvas/graph/graph';
 import { referable } from '../canvas/core/refs';
 import { renderCard } from '../session/card/render';
-import type { Session } from '../session/card/types';
+import type { Session } from '../types/session';
 import { send } from '../session/card/live';
 import { toolArg, contentText, replay, rowStopped } from '../session/stream/stream';
 import { who } from '../lib/agents';

@@ -20,7 +20,7 @@ web/src/
     ink/       stroke (the stroke model, painting, saving, `inkBox`), ink (Draw mode: tools, input, toolbar), inkplace (where a press lands), inktext (text on the drawing), inkrows, inksel, inkactions (the drawing's changes as actions), shapes, shapegeom
     graph/     graph (a session's edges), links (your arrows), sessionwins (a session's Files and commands windows)
   session/     session cards
-    card/      session (create, focus, close), types (`Session`), render (header, status, appending to the log), saved (layout slices, referable, removable), live (the connection), history, gen (model and effort), mode, notify
+    card/      session (create, focus, close), render (header, status, appending to the log), saved (layout slices, referable, removable), live (the connection), history, gen (model and effort), mode, notify
     composer/  composer (the message box), drafts, recall, images, uploads, shell
     stream/    stream (rendering the agent's output), asks, notices, tasks
   items/       one folder per kind of canvas item that spans several files, one file for the rest (agent: a sub-agent's window; diagram; doc: a Markdown window, its source edited in lib/codeedit's editor; notes; sketch)
@@ -32,6 +32,7 @@ web/src/
     snippet/   snippet, pinmarks (a snippet's source stays marked)
     preview/   preview (a project file opened from Ctrl+K), fileedit (editing it in place, saved through `POST /api/file`, and the Vim setting)
   panels/      side panels: file tree + inspector, diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs` with the clicked diff's `repo` (its `data-repo`: a nested repo's or a worktree's commits search that repo), picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
+  types/       data shapes, one file per feature: session (`Session`), canvas (every item's actions), ink (the drawing's actions), notes (a note, and its actions)
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
 
@@ -39,6 +40,7 @@ The dependency direction is `lib` ← `canvas` ← `items` / `session` / `panels
 - `lib/` never imports from other folders.
 - `canvas/` never imports from `items/`. It only imports *types* from `session/` and `panels/`.
 - If you need to import upward, add a registry or callback in the lower layer instead (see `onDrop`, `persist`, `referable`).
+- `types/` sits outside that order: it holds only types, imports only types (`import type`), and any folder may import from it with `import type`. A type goes there when it's a data shape: an action kind's (what the log and, later, the server read), a saved one, or one more than one file uses (`Session`). One module's private shapes (`WindowOpts` in `window.ts`) stay in it. Write each type out one field per line.
 
 Import cycles between feature modules are tolerated only when every cross-use happens inside functions, never at module top level. Don't add top-level code that reads another module's exports.
 

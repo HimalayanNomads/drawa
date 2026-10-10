@@ -1,7 +1,7 @@
 // What a session card is: its live process, its conversation's state, and the elements it's drawn with.
-import type { Ref } from '../../canvas/core/refs';
-import type { Change } from '../../panels/diff';
-import type { Pasted } from '../composer/images';
+import type { Ref } from '../canvas/core/refs';
+import type { Change } from '../panels/diff';
+import type { Pasted } from '../session/composer/images';
 
 export type ToolRow = HTMLDetailsElement & { chg?: Change };
 export interface Block {
