@@ -9,7 +9,7 @@ import { bringToFront, hidden, items, onCanvas } from './items';
 import { menuSection } from './menu';
 import { centerOn } from './placement';
 import { selected, selectOnly } from './select';
-import { rename } from './window';
+import { rename, toggleCollapse } from './window';
 
 /** Every item that isn't hidden inside a collapsed group. */
 const visibleItems = () => items().filter(el => !hidden(el));
@@ -46,7 +46,10 @@ function step(dir: 1 | -1) {
 }
 
 /** M: collapse or expand the active window. */
-const collapseActive = () => activeWin()?.querySelector<HTMLElement>(':scope > .win-h .minbtn')?.click();
+const collapseActive = () => {
+  const el = activeWin();
+  if (el) toggleCollapse(el);
+};
 /** Shift+F: put the active window in full view, or leave full view. */
 const fullActive = () => {
   if (anyFull()) return exitFull(true);
@@ -111,7 +114,7 @@ menuSection('Window', els => {
       label: min ? 'Expand' : 'Collapse',
       icon: min ? ICON.open : ICON.collapse,
       keys: 'M',
-      run: () => el.querySelector<HTMLElement>(':scope > .win-h .minbtn')?.click(),
+      run: () => toggleCollapse(el),
     },
     {
       label: isFull(el) ? 'Leave full view' : 'Full view',

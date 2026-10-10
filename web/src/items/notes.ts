@@ -7,6 +7,7 @@ import { creatable } from '../canvas/core/tools';
 import { changed, stage, toWorld, viewCenter } from '../canvas/core/view';
 import { removeButton } from '../canvas/core/window';
 import { forget } from '../canvas/graph/graph';
+import { defineAction, recordActions } from '../lib/actions';
 import { make, uuid } from '../lib/dom';
 import { each, persist } from '../lib/store';
 
@@ -18,6 +19,9 @@ interface Note {
   w?: number;
   edit?: boolean;
 }
+
+// each note's text as last recorded as an action: a new note is recorded once it has some, an edit from this
+const recorded = new WeakMap<HTMLElement, string>();
 
 /** A text note on the canvas, edited in place; an empty one goes away when you leave it. */
 export function makeNote(opts: Note) {
@@ -33,6 +37,7 @@ export function makeNote(opts: Note) {
   place(el, opts.x, opts.y);
   if (opts.w) el.style.width = `${opts.w}px`;
   bringToFront(el);
+  recorded.set(el, opts.text ?? '');
 
   /** Start editing the note, with the caret at the end. */
   const edit = () => {
@@ -49,10 +54,15 @@ export function makeNote(opts: Note) {
   const done = () => {
     text.contentEditable = 'false';
     delete el.dataset.state;
-    if (!text.textContent?.trim()) {
+    const now = text.textContent ?? '',
+      was = recorded.get(el) ?? '';
+    if (!now.trim()) {
+      if (was.trim()) recordActions({ t: 'note.remove', ...noteData(el, was) });
       forget(el);
       el.remove();
-    }
+    } else if (!was.trim()) recordActions({ t: 'note.add', ...noteData(el, now) });
+    else if (now !== was) recordActions({ t: 'note.edit', id: el.dataset.id!, from: was, to: now });
+    recorded.set(el, now);
     changed();
   };
   text.addEventListener('blur', done);
@@ -74,6 +84,53 @@ export function makeNote(opts: Note) {
 
 /** A note's text. */
 const noteText = (el: HTMLElement) => el.querySelector('.ntext')?.textContent ?? '';
+/** Set a note's text from outside its editing (an action, Claude's canvas_update): the next edit is recorded from
+ *  it. */
+const setText = (el: HTMLElement, t: string) => {
+  el.querySelector('.ntext')!.textContent = t;
+  recorded.set(el, t);
+};
+
+/* ---------- notes' changes as actions (lib/actions.ts); moving, resizing and × are every item's ---------- */
+type NoteData = { id: string; text: string; x: number; y: number; w?: number };
+/** A note as data, with this text. */
+const noteData = (el: HTMLElement, text: string): NoteData => {
+  const r = rect(el);
+  return { id: el.dataset.id!, text, x: r.x, y: r.y, ...(el.style.width ? { w: r.w } : {}) };
+};
+const noteEl = (id: string) => items('note').find(n => n.dataset.id === id);
+type NoteAdd = { t: 'note.add' | 'note.remove' } & NoteData;
+defineAction<NoteAdd>('note.add', {
+  apply: a => {
+    if (noteEl(a.id)) return false;
+    makeNote({ id: a.id, text: a.text, x: a.x, y: a.y, w: a.w });
+    changed();
+    return true;
+  },
+  invert: a => ({ ...a, t: 'note.remove' }),
+});
+defineAction<NoteAdd>('note.remove', {
+  apply: a => {
+    const el = noteEl(a.id);
+    if (!el) return false;
+    forget(el);
+    el.remove();
+    changed();
+    return true;
+  },
+  invert: a => ({ ...a, t: 'note.add' }),
+});
+type NoteEdit = { t: 'note.edit'; id: string; from: string; to: string };
+defineAction<NoteEdit>('note.edit', {
+  apply: a => {
+    const el = noteEl(a.id);
+    if (!el) return false;
+    setText(el, a.to);
+    changed();
+    return true;
+  },
+  invert: a => ({ ...a, from: a.to, to: a.from }),
+});
 
 persist(
   'notes',
@@ -89,9 +146,7 @@ persist(
 creatable('note', {
   size: a => ({ w: Math.min(360, Math.max(120, String(a.text).length * 8)), h: 60 }),
   create: (a, r) => makeNote({ x: r.x, y: r.y, text: String(a.text), w: String(a.text).length > 45 ? 360 : undefined }),
-  update: (el, a) => {
-    el.querySelector('.ntext')!.textContent = String(a.text);
-  },
+  update: (el, a) => setText(el, String(a.text)),
 });
 referable('note', {
   icon: '¶',

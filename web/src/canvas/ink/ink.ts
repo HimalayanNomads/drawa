@@ -10,7 +10,8 @@ import { command } from '../../lib/keys';
 import { rowAt } from './inkrows';
 import { startLink } from '../graph/links';
 import { SHAPES, constrain, type Shape } from './shapegeom';
-import { recordAdded, erase, undo, redo } from './inkundo';
+import { recordAdded, erase } from './inkactions';
+import { undo, redo } from '../../lib/actions';
 import { strokes, paint, remove, inkPlaced, type Stroke } from './stroke';
 import { placeAt, toCanvas, type Place } from './inkplace';
 import { writeAt, finishText } from './inktext';
@@ -77,10 +78,8 @@ for (const [label, t, keys] of TOOLS)
       useTool(t);
     },
   });
-const whileDrawing = () => drawing;
-command({ label: 'Undo', group: 'Draw', keys: ['$mod+z'], when: whileDrawing, key: () => void undo() });
-command({ label: 'Redo', group: 'Draw', keys: ['$mod+Shift+z', '$mod+y'], when: whileDrawing, key: () => void redo() });
-command({ label: 'Stop drawing', group: 'Draw', keys: ['Escape'], when: whileDrawing, key: () => setDrawing(false) });
+// (Undo and Redo, Ctrl+Z and Ctrl+Shift+Z, are the canvas's own: lib/actions.ts)
+command({ label: 'Stop drawing', group: 'Draw', keys: ['Escape'], when: () => drawing, key: () => setDrawing(false) });
 
 /* ---------- input: left button draws (or erases); middle button and wheel still pan the canvas ---------- */
 capture.addEventListener('pointerdown', e => {
@@ -237,8 +236,8 @@ for (const b of bar.querySelectorAll<HTMLButtonElement>('[data-ink]')) {
       b.classList.toggle('on', fill);
       b.setAttribute('aria-pressed', String(fill));
       return;
-    } else if (kind === 'undo') return undo();
-    else if (kind === 'redo') return redo();
+    } else if (kind === 'undo') return void undo();
+    else if (kind === 'redo') return void redo();
     else if (kind === 'clear') {
       if (strokes.length)
         confirmBox(

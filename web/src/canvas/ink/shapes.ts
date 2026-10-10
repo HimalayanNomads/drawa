@@ -11,8 +11,8 @@ import { handDrag } from '../core/mode';
 import { inkSelected, onSelect, selected, selectedInk, selectInk, selectionMover } from '../core/select';
 import { changed, onChange, view } from '../core/view';
 import { drawing } from './ink';
+import { changing } from './inkactions';
 import { objectAt, unitsPerPx } from './inksel';
-import { changing } from './inkundo';
 import { paint, type Stroke } from './stroke';
 
 /* ---------- Select mode: a lone selected shape gets a frame and corner handles to resize it ---------- */

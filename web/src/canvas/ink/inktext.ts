@@ -1,9 +1,9 @@
 // Text on the drawing: click to write (the Text tool); click your text again to change it.
 import { closestAt } from '../../lib/dom';
 import { changed } from '../core/view';
+import { changing, erase, recordAdded } from './inkactions';
 import { placeAt } from './inkplace';
 import { rowAt } from './inkrows';
-import { changing, erase, recordAdded } from './inkundo';
 import { inkPlaced, paint, type Stroke, strokes } from './stroke';
 
 const TEXT_PX: Record<number, number> = { 2: 14, 4: 18, 9: 28 }; // pen size -> font size on screen
