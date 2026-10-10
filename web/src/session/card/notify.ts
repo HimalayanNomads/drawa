@@ -1,11 +1,12 @@
-// Telling you when Claude needs you while you're looking elsewhere: a count in the tab title, and a system
-// notification (if you allowed them) when a turn finishes or Claude waits for an approval or an answer.
+// Telling you when an agent finishes: an in-app notice, or a count in the tab title and a system notification
+// (if you allowed them) while you're away. Approvals and plans are announced wherever focus is.
 
+import { watched } from '../../canvas/core/items';
 import { centerOn } from '../../canvas/core/placement';
 import { who } from '../../lib/agents';
-import { make, project } from '../../lib/dom';
+import { button, make, notice, project } from '../../lib/dom';
 import type { Session } from '../../types/session';
-import { focus } from './session';
+import { cur, focus } from './session';
 
 let unread = 0;
 /** Are you looking elsewhere (another tab or app)? */
@@ -41,25 +42,42 @@ const announce = (text: string) => {
   setTimeout(() => (live.textContent = text), 50);
 };
 
-/** Tell you a card finished or needs you: a count in the tab title and a system notification while you're away. */
-export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
-  const head =
+/** Tell you a card finished or needs you, with a completion notice in-app or a system notification while away. */
+export function notify(session: Session, why: 'done' | 'ask' | 'plan') {
+  const heading =
     why === 'done'
-      ? `${who(S.backend)} finished`
+      ? `${who(session.backend)} finished`
       : why === 'plan'
         ? 'Plan ready for review'
-        : `${who(S.backend)} needs your approval`;
-  if (why !== 'done') announce(`${head}: ${S.title}`);
-  if (!isAway()) return;
+        : `${who(session.backend)} needs your approval`;
+  if (why !== 'done') announce(`${heading}: ${session.title}`);
+  if (!isAway()) {
+    if (why !== 'done' || !session.card.isConnected || (cur === session && watched(session.card))) return;
+    const show = button('Show', '', () => {
+      completion.remove();
+      if (!session.card.isConnected) return;
+      focus(session);
+      centerOn(session.card);
+    });
+    show.setAttribute('aria-label', `Show ${session.title}`);
+    const completion = notice(`${heading}: ${session.title}`, show);
+    completion.classList.add('completion');
+    setTimeout(() => completion.remove(), 8000);
+    return;
+  }
   unread++;
   updateTitle();
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const n = new Notification(head, { body: S.title, tag: S.cid + why, silent: why === 'done' });
-  n.onclick = () => {
+  const notification = new Notification(heading, {
+    body: session.title,
+    tag: session.cid + why,
+    silent: why === 'done',
+  });
+  notification.onclick = () => {
     window.focus();
-    focus(S);
-    centerOn(S.card);
-    n.close();
+    focus(session);
+    centerOn(session.card);
+    notification.close();
   };
 }
 

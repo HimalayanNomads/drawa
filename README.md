@@ -176,6 +176,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 </picture>
 
 - **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
+- **Find finished work.** When an agent finishes while you're in Drawa, a short notice names its session. **Show** focuses and centers its card; a card already visible and focused needs no notice. While you're away, the unread tab count and system notifications (if allowed) still let you know.
 - **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
 
 <picture>
