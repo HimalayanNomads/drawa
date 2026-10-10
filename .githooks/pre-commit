@@ -1,14 +1,14 @@
 #!/bin/sh
 # Runs Biome on the staged frontend files. Fully staged files are fixed and re-staged; a file with unstaged
 # changes is only checked, so a partial `git add -p` never sweeps in lines you left out.
-# Enabled by `npm install` in web/ (its prepare script sets core.hooksPath). Skip once with `git commit --no-verify`.
+# Enabled by `pnpm install` in web/ (its prepare script sets core.hooksPath). Skip once with `git commit --no-verify`.
 set -e
 root=$(git rev-parse --show-toplevel)
 files=$(git diff --cached --name-only --diff-filter=ACMR -- 'web/src/*.ts' 'web/vite.config.ts' 'web/scripts/*.mjs' | sed 's|^web/||')
 [ -z "$files" ] && exit 0
 biome="$root/web/node_modules/.bin/biome"
 if [ ! -x "$biome" ]; then
-  echo "pre-commit: Biome isn't installed; run npm install in web/" >&2
+  echo "pre-commit: Biome isn't installed; run pnpm install in web/" >&2
   exit 1
 fi
 cd "$root/web"
@@ -18,9 +18,9 @@ for f in $files; do
   if git diff --quiet -- "$f"; then fix="$fix $f"; else check="$check $f"; fi
 done
 if [ -n "$fix" ]; then
-  "$biome" check --write --no-errors-on-unmatched $fix || { echo "pre-commit: fix the issues above, or run npm run fix in web/" >&2; exit 1; }
+  "$biome" check --write --no-errors-on-unmatched $fix || { echo "pre-commit: fix the issues above, or run pnpm run fix in web/" >&2; exit 1; }
   git add $fix
 fi
 if [ -n "$check" ]; then
-  "$biome" check --no-errors-on-unmatched $check || { echo "pre-commit: these files have unstaged changes, so they were checked, not fixed; run npm run fix in web/" >&2; exit 1; }
+  "$biome" check --no-errors-on-unmatched $check || { echo "pre-commit: these files have unstaged changes, so they were checked, not fixed; run pnpm run fix in web/" >&2; exit 1; }
 fi

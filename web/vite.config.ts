@@ -13,7 +13,7 @@ export default defineConfig({
     {
       name: 'go-server',
       apply: 'serve',
-      // `npm run dev` also starts the Go server (it rebuilds and restarts itself when a .go file changes).
+      // `pnpm run dev` also starts the Go server (it rebuilds and restarts itself when a .go file changes).
       // Project folder: DRAWA_ROOT, default the repo; resolved here because the server runs from the repo.
       // Built and run directly rather than `go run`, which leaves its child server holding the port when killed.
       configureServer() {

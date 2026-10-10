@@ -1,4 +1,4 @@
-// The window-group geometry, checked without a browser. Run: cd web && npx --yes tsx src/items/group/groupgeom.check.ts
+// The window-group geometry, checked without a browser. Run: cd web && pnpm dlx tsx src/items/group/groupgeom.check.ts
 import { compact, frameAround, inner, placeIn, scaleInto, settle } from './groupgeom';
 
 /** Throw unless `got` equals `want` (compared as JSON). */

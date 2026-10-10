@@ -10,7 +10,7 @@ Closes #
 
 ## Testing
 
-- [ ] `cd web && npm run build` passes
+- [ ] `cd web && pnpm run build` passes
 - [ ] `go vet ./... && go test ./...` pass (from the repo root)
 - [ ] Docs updated (README, CLAUDE.md) if behavior, a setting, a folder or a registry changed
 - [ ] Tried with the agents it touches: <!-- Claude Code, OpenCode, Codex, or none -->

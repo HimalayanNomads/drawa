@@ -97,11 +97,11 @@ Update later with `drawa --update`. For manual downloads, custom install locatio
 <details>
 <summary><b>Build from source</b></summary>
 
-Needs Go 1.22+ and Node 20.19+ (or 22.12+).
+Needs Go 1.22+, Node 20.19+ (or 22.12+) and [pnpm](https://pnpm.io/installation) (`npm install -g pnpm`, or `corepack enable`).
 
 ```sh
 git clone https://github.com/HimalayanNomads/drawa.git
-cd drawa/web && npm install && npm run build
+cd drawa/web && pnpm install && pnpm run build
 cd .. && go build -o drawa .
 ```
 
@@ -193,7 +193,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's config directory, if you keep a separate login or set of skills for Drawa. |
 | `DRAWA_NET_TOKEN` | a fresh one per run | The `--net` token. Drawa sets it itself so the token survives its self-restarts; set it only to pick your own. |
 | `DRAWA_MAX_LIVE` | unset (no cap) | Most agent processes kept running at once, of any agent (each takes a few hundred MB). Past it, the least recently used idle session is closed; its next message resumes it. Idle sessions close after 30 minutes either way. |
-| `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `npm run dev` sets it; see `CONTRIBUTING.md`. |
+| `DRAWA_DEV` | unset | `1` trusts the Vite dev server's origin (port 5173). `pnpm run dev` sets it; see `CONTRIBUTING.md`. |
 
 ```sh
 DRAWA_PORT=8766 CLAUDE_CONFIG_DIR=$HOME/.claude-work drawa ~/other/project

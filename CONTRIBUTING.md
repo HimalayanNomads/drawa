@@ -38,24 +38,24 @@ An enhancement makes something Drawa already does better: faster, clearer, easie
 
 ## Development setup
 
-You need Go 1.22+, Node 20.19+ (or 22.12+) and [Claude Code](https://claude.com/claude-code) on `PATH`.
+You need Go 1.22+, Node 20.19+ (or 22.12+), [pnpm](https://pnpm.io/installation) (the version in `web/package.json`'s `packageManager`; pnpm switches to it on its own) and [Claude Code](https://claude.com/claude-code) on `PATH`.
 
 Work on your own fork (see [Making a change](#making-a-change)): only maintainers can push to this repository.
 
 ```sh
 git clone https://github.com/<your-username>/drawa.git
-cd drawa/web && npm install && npm run build
+cd drawa/web && pnpm install && pnpm run build
 cd .. && go run . /path/to/project
 ```
 
-`npm install` also turns on the pre-commit hook in `.githooks/`: it runs Biome on the frontend files you commit, fixing formatting and safe lint issues in files you staged whole (skip it once with `git commit --no-verify`). The same checks run on every pull request (`.github/workflows/checks.yml`).
+`pnpm install` also turns on the pre-commit hook in `.githooks/`: it runs Biome on the frontend files you commit, fixing formatting and safe lint issues in files you staged whole (skip it once with `git commit --no-verify`). The same checks run on every pull request (`.github/workflows/checks.yml`).
 
 When run from source, the server rebuilds and restarts itself whenever a `.go` file changes. A build that fails to compile keeps the old server running.
 
 For hot reload of the UI:
 
 ```sh
-cd web && DRAWA_ROOT=/path/to/project npm run dev
+cd web && DRAWA_ROOT=/path/to/project pnpm run dev
 ```
 
 Open http://localhost:5173. This also builds and starts the Go server, unless one is already running on port 8765. It starts it with `DRAWA_DEV=1`, which makes the server trust the Vite dev origin (port 5173); without it the server refuses requests from that page. If you run the Go server yourself for dev, set `DRAWA_DEV=1` too.
@@ -101,9 +101,9 @@ sequenceDiagram
 ## Before you open a pull request
 
 ```sh
-(cd web && npm run lint)    # Biome: formatting and lint (npm run fix applies the safe fixes)
-(cd web && npm run build)   # tsc + Vite build, must pass with no new errors
-(cd web && for f in $(find src -name '*.check.ts'); do npx --yes tsx "$f"; done)   # pure-logic checks, e.g. the window-group geometry
+(cd web && pnpm run lint)    # Biome: formatting and lint (pnpm run fix applies the safe fixes)
+(cd web && pnpm run build)   # tsc + Vite build, must pass with no new errors
+(cd web && for f in $(find src -name '*.check.ts'); do pnpm dlx tsx "$f"; done)   # pure-logic checks, e.g. the window-group geometry
 go vet ./... && go test ./...
 ```
 
