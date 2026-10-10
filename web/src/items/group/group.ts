@@ -438,8 +438,10 @@ document.addEventListener('moved', ev => {
     if (!went) {
       const n = notice(''); // looks like the delete Undo (canvas/core/window.ts)
       n.classList.add('undo');
+      const text = make('span', '', `Moved out of "${winTitle(from)}"`);
+      text.title = text.textContent!; // the full title, for when the toast cuts it short
       n.replaceChildren(
-        make('span', '', `Moved out of "${winTitle(from)}"`),
+        text,
         button('Undo', '', () => {
           n.remove();
           if (!from.isConnected || !el.isConnected || groupOf(el)) return;
