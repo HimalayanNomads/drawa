@@ -2,7 +2,7 @@
 // streaming and takes typing. Esc or the same button puts it back exactly where it was (canvas or sidebar).
 
 import type { PanzoomObject } from '@panzoom/panzoom';
-import { $, focusedIn, make, shortcutOk } from '../../lib/dom';
+import { $, focusedIn, make } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { redraw } from '../graph/graph';
 import { drawing } from '../ink/ink';
@@ -98,17 +98,22 @@ stage.addEventListener(
   { capture: true, passive: false },
 );
 
-addEventListener('keydown', e => {
-  if (!pz || !shortcutOk(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-  /** The zoom key's action, if the key is one: +, -, or 0 to reset. */
-  const f = ({ '+': pz.zoomIn, '=': pz.zoomIn, '-': pz.zoomOut, '0': pz.reset } as Record<string, () => unknown>)[
-    e.key
-  ];
-  if (!f) return;
-  e.preventDefault();
-  f();
+/** Is a picture in full view, which + - 0 zoom? */
+export const pictureZoomed = () => !!pz;
+// + - 0 zoom the picture in full view, by what the key types (+ is Shift+= on many layouts)
+const ZOOM: Record<string, (z: PanzoomObject) => unknown> = {
+  '+': z => z.zoomIn(),
+  '=': z => z.zoomIn(),
+  '-': z => z.zoomOut(),
+  '0': z => z.reset(),
+};
+command({
+  label: 'Zoom the picture in full view in, out, back',
+  group: 'Windows',
+  keys: ['[Shift]++', '=', '-', '0'],
+  when: pictureZoomed,
+  key: e => void ZOOM[e.key]?.(pz!),
 });
-command({ label: 'Zoom the picture in full view in, out, back', group: 'Windows', keys: ['+', '-', '0'] });
 
 /** `keys`: left from the keyboard, so focus goes back to ⤢ (a mouse exit leaves focus alone, or the tab's buttons stay shown) */
 export function exitFull(keys = false) {
@@ -143,9 +148,10 @@ const sync = syncFull;
 
 // Esc leaves full view, unless it's backing out of something inside first (a menu, a field, Draw mode: Esc goes one
 // layer at a time, and whichever handler takes it calls preventDefault)
-addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || !open || e.defaultPrevented || drawing || !shortcutOk(e)) return;
-  if (document.querySelector('.xsel-menu, .cmds:not([hidden])')) return;
-  e.preventDefault();
-  exitFull(true);
+command({
+  label: 'Leave full view',
+  group: 'Windows',
+  keys: ['Escape'],
+  when: () => !!open && !drawing && !document.querySelector('.xsel-menu, .cmds:not([hidden])'),
+  key: () => exitFull(true),
 });

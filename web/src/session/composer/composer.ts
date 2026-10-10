@@ -28,12 +28,12 @@ import { keepImages } from './drafts';
 command({
   label: 'Send (set in Settings)',
   group: 'Message box',
-  keys: ['Enter', 'Ctrl+Enter'],
+  keys: ['Enter', '$mod+Enter'],
   tip: '`Enter` or `Ctrl+Enter` sends a message: pick which in Settings (the gear)',
 });
 command({ label: 'New line', group: 'Message box', keys: ['Shift+Enter'] });
-command({ label: 'Earlier messages', group: 'Message box', keys: ['↑↓'] });
-command({ label: 'Leave the box', group: 'Message box', keys: ['Esc'] });
+command({ label: 'Earlier messages', group: 'Message box', keys: ['ArrowUp', 'ArrowDown'] });
+command({ label: 'Leave the box', group: 'Message box', keys: ['Escape'] });
 command({ label: 'Skills and commands', group: 'Message box', keys: ['/'] });
 command({ label: 'Mention a canvas item or file', group: 'Message box', keys: ['@'] });
 command({ label: 'Run a shell command', group: 'Message box', keys: ['!'] });

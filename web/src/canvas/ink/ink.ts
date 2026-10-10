@@ -2,9 +2,10 @@
 // Draw mode: freehand ink, shapes, text and the eraser, from the drawing toolbar or Excalidraw's keys. The strokes
 // themselves (painting, saving) are canvas/ink/stroke.ts; where a press lands, canvas/ink/inkplace.ts; writing text,
 // canvas/ink/inktext.ts.
-import { $, confirmBox, shortcutOk, perFrame } from '../../lib/dom';
+import { $, confirmBox, perFrame } from '../../lib/dom';
 import { view, changed } from '../core/view';
 import { track } from '../core/drag';
+import { pictureZoomed } from '../core/fullview';
 import { command } from '../../lib/keys';
 import { rowAt } from './inkrows';
 import { startLink } from '../graph/links';
@@ -51,41 +52,35 @@ function setTool(t: Tool) {
 }
 /** Pick a tool; picking the one that's on goes back to the pen. */
 const pickTool = (t: Tool) => setTool(tool === t ? 'pen' : t); // picking the tool that's on goes back to the pen
-/** Excalidraw's keys for the tools: R/2 rectangle, 3 diamond (D toggles Draw here), O/4 ellipse, A/5 arrow, L/6 line,
- *  P/7 pen, T/8 text, E/0 eraser. */
-const KEYS: Record<string, Tool> = {
-  r: 'rect',
-  Digit2: 'rect',
-  Digit3: 'diamond',
-  o: 'ellipse',
-  Digit4: 'ellipse',
-  a: 'arrow',
-  Digit5: 'arrow',
-  l: 'line',
-  Digit6: 'line',
-  p: 'pen',
-  Digit7: 'pen',
-  t: 'text',
-  Digit8: 'text',
-  e: 'eraser',
-  Digit0: 'eraser',
-};
-/** The drawing tool a key picks (Excalidraw's keys), or null. */
-export const toolKey = (e: KeyboardEvent): Tool | null => KEYS[e.key.toLowerCase()] ?? KEYS[e.code] ?? null;
-for (const [label, keys] of [
-  ['Pen', 'P 7'],
-  ['Arrow between items', 'A 5'],
-  ['Eraser', 'E 0'],
-  ['Text', 'T 8'],
-  ['Rectangle', 'R 2'],
-  ['Diamond', '3'],
-  ['Ellipse', 'O 4'],
-  ['Line', 'L 6'],
-  ['Undo', 'Ctrl+Z'],
-  ['Redo', 'Ctrl+Shift+Z Ctrl+Y'],
-  ['Stop drawing', 'Esc'],
-])
-  command({ label, group: 'Draw', keys: keys.split(' ') });
+// Excalidraw's keys for the tools (D toggles Draw here, so the diamond is 3 alone): letters by what they type, digits
+// by the number row's physical key
+const TOOLS: [string, Tool, string[]][] = [
+  ['Pen', 'pen', ['p', 'Digit7']],
+  ['Arrow between items', 'arrow', ['a', 'Digit5']],
+  ['Eraser', 'eraser', ['e', 'Digit0']],
+  ['Text', 'text', ['t', 'Digit8']],
+  ['Rectangle', 'rect', ['r', 'Digit2']],
+  ['Diamond', 'diamond', ['Digit3']],
+  ['Ellipse', 'ellipse', ['o', 'Digit4']],
+  ['Line', 'line', ['l', 'Digit6']],
+];
+for (const [label, t, keys] of TOOLS)
+  command({
+    label,
+    group: 'Draw',
+    keys,
+    // outside Draw mode a tool's key switches it on with that tool, except T (a sticky note, main.ts) and 0 while a
+    // picture in full view zooms (it resets the zoom, fullview.ts)
+    key: e => {
+      if (drawing) return pickTool(t);
+      if (e.key.toLowerCase() === 't' || (e.code === 'Digit0' && pictureZoomed())) return false;
+      useTool(t);
+    },
+  });
+const whileDrawing = () => drawing;
+command({ label: 'Undo', group: 'Draw', keys: ['$mod+z'], when: whileDrawing, key: () => void undo() });
+command({ label: 'Redo', group: 'Draw', keys: ['$mod+Shift+z', '$mod+y'], when: whileDrawing, key: () => void redo() });
+command({ label: 'Stop drawing', group: 'Draw', keys: ['Escape'], when: whileDrawing, key: () => setDrawing(false) });
 
 /* ---------- input: left button draws (or erases); middle button and wheel still pan the canvas ---------- */
 capture.addEventListener('pointerdown', e => {
@@ -218,22 +213,6 @@ function eraseAt(e: PointerEvent, gone: Stroke[]) {
   }
 }
 
-addEventListener('keydown', e => {
-  if (!drawing || e.defaultPrevented || !shortcutOk(e)) return;
-  const key = e.key.toLowerCase();
-  if ((e.ctrlKey || e.metaKey) && ((key === 'z' && e.shiftKey) || key === 'y')) {
-    e.preventDefault();
-    redo();
-  } else if ((e.ctrlKey || e.metaKey) && key === 'z') {
-    e.preventDefault();
-    undo();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    setDrawing(false);
-  } else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-  const t = toolKey(e);
-  if (t) pickTool(t);
-});
 /** Draw mode with one tool picked. */
 export function useTool(t: Tool) {
   if (!drawing) setDrawing(true);

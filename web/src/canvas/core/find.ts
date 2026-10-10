@@ -5,7 +5,7 @@
 // (lib/keys.ts entries with `run`) matching the query are listed above.
 import { api, q as enc } from '../../lib/api';
 import { $, make, ping, reducedMotion, revealIn } from '../../lib/dom';
-import { command, commands, MOD } from '../../lib/keys';
+import { command, commands, keysOf } from '../../lib/keys';
 import { enhanceMarked } from '../../lib/markdown';
 import { persist } from '../../lib/store';
 import { type CodeSymbol, findSymbols, symbolsOn } from '../../lib/symbols';
@@ -189,7 +189,7 @@ function findCommands(q: string): Hit[] {
     .filter(c => c.run && words.every(w => c.label.toLowerCase().includes(w)))
     .map(c => ({
       run: c.run,
-      key: c.keys?.[0]?.replace(/Ctrl/g, MOD),
+      key: c.keys?.[0] && keysOf(c.keys[0]).join('+'),
       title: c.label,
       kind: '',
       excerpt: '',
@@ -421,21 +421,15 @@ input.addEventListener('keydown', e => {
 });
 // rows keep focus in the input (mousedown is prevented), so this is a real blur; focus that went somewhere stays there
 input.onblur = e => closeFinder(!e.relatedTarget);
-// Ctrl/Cmd+K from anywhere, even while typing in a card
-addEventListener(
-  'keydown',
-  e => {
-    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'k') return;
-    if (document.querySelector('dialog[open]')) return; // a modal (or the whiteboard editor, whose own Ctrl+K it is) has the keyboard
-    e.preventDefault();
-    box.hidden ? openFinder() : closeFinder();
-  },
-  true,
-);
 $('#btn-find').onclick = () => openFinder();
+// from anywhere, even while typing in a card; not while a modal (or the whiteboard editor, whose own Ctrl+K it is) has
+// the keyboard
 command({
   label: 'Find a window, file or command',
   group: 'Items',
-  keys: ['Ctrl+K'],
+  keys: ['$mod+k'],
+  anywhere: true,
+  when: () => !document.querySelector('dialog[open]'),
+  key: () => (box.hidden ? openFinder() : closeFinder()),
   tip: '`Ctrl+K` finds windows and files, and runs commands by name',
 });

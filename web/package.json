@@ -35,7 +35,8 @@
     "mermaid": "^11.17.2",
     "perfect-freehand": "^1.2.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tinykeys": "^4.0.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",

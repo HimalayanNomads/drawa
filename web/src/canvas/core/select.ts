@@ -2,7 +2,7 @@
 // box; Shift/Ctrl+click an item's tab adds or removes it. Dragging a selected item (or, in Select mode, empty canvas
 // inside the selection box) moves them all; Delete (or the bar by the selection) removes them, each through its own
 // remove path. Only items laid out on the canvas take part: pinned, floating and full-view windows don't.
-import { button, confirmBox, EDITABLE, ICON, iconButton, keepOnScreen, make, shortcutOk, toast } from '../../lib/dom';
+import { button, confirmBox, EDITABLE, ICON, iconButton, keepOnScreen, make, toast } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { redraw } from '../graph/graph';
 import { drawing } from '../ink/ink';
@@ -412,41 +412,43 @@ stage.addEventListener(
   true,
 );
 
-command({ label: 'Select all', group: 'Selection', keys: ['Ctrl+A'] });
-command({ label: 'Nudge the selection (Shift: 10px)', group: 'Selection', keys: ['←→↑↓'] });
-command({ label: 'Delete the selection', group: 'Selection', keys: ['Delete'] });
-command({ label: 'Clear the selection', group: 'Selection', keys: ['Esc'] });
+const notDrawing = () => !drawing;
+/** Is anything selected (outside Draw mode, whose keys these are not)? */
+const any = () => !drawing && (!!sel.size || !!inkSel.size);
+command({ label: 'Select all', group: 'Selection', keys: ['$mod+a'], when: notDrawing, key: selectAll });
+// arrow keys nudge the selection (Shift: 10px), like Excalidraw
 const NUDGE: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
   ArrowRight: [1, 0],
   ArrowUp: [0, -1],
   ArrowDown: [0, 1],
 };
-addEventListener('keydown', e => {
-  if (e.defaultPrevented || e.altKey || drawing) return;
-  if (!shortcutOk(e)) return;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-    e.preventDefault();
-    selectAll();
-    return;
-  }
-  if ((!sel.size && !inkSel.size) || e.ctrlKey || e.metaKey) return;
-  if (e.key === 'Escape') {
-    if (anyFull()) return;
-    e.preventDefault();
-    clearSelection();
-  } // full view backs out first
-  else if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    removeSelected();
-  } else if (NUDGE[e.key]) {
-    // arrow keys nudge the selection (Shift: 10px), like Excalidraw
-    e.preventDefault();
+command({
+  label: 'Nudge the selection (Shift: 10px)',
+  group: 'Selection',
+  keys: Object.keys(NUDGE).map(k => `[Shift]+${k}`),
+  when: any,
+  key: e => {
     if ([...sel].some(el => el.dataset.locked)) lockedHint();
     const [dx, dy] = NUDGE[e.key],
       step = e.shiftKey ? 10 : 1;
     const m = selectionMover();
     m(dx * step, dy * step);
     m.end();
-  }
+  },
+});
+command({
+  label: 'Delete the selection',
+  group: 'Selection',
+  keys: ['Delete', 'Backspace'],
+  when: any,
+  key: () => void removeSelected(),
+});
+// full view backs out first
+command({
+  label: 'Clear the selection',
+  group: 'Selection',
+  keys: ['Escape'],
+  when: () => any() && !anyFull(),
+  key: clearSelection,
 });

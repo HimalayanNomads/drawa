@@ -2,7 +2,7 @@
 // (menuSection), so a feature adds its entries without editing this file. A window's tab gets the sections that
 // apply to that window (or the selection it's in); the empty canvas gets the ones that need no window.
 import { keepOnScreen, make } from '../../lib/dom';
-import { keysOf, MOD } from '../../lib/keys';
+import { keysOf } from '../../lib/keys';
 import { drawing } from '../ink/ink';
 import { selected } from './select';
 import { stage, world } from './view';
@@ -46,7 +46,7 @@ function menuRow(it: MenuItem) {
   b.append(make('span', 'xsel-text', it.label));
   if (it.keys) {
     const k = b.appendChild(make('span', 'ctx-keys'));
-    for (const key of keysOf(it.keys)) k.append(make('kbd', '', key === 'Ctrl' ? MOD : key));
+    for (const key of keysOf(it.keys)) k.append(make('kbd', '', key));
   }
   b.onclick = () => {
     closeMenu();

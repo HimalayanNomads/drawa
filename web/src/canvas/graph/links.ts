@@ -2,7 +2,8 @@
 // another. Either end can be a window or a drawing on the canvas itself (a shape, text, a pen stroke). They stay
 // attached as the items move, pin or float. Click one to label it or delete it. Claude sees
 // them in canvas_list and can draw them too (canvas_link).
-import { closestAt, EDITABLE, ICON, iconButton, make, uuid } from '../../lib/dom';
+import { closestAt, ICON, iconButton, make, uuid } from '../../lib/dom';
+import { command } from '../../lib/keys';
 import { persist } from '../../lib/store';
 import { minimalUI, onUIMode } from '../../lib/uimode';
 import { track } from '../core/drag';
@@ -123,6 +124,14 @@ export function addLink(from: End, to: End, label = '', color = 'ink', id: strin
   idOf(from);
   idOf(to); // a drawing gets its id now, before the ink is next saved
   text.textContent = label;
+  // typing its label: Enter or Esc is done, and no key reaches the canvas shortcuts
+  text.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      select(null);
+    }
+  });
   g.addEventListener('pointerdown', e => {
     if (e.button === 0) {
       e.stopPropagation();
@@ -203,25 +212,19 @@ addEventListener(
   },
   true,
 );
-addEventListener('keydown', e => {
-  if (!selected) return;
-  const typing = e.target === selected.text;
-  if (!typing && e.target instanceof Element && e.target.closest(EDITABLE)) return; // typing elsewhere: not the arrow's key
-  if (typing) {
-    e.stopPropagation();
-    if (e.key === 'Enter' || e.key === 'Escape') {
-      e.preventDefault();
-      select(null);
-    }
-    return;
-  }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    removeLink(selected);
-  } else if (e.key === 'Escape' && !e.defaultPrevented) {
-    e.preventDefault();
-    select(null);
-  }
+command({
+  label: 'Delete the selected arrow',
+  group: 'Selection',
+  keys: ['Delete', 'Backspace'],
+  when: () => !!selected,
+  key: () => removeLink(selected!),
+});
+command({
+  label: 'Deselect the arrow',
+  group: 'Selection',
+  keys: ['Escape'],
+  when: () => !!selected,
+  key: () => select(null),
 });
 
 /* ---------- drawing one: press on an item, release on another (the Arrow tool in Draw mode) ---------- */

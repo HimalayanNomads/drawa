@@ -6,7 +6,6 @@ import { clearSelection, refreshActions, selected, selectedInk, selectionAction 
 import { changed } from '../../canvas/core/view';
 import { expand } from '../../canvas/core/window';
 import { groupStrokes, oneGroup, ungroupStrokes } from '../../canvas/ink/inksel';
-import { shortcutOk } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { flash, group, groupable, groupOf, groups, isGroup, join, members, settleFrom, ungroup } from './group';
 import { groupableInk, groupInk, inkGroupOf, joinInk } from './groupink';
@@ -68,15 +67,19 @@ function ungroupSelection() {
   refreshActions();
   changed();
 }
-addEventListener('keydown', e => {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'g' || !shortcutOk(e)) return;
-  e.preventDefault(); // the browser's Ctrl+G is "find next"
-  if (e.shiftKey) ungroupSelection();
-  else groupSelection();
+// taken from the browser, whose Ctrl+G is "find next"
+command({
+  label: 'Group the selection (drawings alone: without a frame)',
+  group: 'Selection',
+  keys: ['$mod+g'],
+  key: groupSelection,
 });
-
-command({ label: 'Group the selection (drawings alone: without a frame)', group: 'Selection', keys: ['Ctrl+G'] });
-command({ label: 'Ungroup the selected groups and drawings', group: 'Selection', keys: ['Ctrl+Shift+G'] });
+command({
+  label: 'Ungroup the selected groups and drawings',
+  group: 'Selection',
+  keys: ['$mod+Shift+g'],
+  key: ungroupSelection,
+});
 selectionAction(
   'Group',
   'Group the selection (Ctrl+G): drawings alone without a frame; groups in it merge',
