@@ -16,10 +16,13 @@ command({ label: 'Settings: theme, interface, fonts', group: 'Canvas', run: () =
 addEventListener('pointerdown', e => {
   if (!panel.hidden && !(e.target as Element).closest('#settings, #btn-settings, .xsel-menu')) setOpen(false);
 });
-addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !panel.hidden && !e.defaultPrevented) {
-    e.preventDefault();
+command({
+  label: 'Close Settings',
+  group: 'Canvas',
+  keys: ['Escape'],
+  when: () => !panel.hidden,
+  key: () => {
     setOpen(false);
     btn.focus();
-  }
+  },
 });

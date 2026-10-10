@@ -1,12 +1,12 @@
 // The ? sheet (every registered shortcut, grouped) and the launch tip (one shortcut worth knowing, per launch).
 // Both read lib/keys.ts when they open, so they list whatever the imported modules registered.
 import { $, button, ICON, iconButton, make } from './dom';
-import { type Command, command, commands, keysOf, MOD } from './keys';
+import { type Command, command, commands, keysOf } from './keys';
 
 const ORDER = ['Canvas', 'Items', 'Windows', 'Selection', 'Draw', 'Message box'];
 
-/** Key caps for one combo: "Shift+W" -> <kbd>Shift</kbd><kbd>W</kbd>; "Ctrl" shows as ⌘ on a Mac. */
-const caps = (combo: string) => keysOf(combo).map(k => make('kbd', '', k === 'Ctrl' ? MOD : k));
+/** Key caps for one combo: "Shift+w" -> <kbd>Shift</kbd><kbd>W</kbd>; "Ctrl" shows as ⌘ on a Mac. */
+const caps = (combo: string) => keysOf(combo).map(k => make('kbd', '', k));
 
 /** Tip text with `backticked` keys drawn as key caps. */
 function tipText(p: HTMLElement, text: string) {
@@ -16,12 +16,20 @@ function tipText(p: HTMLElement, text: string) {
   return p;
 }
 
+/** The combos a row shows: arrow keys alone read as one cap ("←→↑↓", not "← or → or ↑ or ↓"). */
+function shown(keys: string[]) {
+  const each = keys.map(keysOf);
+  return keys.length > 1 && each.every(c => c.length === 1 && /^[←→↑↓]$/.test(c[0]))
+    ? [each.map(c => c[0]).join('')]
+    : keys;
+}
+
 /** One shortcut's row in the ? sheet: its label and its key caps. */
 function row(c: Command) {
   const r = make('div', 'kh-r'),
     k = make('span', 'k');
   r.dataset.label = c.label.toLowerCase();
-  for (const combo of c.keys ?? []) k.appendChild(make('span', 'combo')).append(...caps(combo));
+  for (const combo of shown(c.keys ?? [])) k.appendChild(make('span', 'combo')).append(...caps(combo));
   r.append(make('span', '', c.label), k);
   return r;
 }
@@ -75,7 +83,7 @@ export function showHelp() {
   input.focus();
 }
 $('#btn-help').onclick = () => showHelp();
-command({ label: 'Keyboard shortcuts', group: 'Items', keys: ['?'], run: showHelp });
+command({ label: 'Keyboard shortcuts', group: 'Items', keys: ['[Shift]+?'], run: showHelp });
 
 /* ---------- launch tip ---------- */
 const KEY = 'drawa:tips'; // global, not per project: the shortcuts are the same everywhere

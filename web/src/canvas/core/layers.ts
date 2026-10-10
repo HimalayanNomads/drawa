@@ -1,7 +1,6 @@
 // Layer order: bring forward / send backward / to front / to back, from the right-click menu (canvas/core/menu.ts), the
 // selection bar and ] / [ (with Shift: all the way). Only windows on the canvas take part: pinned and floating ones
 // sit above it anyway. The order is the 'z' key canvas/core/items.ts already saves.
-import { shortcutOk } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { drawing } from '../ink/ink';
 import { hidden, items, onCanvas, overlaps, rect, restack } from './items';
@@ -47,10 +46,10 @@ export function moveLayer(els: HTMLElement[], how: Move) {
 }
 
 const MOVES: [Move, string, string][] = [
-  ['front', 'Bring to front', 'Shift+]'],
-  ['forward', 'Bring forward', ']'],
-  ['backward', 'Send backward', '['],
-  ['back', 'Send to back', 'Shift+['],
+  ['front', 'Bring to front', 'Shift+BracketRight'],
+  ['forward', 'Bring forward', 'BracketRight'],
+  ['backward', 'Send backward', 'BracketLeft'],
+  ['back', 'Send to back', 'Shift+BracketLeft'],
 ];
 /** An icon for a layer action. */
 // to front / to back: two sheets, the moving one filled; forward / backward: an arrow past a line
@@ -72,8 +71,10 @@ const targets = () => {
   const a = active();
   return a ? [a] : [];
 };
+// bare keys, like a drawing app's: with Cmd or Ctrl the browser keeps them (Cmd+Shift+[ / ] switch tabs on a Mac,
+// Cmd+[ / ] go back and forward), so the page never sees them. By physical key: Shift turns them into { and }.
 for (const [how, label, key] of MOVES)
-  command({ label, group: 'Windows', keys: [key], run: () => moveLayer(targets(), how) });
+  command({ label, group: 'Windows', keys: [key], when: () => !drawing, run: () => moveLayer(targets(), how) });
 const barBtn = selectionAction(
   'Layer',
   'Bring forward or send back (] / [, with Shift: all the way)',
@@ -83,24 +84,6 @@ const barBtn = selectionAction(
   },
   els => els.some(stacked),
 );
-
-// bare keys, like a drawing app's: with Cmd or Ctrl the browser keeps them (Cmd+Shift+[ / ] switch tabs on a Mac,
-// Cmd+[ / ] go back and forward), so the page never sees them. By physical key: Shift turns them into { and }.
-addEventListener('keydown', e => {
-  if (
-    e.ctrlKey ||
-    e.metaKey ||
-    e.altKey ||
-    e.defaultPrevented ||
-    drawing ||
-    !shortcutOk(e) ||
-    (e.code !== 'BracketRight' && e.code !== 'BracketLeft')
-  )
-    return;
-  e.preventDefault();
-  const up = e.code === 'BracketRight';
-  moveLayer(targets(), e.shiftKey ? (up ? 'front' : 'back') : up ? 'forward' : 'backward');
-});
 
 // the Layer section of the right-click menu (canvas/core/menu.ts)
 menuSection('Layer', els =>

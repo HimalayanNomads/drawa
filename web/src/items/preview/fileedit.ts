@@ -178,7 +178,7 @@ addEventListener('beforeunload', ev => {
   if ([...edits.values()].some(e => e.editor.dirty())) ev.preventDefault();
 });
 
-command({ label: 'Save the file you’re editing (or :w with Vim motions on)', group: 'Windows', keys: ['Ctrl+S'] });
+command({ label: 'Save the file you’re editing (or :w with Vim motions on)', group: 'Windows', keys: ['$mod+s'] });
 
 // the Settings panel's control
 const sel = $<HTMLSelectElement>('#vim');

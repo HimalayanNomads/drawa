@@ -1,6 +1,6 @@
 // Window keys: W steps through the windows, and M, Shift+F, F2, Shift+P, Shift+S act on the active one (the single
 // selected item, else the frontmost window), so every tab button has a key.
-import { ICON, ping, shortcutOk } from '../../lib/dom';
+import { ICON, ping } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { drawing } from '../ink/ink';
 import { docked, floating, toggleDock, toggleFloat } from './dock';
@@ -69,31 +69,37 @@ const floatActive = () => {
   if (el) toggleFloat(el);
 };
 
+// Draw mode keeps its own keys (Shift+S, Shift+F and the rest belong to its tools); in full view only its own toggle
+// acts: the rest would act behind it
+const free = () => !drawing && !anyFull();
 command({
   label: 'Next window',
   group: 'Windows',
-  keys: ['W'],
+  keys: ['w'],
+  when: free,
   run: () => step(1),
   tip: '`W` steps through your windows; `M` collapses the one it lands on',
 });
-command({ label: 'Previous window', group: 'Windows', keys: ['Shift+W'] });
+command({ label: 'Previous window', group: 'Windows', keys: ['Shift+w'], when: free, key: () => step(-1) });
 command({
   label: 'Collapse or expand the window',
   group: 'Windows',
-  keys: ['M'],
+  keys: ['m'],
+  when: free,
   run: collapseActive,
   tip: '`M` collapses the active window to its tab, and opens it again',
 });
 command({
   label: 'Full view',
   group: 'Windows',
-  keys: ['Shift+F'],
+  keys: ['Shift+f'],
+  when: () => !drawing,
   run: fullActive,
   tip: '`Shift+F` puts the active window in full view; `Esc` puts it back',
 });
-command({ label: 'Rename the window', group: 'Windows', keys: ['F2'], run: renameActive });
-command({ label: 'Pin the window to the sidebar', group: 'Windows', keys: ['Shift+P'], run: pinActive });
-command({ label: 'Stick the window to the screen', group: 'Windows', keys: ['Shift+S'], run: floatActive });
+command({ label: 'Rename the window', group: 'Windows', keys: ['F2'], when: free, run: renameActive });
+command({ label: 'Pin the window to the sidebar', group: 'Windows', keys: ['Shift+p'], when: free, run: pinActive });
+command({ label: 'Stick the window to the screen', group: 'Windows', keys: ['Shift+s'], when: free, run: floatActive });
 
 // the Window section of the right-click menu (canvas/core/menu.ts): the tab's buttons, for the one window clicked
 menuSection('Window', els => {
@@ -127,16 +133,4 @@ menuSection('Window', els => {
       run: () => toggleFloat(el),
     },
   ];
-});
-
-const PLAIN: Record<string, () => void> = { w: () => step(1), m: collapseActive, F2: renameActive };
-const SHIFT: Record<string, () => void> = { w: () => step(-1), f: fullActive, p: pinActive, s: floatActive };
-addEventListener('keydown', e => {
-  // Draw mode keeps its own keys (Shift+S, Shift+F and the rest belong to its tools)
-  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || drawing || !shortcutOk(e)) return;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  const fn = (e.shiftKey ? SHIFT : PLAIN)[k];
-  if (!fn || (anyFull() && fn !== fullActive)) return; // in full view only its own toggle: the rest would act behind it
-  e.preventDefault();
-  fn();
 });
