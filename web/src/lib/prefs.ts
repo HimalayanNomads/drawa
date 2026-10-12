@@ -3,6 +3,7 @@
 // with setPrefs(). This browser keeps the last copy seen (drawa:prefs) for the inline script in index.html, which
 // paints the theme and interface from it before the server answers. Keep DEFAULTS in sync with internal/prefs.
 
+import { CompletionMode } from '../types/prefs';
 import { api, post } from './api';
 import { toast } from './dom';
 
@@ -13,6 +14,7 @@ export interface Prefs {
   darkScheme: string;
   symbols: 'auto' | 'off'; // lib/symbols.ts: code symbols from universal-ctags when it's installed, or never
   vim: 'off' | 'on'; // items/preview/fileedit.ts, items/doc.ts: Vim motions in the file editor and scratchpads
+  completion: CompletionMode;
 }
 const DEFAULTS: Prefs = {
   ui: 'full',
@@ -21,6 +23,7 @@ const DEFAULTS: Prefs = {
   darkScheme: 'claude-dark',
   symbols: 'auto',
   vim: 'off',
+  completion: CompletionMode.Browser,
 };
 const KEY = 'drawa:prefs';
 /** A JSON value from localStorage, or null when it's missing or doesn't parse. */
@@ -33,7 +36,10 @@ const read = (key: string) => {
 };
 
 const seen = read(KEY) as Partial<Prefs> | null;
-let cur: Prefs = { ...DEFAULTS, ...seen };
+/** Old or invalid cached completion choices use the same default as the server. */
+const completionMode = (value: unknown) =>
+  Object.values(CompletionMode).includes(value as CompletionMode) ? (value as CompletionMode) : DEFAULTS.completion;
+let cur: Prefs = { ...DEFAULTS, ...seen, completion: completionMode(seen?.completion) };
 const listeners: ((p: Prefs) => void)[] = [];
 /** Your settings as last read from (or written to) ~/.drawa/config.json. */
 export const prefs = () => cur;
@@ -42,7 +48,7 @@ export const onPrefs = (f: (p: Prefs) => void) => void listeners.push(f);
 
 /** Adopt new settings: keep a copy for the next boot's first paint and tell everyone who listens. */
 function take(p: Partial<Prefs>) {
-  cur = { ...DEFAULTS, ...p };
+  cur = { ...DEFAULTS, ...p, completion: completionMode(p.completion) };
   try {
     localStorage.setItem(KEY, JSON.stringify(cur));
   } catch {}

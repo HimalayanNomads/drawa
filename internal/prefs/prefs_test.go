@@ -110,3 +110,47 @@ func TestInvalidValueReadsAsDefault(t *testing.T) {
 		t.Fatalf("saved %v", m)
 	}
 }
+
+func TestCompletionPreference(t *testing.T) {
+	path := home(t)
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	// A pre-completion config gains browser mode without losing other settings or unknown keys.
+	os.WriteFile(path, []byte(`{"theme":"dark","mine":{"keep":true}}`), 0o644)
+	if got, err := Load(); err != nil || got["completion"] != "browser" || got["theme"] != "dark" {
+		t.Fatalf("old config: %v, %v", got, err)
+	}
+	for _, mode := range []string{"toast", "none", "browser"} {
+		if got, err := Set(map[string]any{"completion": mode}); err != nil || got["completion"] != mode {
+			t.Fatalf("Set(%s) = %v, %v", mode, got, err)
+		}
+		if got, err := Load(); err != nil || got["completion"] != mode {
+			t.Fatalf("reload %s: %v, %v", mode, got, err)
+		}
+		if saved := onDisk(t, path); saved["completion"] != mode || saved["theme"] != "dark" || saved["mine"] == nil {
+			t.Fatalf("saved %v", saved)
+		}
+	}
+	before, _ := os.ReadFile(path)
+	for _, invalid := range []any{"sound", "Browser", "", true, 3, nil} {
+		if _, err := Set(map[string]any{"completion": invalid, "theme": "light"}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("invalid completion %v: %v", invalid, err)
+		}
+		if after, _ := os.ReadFile(path); string(after) != string(before) {
+			t.Fatal("invalid completion changed the config")
+		}
+	}
+	// Hand edits apply on reload, with invalid values preserved on disk but defaulted for the page.
+	for _, mode := range []string{"toast", "invalid"} {
+		os.WriteFile(path, []byte(`{"completion":"`+mode+`","mine":true}`), 0o644)
+		want := mode
+		if mode == "invalid" {
+			want = "browser"
+		}
+		if got, err := Load(); err != nil || got["completion"] != want {
+			t.Fatalf("hand edit %s: %v, %v", mode, got, err)
+		}
+		if saved := onDisk(t, path); saved["completion"] != mode || saved["mine"] != true {
+			t.Fatalf("hand edit overwritten: %v", saved)
+		}
+	}
+}

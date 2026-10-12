@@ -21,8 +21,9 @@ import (
 // shows every window's tab, "minimal" a window's tab only when you reach for the window. "theme": "system" follows
 // the computer's light or dark mode; each mode has its color scheme (the ids in web/src/lib/theme.ts). "symbols":
 // "auto" reads code symbols with universal-ctags when it's installed (internal/symbols), "off" never runs it.
-// "vim": "on" gives the file editor and scratchpads Vim motions.
-var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off"}
+// "vim": "on" gives the file editor and scratchpads Vim motions. "completion" selects the completion alert;
+// "browser" keeps the system notification while away, "toast" shows an in-app notice, "none" skips the alert.
+var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "browser"}
 
 // checks say which values each setting may take. A scheme is only checked for shape: the page falls back to the
 // first scheme when the file names one it doesn't have, so the list of schemes lives in one place.
@@ -33,6 +34,7 @@ var checks = map[string]func(string) bool{
 	"darkScheme":  schemeRe.MatchString,
 	"symbols":     oneOf("auto", "off"),
 	"vim":         oneOf("off", "on"),
+	"completion":  oneOf("browser", "toast", "none"),
 }
 
 var schemeRe = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)

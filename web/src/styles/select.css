@@ -33,6 +33,7 @@
 .xsel-item{display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:14px;align-items:center;padding:8px 10px;border-radius:var(--r-ctl);cursor:pointer;user-select:none}
 .xsel-item+.xsel-item{margin-top:1px}
 .xsel-item.active{background:var(--hover)}
+.xsel-item[aria-disabled=true]{color:var(--muted);cursor:default}
 .xsel-item:active{background:color-mix(in oklab,var(--hover) 60%,var(--line))}
 .xsel-text{grid-row:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xsel-desc{grid-row:2;margin-top:1px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

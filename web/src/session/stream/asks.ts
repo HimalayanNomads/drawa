@@ -23,7 +23,7 @@ export function approval(S: Session, m: Msg) {
     renderCard(S);
     return;
   }
-  notify(S, 'ask');
+  notify(S, 'ask', r.tool_name === 'AskUserQuestion');
   if (r.tool_name === 'AskUserQuestion') return question(S, id, r.input?.questions ?? []);
   // compact prompt: what exactly will run (the command / path), Claude's own description as a caption
   const input = r.input ?? {},

@@ -85,7 +85,13 @@
     <label for="vim">Motions</label>
     <select id="vim"></select>
   </section>
-  <p class="saved">Appearance, symbols and Vim motions sync through <code>~/.drawa/config.json</code>, for every project. Fonts and the send key stay in this browser.</p>
+  <section>
+    <h3>Notifications</h3>
+    <label for="completion">Upon completion</label>
+    <select id="completion" aria-label="Upon completion" aria-describedby="completion-status"></select>
+    <p class="where" id="completion-status">Play sound is not available yet. Question, approval and plan alerts stay on.</p>
+  </section>
+  <p class="saved">Appearance, symbols, Vim motions and completion alerts sync through <code>~/.drawa/config.json</code>, for every project. Fonts and the send key stay in this browser.</p>
 </div>
 
 <div id="inkbar" class="float" hidden role="toolbar" aria-label="Drawing tools">

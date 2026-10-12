@@ -1,12 +1,15 @@
-// Telling you when an agent finishes: an in-app notice, or a count in the tab title and a system notification
-// (if you allowed them) while you're away. Approvals and plans are announced wherever focus is.
+// Completion alerts follow Settings; the unread count and question/approval/plan alerts stay independent.
 
 import { watched } from '../../canvas/core/items';
 import { centerOn } from '../../canvas/core/placement';
 import { who } from '../../lib/agents';
 import { button, make, notice, project } from '../../lib/dom';
+import { prefs } from '../../lib/prefs';
+import { CompletionMode } from '../../types/prefs';
 import type { Session } from '../../types/session';
 import { cur, focus } from './session';
+
+const COMPLETION_NOTICE_TIMEOUT_MS = 3000;
 
 let unread = 0;
 /** Are you looking elsewhere (another tab or app)? */
@@ -42,34 +45,44 @@ const announce = (text: string) => {
   setTimeout(() => (live.textContent = text), 50);
 };
 
-/** Tell you a card finished or needs you, with a completion notice in-app or a system notification while away. */
-export function notify(session: Session, why: 'done' | 'ask' | 'plan') {
-  const heading =
-    why === 'done'
-      ? `${who(session.backend)} finished`
-      : why === 'plan'
-        ? 'Plan ready for review'
-        : `${who(session.backend)} needs your approval`;
-  if (why !== 'done') announce(`${heading}: ${session.title}`);
-  if (!isAway()) {
-    if (why !== 'done' || !session.card.isConnected || (cur === session && watched(session.card))) return;
-    const show = button('Show', '', () => {
-      completion.remove();
-      if (!session.card.isConnected) return;
-      focus(session);
-      centerOn(session.card);
-    });
-    show.setAttribute('aria-label', `Show ${session.title}`);
-    const completion = notice(`${heading}: ${session.title}`, show);
-    completion.classList.add('completion');
-    setTimeout(() => completion.remove(), 8000);
-    return;
+/** Name the backend and session once, distinguishing a question from a tool approval. */
+function getHeading(session: Session, why: 'done' | 'ask' | 'plan', question: boolean) {
+  const name = `${who(session.backend)}: ${session.title}`;
+  if (why === 'done') return `${name} Finished`;
+  if (why === 'plan') return `${name} Plan ready for review`;
+  return `${name} ${question ? 'Questions asked' : 'Needs your approval'}`;
+}
+
+/** Tell you a card finished or needs you, without changing focus until you choose its alert. */
+export function notify(session: Session, why: 'done' | 'ask' | 'plan', question = false) {
+  const heading = getHeading(session, why, question),
+    away = isAway();
+  if (why !== 'done') announce(heading);
+  if (away) {
+    unread++;
+    updateTitle();
   }
-  unread++;
-  updateTitle();
+  if (why === 'done') {
+    const mode = prefs().completion;
+    if (mode === CompletionMode.None) return;
+    if (mode === CompletionMode.Toast) {
+      if (!session.card.isConnected || (cur === session && watched(session.card))) return;
+      const show = button('Show', '', () => {
+        completion.remove();
+        if (!session.card.isConnected) return;
+        focus(session);
+        centerOn(session.card);
+      });
+      show.setAttribute('aria-label', `Show ${session.title}`);
+      const completion = notice(heading, show);
+      completion.classList.add('completion');
+      setTimeout(() => completion.remove(), COMPLETION_NOTICE_TIMEOUT_MS);
+      return;
+    }
+  }
+  if (!away) return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const notification = new Notification(heading, {
-    body: session.title,
     tag: session.cid + why,
     silent: why === 'done',
   });
