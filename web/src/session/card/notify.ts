@@ -6,7 +6,7 @@ import { who } from '../../lib/agents';
 import { button, make, notice, project } from '../../lib/dom';
 import { prefs } from '../../lib/prefs';
 import { CompletionMode } from '../../types/prefs';
-import type { Session } from '../../types/session';
+import { type Session, SessionStopReason } from '../../types/session';
 import { cur, focus } from './session';
 
 const COMPLETION_NOTICE_TIMEOUT_MS = 3000;
@@ -46,23 +46,23 @@ const announce = (text: string) => {
 };
 
 /** Name the backend and session once, distinguishing a question from a tool approval. */
-function getHeading(session: Session, why: 'done' | 'ask' | 'plan', question: boolean) {
+function getHeading(session: Session, sessionStopReason: SessionStopReason, question: boolean) {
   const name = `${who(session.backend)}: ${session.title}`;
-  if (why === 'done') return `${name} Finished`;
-  if (why === 'plan') return `${name} Plan ready for review`;
+  if (sessionStopReason === SessionStopReason.Done) return `${name} Finished`;
+  if (sessionStopReason === SessionStopReason.Plan) return `${name} Plan ready for review`;
   return `${name} ${question ? 'Questions asked' : 'Needs your approval'}`;
 }
 
 /** Tell you a card finished or needs you, without changing focus until you choose its alert. */
-export function notify(session: Session, why: 'done' | 'ask' | 'plan', question = false) {
-  const heading = getHeading(session, why, question),
+export function notify(session: Session, sessionStopReason: SessionStopReason, question = false) {
+  const heading = getHeading(session, sessionStopReason, question),
     away = isAway();
-  if (why !== 'done') announce(heading);
+  if (sessionStopReason !== SessionStopReason.Done) announce(heading);
   if (away) {
     unread++;
     updateTitle();
   }
-  if (why === 'done') {
+  if (sessionStopReason === SessionStopReason.Done) {
     const mode = prefs().completion;
     if (mode === CompletionMode.None) return;
     if (mode === CompletionMode.Toast) {
@@ -83,8 +83,8 @@ export function notify(session: Session, why: 'done' | 'ask' | 'plan', question 
   if (!away) return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const notification = new Notification(heading, {
-    tag: session.cid + why,
-    silent: why === 'done',
+    tag: session.cid + sessionStopReason,
+    silent: sessionStopReason === SessionStopReason.Done,
   });
   notification.onclick = () => {
     window.focus();
