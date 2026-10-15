@@ -2,6 +2,7 @@ package live
 
 import (
 	"errors"
+	"regexp"
 	"sort"
 
 	"drawa/internal/sessions"
@@ -71,6 +72,15 @@ type History interface {
 	Load(sid, agent string) ([]map[string]any, bool) // false: not written yet (the page reads the live stream)
 }
 
+// Searcher is a History that searches every saved session, beyond the ones its List returns. A History without it
+// is searched by filtering its List.
+type Searcher interface {
+	Search(query string) []sessions.Info
+}
+
+// SidOK: sid has the shape of k's session ids.
+func (k Kind) SidOK(sid string) bool { return k.Sid != nil && k.Sid.MatchString(sid) }
+
 // Kind is one backend. Adding one is a package that calls Register from its init().
 type Kind struct {
 	Bin, Label, Install string          // the executable, how preflight names it, where to get it
@@ -79,7 +89,7 @@ type Kind struct {
 	Resume              string          // the terminal command that opens a session, followed by its id ("claude --resume")
 	Modes               map[string]bool // the Drawa permission modes it accepts
 	Unsend              bool            // its Backend is an Unsender: queued messages can be deleted or edited
-	SidOK               func(sid string) bool
+	Sid                 *regexp.Regexp  // what its session ids look like; the page reads it too (/api/agents)
 	Spawn               func(Spec, Sink) (Backend, error)
 	Meta                func() map[string]any // {models, commands}; Meta() caches it
 	History             History               // nil: it has no history list

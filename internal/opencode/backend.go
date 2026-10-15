@@ -84,7 +84,7 @@ func init() {
 	live.Register("opencode", live.Kind{
 		Bin: "opencode", Label: "opencode (OpenCode CLI)", Install: "install it: https://opencode.ai", Title: "OpenCode",
 		Blurb: "Any provider you set up in OpenCode, or its free models", Resume: "opencode --session",
-		Modes: modes, SidOK: sidRe.MatchString,
+		Modes: modes, Sid: sidRe,
 		Spawn: spawn, Meta: meta, History: history{}, OneShot: oneShot, Warn: versionWarning,
 	})
 }

@@ -36,7 +36,7 @@ func init() {
 	Register("claude", Kind{
 		Bin: "claude", Label: "claude (Claude Code CLI)", Install: "install it: https://claude.com/claude-code", Title: "Claude Code",
 		Blurb: "Your Claude subscription, through the claude CLI", Resume: "claude --resume",
-		Modes: config.Modes, SidOK: config.UUIDRe.MatchString, Unsend: true,
+		Modes: config.Modes, Sid: config.UUIDRe, Unsend: true,
 		Spawn: spawnClaude, Meta: claudeMeta, History: claudeHistory{}, OneShot: claudeOneShot,
 	})
 }
@@ -333,6 +333,8 @@ func claudeOneShot(prompt, text string) (bool, string) {
 type claudeHistory struct{}
 
 func (claudeHistory) List() []sessions.Info { return sessions.List() }
+
+func (claudeHistory) Search(query string) []sessions.Info { return sessions.Search(query) }
 
 func (claudeHistory) Load(sid, agent string) ([]map[string]any, bool) {
 	// the CLI writes it once the first message is queued; until then the page reads the live process instead

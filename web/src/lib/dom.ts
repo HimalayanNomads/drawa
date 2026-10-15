@@ -219,6 +219,34 @@ export const ping = (el: HTMLElement) => {
 const still = matchMedia('(prefers-reduced-motion: reduce)');
 /** Has the user asked for less motion? (For script-driven motion like smooth scrolling; CSS has its own fallback.) */
 export const reducedMotion = () => still.matches;
+const SPIN_TURN_MS = 800; // one turn of a refresh icon: the least it spins, so a quick reload still shows it happened
+const spins = new WeakMap<HTMLElement, { running: number; turn?: Animation }>();
+/** A refresh button's icon spins while `work` runs (and while any other work it started is still going), ending on a
+ *  whole turn; with reduced motion it's dimmed instead (CSS, on aria-busy). Returns what `work` gives. */
+export async function spinWhile<T>(button: HTMLElement, work: Promise<T>): Promise<T> {
+  let spin = spins.get(button);
+  if (!spin) spins.set(button, (spin = { running: 0 }));
+  spin.running++;
+  button.setAttribute('aria-busy', 'true');
+  const icon = button.querySelector('svg');
+  if (!spin.turn && icon && !reducedMotion())
+    spin.turn = icon.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], {
+      duration: SPIN_TURN_MS,
+      iterations: Infinity,
+    });
+  try {
+    const [result] = await Promise.all([work, new Promise(done => setTimeout(done, SPIN_TURN_MS))]);
+    return result;
+  } finally {
+    if (--spin.running === 0) {
+      button.removeAttribute('aria-busy');
+      const turn = spin.turn;
+      spin.turn = undefined;
+      // let the turn under way finish rather than snap back
+      turn?.effect?.updateTiming({ iterations: Math.ceil(Number(turn.currentTime ?? 0) / SPIN_TURN_MS) || 1 });
+    }
+  }
+}
 /** No pings while something rebuilds in bulk (replaying a saved session would flash every file it touched). */
 export const quietPings = (on: boolean) => {
   quietUntil = on ? Infinity : 0;

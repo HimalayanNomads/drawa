@@ -12,7 +12,7 @@ Closes #
 
 - [ ] `cd web && pnpm run build` passes
 - [ ] `go vet ./... && go test ./...` pass (from the repo root)
-- [ ] Docs updated (README, CLAUDE.md) if behavior, a setting, a folder or a registry changed
+- [ ] Docs updated (README, CLAUDE.md, web/CLAUDE.md, web/DESIGN.md) if behavior, a setting, a folder or a registry changed
 - [ ] Tried with the agents it touches: <!-- Claude Code, OpenCode, Codex, or none -->
 - [ ] Visible changes checked in light and dark themes, at 390px, and after a reload (add screenshots)
 

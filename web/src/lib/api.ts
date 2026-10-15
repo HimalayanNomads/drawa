@@ -64,3 +64,12 @@ export async function post(path: string, body: object) {
 }
 
 export const q = encodeURIComponent;
+
+/** Project files whose path matches query, best first (the server's fuzzy search); none when it fails. */
+export const matchingFiles = (query: string) => api<string[]>(`files?q=${q(query)}`).catch(() => [] as string[]);
+
+/** A file path as its name and the folder it's in ("" at the root, else ending in /). */
+export function splitPath(path: string) {
+  const cut = path.lastIndexOf('/');
+  return { name: path.slice(cut + 1), folder: path.slice(0, cut + 1) };
+}

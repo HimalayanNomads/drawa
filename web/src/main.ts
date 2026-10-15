@@ -43,20 +43,33 @@ import './canvas/core/layers'; // bring forward / send back: the tab's right-cli
 import { openGit } from './items/git/git';
 import { openGitHub } from './items/github/github';
 import { loadTree, closeInspector, showTab } from './panels/files';
+import { reloadFiles, wordFileFind } from './panels/filefind';
 import { cards, cur, newSession, meta, cycleCards } from './session/card/session';
 import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
 import { loadSessions } from './session/card/history';
+import { DrawerPane } from './types/drawer';
+import { drawerPane, drawerOpen, toggleDrawer, closeDrawer } from './panels/drawer';
 import { agentsReady, installed, lastAgent, setLastAgent, title, blurb, chooser } from './lib/agents';
 
-const drawer = $('#drawer'),
-  inspector = $('#inspector'),
-  drawerBtn = $('#btn-drawer');
-/** Open or close the drawer (files and History). */
-const toggleDrawer = (open = drawer.hidden) => {
-  drawer.hidden = !open;
-  drawerBtn.setAttribute('aria-expanded', String(open));
-};
+const inspector = $('#inspector');
+const HISTORY_KEYS = '$mod+Shift+h',
+  FILES_KEYS = '$mod+Shift+e';
+drawerPane(DrawerPane.History, {
+  title: 'History',
+  button: '#btn-history',
+  keys: HISTORY_KEYS,
+  search: '#sessfind',
+  load: loadSessions,
+});
+drawerPane(DrawerPane.Files, {
+  title: 'Files',
+  button: '#btn-files',
+  keys: FILES_KEYS,
+  search: '#filefind',
+  load: reloadFiles,
+  opening: wordFileFind,
+});
 
 $('#btn-new').onclick = () => newSession();
 
@@ -76,7 +89,11 @@ const showMore = (open: boolean) => {
   more.setAttribute('aria-expanded', String(open));
 };
 showMore(false);
-tail.append(...['#btn-scratch', '#btn-git', '#btn-drawer', '#btn-theme', '#btn-settings'].map(s => $(s)));
+tail.append(
+  ...['#btn-scratch', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(selector =>
+    $(selector),
+  ),
+);
 $('#bar').append(more, tail);
 more.onclick = () => showMore(!tail.classList.contains('open'));
 tail.addEventListener('click', () => showMore(false)); // picking one closes the menu
@@ -112,21 +129,8 @@ function newSessionMenu() {
 }
 $('#btn-scratch').onclick = () => docWindow({ edit: true });
 $('#btn-git').onclick = () => openGit();
-drawerBtn.onclick = () => toggleDrawer();
-$('#dclose').onclick = () => toggleDrawer(false);
 $('#iclose').onclick = closeInspector;
-$('#refresh').onclick = () => {
-  loadTree();
-  loadSessions();
-};
-for (const b of document.querySelectorAll('.seg [data-l], .seg [data-r]')) pressed(b, b.classList.contains('on'));
-for (const b of document.querySelectorAll<HTMLElement>('.seg [data-l]')) {
-  b.onclick = () => {
-    for (const o of document.querySelectorAll('.seg [data-l]')) pressed(o, o === b);
-    $('#tree').hidden = b.dataset.l !== 'tree';
-    $('#sessions').hidden = b.dataset.l !== 'sessions';
-  };
-}
+for (const tab of document.querySelectorAll('.seg [data-r]')) pressed(tab, tab.classList.contains('on'));
 for (const b of document.querySelectorAll<HTMLElement>('[data-r]'))
   b.onclick = () => showTab(b.dataset.r as 'changes' | 'viewer');
 
@@ -157,6 +161,7 @@ const fitSelection = () => {
 };
 /** Outside Draw mode, whose keys these are (P/A/E/T and 7/5/0/8 pick its tools, canvas/ink/ink.ts). */
 const notDrawing = () => !drawing;
+const noDialog = () => !document.querySelector('dialog[open]');
 for (const c of [
   {
     label: 'Pan (Shift: farther)',
@@ -233,10 +238,20 @@ for (const c of [
   { label: 'Git', keys: ['g'], when: notDrawing, run: () => openGit(), tip: '`G` opens Git: changes, commit and push' },
   { label: 'GitHub', keys: ['Shift+g'], run: () => openGitHub() },
   {
-    label: 'History & files',
-    keys: ['Shift+h'],
-    run: () => toggleDrawer(),
-    tip: '`Shift+H` opens past sessions and the project files',
+    label: 'History',
+    keys: [HISTORY_KEYS],
+    anywhere: true, // a Ctrl/⌘ combo types nothing, so it works from a message box too, as Ctrl+K does
+    when: noDialog,
+    run: () => toggleDrawer(DrawerPane.History),
+    tip: '`Ctrl+Shift+H` opens past sessions: search them by name, or paste a session ID to continue it',
+  },
+  {
+    label: 'Files',
+    keys: [FILES_KEYS],
+    anywhere: true,
+    when: noDialog,
+    run: () => toggleDrawer(DrawerPane.Files),
+    tip: '`Ctrl+Shift+E` opens the project files: search them by name, or code symbols',
   },
 ])
   command({ ...c, group: 'Items' });
@@ -297,8 +312,8 @@ const closable = (): (() => void) | undefined =>
       }
     : !inspector.hidden
       ? closeInspector
-      : !drawer.hidden
-        ? () => toggleDrawer(false)
+      : drawerOpen()
+        ? closeDrawer
         : undefined;
 command({
   label: 'Close the menu or side panel',

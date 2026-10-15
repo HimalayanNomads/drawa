@@ -29,7 +29,7 @@ func init() {
 	live.Register("agy", live.Kind{
 		Bin: "agy", Label: "agy (Antigravity CLI)", Install: "install it: https://antigravity.google, then sign in once by running agy",
 		Title: "Antigravity", Blurb: "Your Google sign-in; no approvals: read-only, or Allow everything",
-		Resume: "agy --conversation", Modes: map[string]bool{"default": true, "bypassPermissions": true}, SidOK: config.UUIDRe.MatchString,
+		Resume: "agy --conversation", Modes: map[string]bool{"default": true, "bypassPermissions": true}, Sid: config.UUIDRe,
 		Spawn: spawn, Meta: models, History: history{}, OneShot: oneShot, Warn: versionWarning,
 		// switching effort means restarting agy, and its models name their own level (#34)
 		NoEffort: "https://github.com/HimalayanNomads/drawa/issues/34#issuecomment-5867108371",

@@ -9,7 +9,7 @@ import { changed } from '../../canvas/core/view';
 import { makeWindow } from '../../canvas/core/window';
 import { forget } from '../../canvas/graph/graph';
 import { api, post } from '../../lib/api';
-import { button, confirmBox, ICON, iconButton, make, ping, project } from '../../lib/dom';
+import { button, confirmBox, ICON, iconButton, make, ping, project, spinWhile } from '../../lib/dom';
 import { persist } from '../../lib/store';
 import { definable, showRefs } from '../../panels/defs';
 import { GH_ICON, openGitHub } from '../github/github';
@@ -174,14 +174,14 @@ function note(text: string, bad = false) {
 /** The refresh button: the changes held back while you read a diff, drawn, with status read again past the server's
  *  few-second cache and each pull request strip in view asked again. */
 async function reload() {
-  const w = win;
-  if (!w || w.el.ariaBusy) return;
-  w.el.ariaBusy = 'true';
+  const gitWindow = win;
+  if (!gitWindow || gitWindow.el.ariaBusy) return;
+  gitWindow.el.ariaBusy = 'true';
   try {
-    await refresh('fresh');
-    for (const v of w.views.values()) if (w.single || isOpen(v)) v.gh.refresh();
+    await spinWhile(gitWindow.el.querySelector<HTMLElement>('.grefresh')!, refresh('fresh'));
+    for (const repoView of gitWindow.views.values()) if (gitWindow.single || isOpen(repoView)) repoView.gh.refresh();
   } finally {
-    w.el.ariaBusy = null;
+    gitWindow.el.ariaBusy = null;
   }
 }
 
