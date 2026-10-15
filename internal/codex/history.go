@@ -41,7 +41,8 @@ const (
 )
 
 // threads is this project's threads (not sub-agents'), newest first: one page of limit, or with every set, page
-// after page (up to maxSearchPages), all within one oneOffTimeout. ok is false when a call failed or time ran out:
+// after page (up to maxSearchPages), all within one oneOffTimeout. ponytail: past maxSearchPages×searchPageSize
+// threads the oldest are left out (and that list is cached as whole); raise the cap or page lazily if that's reached. ok is false when a call failed or time ran out:
 // what it found so far, not to be kept as the whole list.
 func threads(limit int, every bool) (out []thread, ok bool) {
 	out = []thread{}
@@ -92,12 +93,18 @@ func (history) List() []sessions.Info {
 	return out
 }
 
+// everyThread is every thread threads finds while searching, newest first as the list shows them: sorted once per
+// fetch, not per keystroke.
+func everyThread() ([]thread, bool) {
+	all, ok := threads(searchPageSize, true)
+	slices.SortStableFunc(all, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
+	return all, ok
+}
+
 // Search is the newest of all this project's threads whose name, first message or id has every word of query.
 func (history) Search(query string) []sessions.Info {
-	all := slices.Clone(searchCache.Get(searchFresh, func() ([]thread, bool) { return threads(searchPageSize, true) }))
-	slices.SortStableFunc(all, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) }) // newest first, as the list shows them
 	out := []sessions.Info{}
-	for _, t := range all {
+	for _, t := range searchCache.Get(searchFresh, everyThread) {
 		if len(out) == sessions.MaxListed {
 			break
 		}

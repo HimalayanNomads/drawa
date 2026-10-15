@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"drawa/internal/config"
@@ -222,16 +223,29 @@ func sidPattern(k live.Kind) string {
 // ponytail: each list is its newest sessions.MaxListed, and so is the merged one; paginate if needed.
 func allSessions(query string) []sessions.Info {
 	query = strings.TrimSpace(query)
-	out := []sessions.Info{}
-	for _, name := range live.Names() {
+	// every backend at once: the ones that ask their CLI can each take seconds, which shouldn't add up
+	names := live.Names()
+	each := make([][]sessions.Info, len(names))
+	var wg sync.WaitGroup
+	for index, name := range names {
 		k, _ := live.Lookup(name)
 		if k.History == nil {
 			continue
 		}
-		for _, s := range historyOf(k.History, query) {
-			s.Backend = name
-			out = append(out, s)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			found := historyOf(k.History, query)
+			for at := range found {
+				found[at].Backend = name
+			}
+			each[index] = found
+		}()
+	}
+	wg.Wait()
+	out := []sessions.Info{}
+	for _, found := range each {
+		out = append(out, found...)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
 	return out[:min(len(out), sessions.MaxListed)]

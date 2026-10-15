@@ -81,6 +81,9 @@ const (
 // read takes in the lines written since the last read. A last line without its newline is still being written:
 // it's left for next time.
 func (t *titles) read(path string) {
+	if info, err := os.Stat(path); err == nil && info.Size() == t.offset {
+		return // nothing written since: the list asks after every turn, mostly of files that haven't changed
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return
@@ -115,11 +118,11 @@ func (t *titles) readFrom(f *os.File) {
 	})
 }
 
-// skim is a long transcript's first read: its start until the first prompt and reply are found (headBytes at
-// most), then its last tailBytes.
+// skim is a long transcript's first read: its start until the first prompt and reply are found (lines starting in
+// its first headBytes, so a huge first message, a pasted picture, is still read whole), then its last tailBytes.
 func (t *titles) skim(f *os.File, size int64) {
 	eachLine(f, func(line []byte) bool {
-		if line[len(line)-1] != '\n' || t.offset+int64(len(line)) > headBytes {
+		if line[len(line)-1] != '\n' || t.offset >= headBytes {
 			return false
 		}
 		t.offset += int64(len(line))

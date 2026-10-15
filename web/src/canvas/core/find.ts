@@ -158,8 +158,8 @@ function findFiles() {
     if (peekFile) got.slice(0, 3).forEach(h => peekOf(h.path!, h.line));
   };
   typing = setTimeout(() => {
-    matchingFiles(q).then(paths => answer(h => (found = h), paths.map(fileHit)));
-    if (withSyms) findSymbols(q).then(l => answer(h => (syms = h), l.map(symHit)));
+    matchingFiles(q).then(paths => answer(fileHits => (found = fileHits), paths.map(fileHit)));
+    if (withSyms) findSymbols(q).then(symbols => answer(symbolHits => (syms = symbolHits), symbols.map(symHit)));
   }, 120);
 }
 /** A project file as a Ctrl+K hit: its name, with its folder as the excerpt. */
