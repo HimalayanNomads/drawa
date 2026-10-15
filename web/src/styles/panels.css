@@ -1,8 +1,8 @@
 /* Side panels: the drawer (history + file tree) and the inspector (a file's diffs + the file).
    Their section switchers are folder tabs too: the open tab joins the panel's content. */
 .panel{position:fixed;z-index:var(--z-panel);display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);overflow:hidden}
-#drawer{top:64px;left:12px;bottom:12px;width:320px;animation:from-left .25s var(--ease)}
-#inspector{top:64px;right:12px;bottom:12px;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);animation:from-right .25s var(--ease)}
+#drawer{top:var(--below-bar);left:12px;bottom:12px;width:320px;animation:from-left .25s var(--ease)}
+#inspector{top:var(--below-bar);right:12px;bottom:12px;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);animation:from-right .25s var(--ease)}
 @keyframes from-left{from{transform:translateX(-16px);opacity:0}}
 @keyframes from-right{from{transform:translateX(16px);opacity:0}}
 .panel .bar{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--line)}
@@ -24,7 +24,11 @@
 .bar.tabs>.seg+*{margin-left:auto} /* buttons sit at the strip's right end */
 
 /* history */
-#sessions{padding:6px}
+#history,#files{padding:6px}
+.dbar{padding:4px 8px 4px 14px}
+#dtitle{flex:1;margin:0;font:600 13px var(--sans);color:var(--ink)} /* the open pane's name, plain: no tab around it */
+.drawerfind{position:sticky;top:0;z-index:var(--z-sticky);box-shadow:0 -6px 0 var(--bg),0 4px 0 var(--bg);width:100%;height:30px;margin-bottom:4px;padding:0 9px;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);color:var(--ink);font:12.5px var(--sans);outline:none;cursor:text}
+.drawerfind:focus{border-color:var(--focus)}
 .sess{display:block;width:100%;padding:9px 12px;border-radius:var(--r-ctl);text-align:left}
 .sess:hover,.sessrow:hover .sess{background:var(--hover)}
 .sess .t{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--ink-2)}
@@ -39,7 +43,14 @@
 
 /* file tree */
 #tree,#tree ul{list-style:none;margin:0;padding:0}
-#tree{padding:6px}
+/* Files search: files by name, then code symbols (when ctags is on), in place of the tree while it has a query */
+#filehits button{display:flex;align-items:baseline;gap:8px;width:100%;min-height:26px;padding:4px 8px;border-radius:var(--r-ctl);text-align:left;font-size:13px;color:var(--ink-2)}
+#filehits button:hover,#filehits button:focus-visible{background:var(--hover);color:var(--ink)}
+#filehits .name{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#filehits .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11.5px var(--mono);color:var(--muted)}
+#filehits .tag{flex:none;padding:0 5px;border:1px solid var(--line);border-radius:var(--r-tag);font:11px var(--mono);color:var(--muted)}
+#filehits h3{margin:8px 8px 2px;font:500 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+#filehits .none{padding:12px 8px;text-align:left}
 #tree ul{margin-left:13px;padding-left:4px;border-left:1px solid var(--line)}
 #tree button{display:flex;align-items:center;width:100%;height:26px;padding:0 8px;border-radius:var(--r-ctl);text-align:left;font-size:13px;color:var(--ink-2);white-space:nowrap}
 #tree button:hover{background:var(--hover);color:var(--ink)}
@@ -134,7 +145,7 @@ body.has-dock #nav{right:calc(var(--dock-w,420px) + 24px)}
 body.has-dock #hint{display:none}
 
 /* full view: one window lifted out to fill the screen, above the canvas; the dimmed margin closes it */
-.fullview{position:fixed;inset:0;padding:64px 12px 12px;cursor:auto;background:color-mix(in oklab,var(--canvas) 72%,transparent);animation:enter .15s var(--ease)}
+.fullview{position:fixed;inset:0;padding:var(--below-bar) 12px 12px;cursor:auto;background:color-mix(in oklab,var(--canvas) 72%,transparent);animation:enter .15s var(--ease)}
 .fullview>.win{position:relative;left:auto!important;top:auto!important;width:100%!important;height:100%!important;z-index:auto!important}
 .fullview>.win>.grip{display:none}
 .fullview>.win>.win-h{cursor:default}

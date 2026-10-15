@@ -15,6 +15,8 @@ export interface Agent {
   canWrite: boolean;
   canUnsend?: boolean;
   resume?: string;
+  /** what its session IDs look like, a regex ("": it takes none) */
+  sid?: string;
   noEffort?: string;
   textOnly?: boolean;
 }

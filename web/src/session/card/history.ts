@@ -8,44 +8,135 @@ import { agentsStopped, dropAgents } from '../../items/agent';
 import { dropPlans } from '../../items/plan/plan';
 import { copySidTip, installed, title } from '../../lib/agents';
 import { api, q, type SavedMessage, type SessionInfo } from '../../lib/api';
-import { $, ago, button, copyButton, make, quietPings } from '../../lib/dom';
+import { $, ago, button, copyButton, make, quietPings, toast } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
+import { searchBox } from '../../lib/searchbox';
 import { save } from '../../lib/store';
 import type { Session } from '../../types/session';
 import { replay } from '../stream/stream';
 import { pinToBottom, renderCard } from './render';
 import { cards, focus, newSession } from './session';
 
-/** List this folder's saved conversations in the History panel (the open ones marked). */
+let saved: SessionInfo[] = []; // what the server answered for savedFor (all, newest first, when empty)
+let savedFor = ''; // the query the list shows the answer to: the box can be ahead of it
+let asked = ''; // the query the newest request was for: an answer to an older one is dropped
+
+/** Is the History pane on screen? Opening it loads it, so while it's closed there's nothing to keep fresh. */
+const historyShown = () => !$('#drawer').hidden && !$('#history').hidden;
+
+/** List this folder's saved conversations in the History panel (the open ones marked): the newest, or every one
+ *  that matches the search box, by name or ID (the server searches them all, not only the newest). Skipped while the
+ *  pane is closed: callers reload it after every turn, and a query left in the box would search everything each
+ *  time. False when the list wasn't drawn for what the box holds (closed, failed, or a newer search took over). */
 export async function loadSessions() {
-  let list: SessionInfo[];
+  if (!historyShown()) return false;
+  const query = findBox.value.trim();
+  asked = query;
+  let found: SessionInfo[];
   try {
-    list = await api<SessionInfo[]>('sessions');
+    found = await api<SessionInfo[]>(query ? `sessions?q=${q(query)}` : 'sessions');
   } catch {
-    return;
+    return false;
   }
-  if (!list.length)
-    return $('#sessions').replaceChildren(
-      make('p', 'none', 'No saved sessions for this folder yet. Every session you start here is saved automatically.'),
-    );
+  if (query !== asked) return false;
+  saved = found;
+  savedFor = query;
+  showSessions();
+  return true;
+}
+
+/** Could the query be a session ID: does it have the shape of some installed agent's? */
+const maybeId = (query: string) => installed().some(agent => agent.sid && new RegExp(agent.sid).test(query));
+
+/** Draw the list. An ID that matched nothing gets a row to continue it (another agent's, or one not listed). */
+function showSessions() {
+  const query = savedFor;
+  const rows: HTMLElement[] = saved.map(sessionRow);
+  // after the matches, so Enter (which opens the first row) opens a match rather than asking for an ID that isn't one
+  if (maybeId(query) && !saved.some(session => session.id === query)) rows.push(continueRow(query));
+  if (rows.length) return $('#sessions').replaceChildren(...rows);
   $('#sessions').replaceChildren(
-    ...list.map(s => {
-      const b = make('button', `sess${cards.some(t => t.sid === s.id) ? ' open' : ''}`),
-        d = make('span', 'd');
-      d.append(make('span', '', ago(s.mtime)));
-      if (installed().length > 1) d.prepend(make('span', 'agent', title(s.backend ?? 'claude'))); // which agent's, once there's a choice
-      b.append(make('span', 't', s.title), d);
-      b.title = s.title;
-      b.onclick = () => resume(s);
-      const row = make('div', 'sessrow'); // the copy button beside the row's button, not inside it (no nested buttons)
-      row.append(
-        b,
-        copyButton(() => s.id, copySidTip(s.backend ?? 'claude', s.id)),
-      );
-      return row;
-    }),
+    make(
+      'p',
+      'none',
+      query
+        ? 'No session matches. Paste a session ID to continue it.'
+        : 'No saved sessions for this folder yet. Every session you start here is saved automatically.',
+    ),
   );
 }
+
+/** One saved session: opens it on the canvas, with a button that copies its ID. */
+function sessionRow(session: SessionInfo) {
+  const open = make('button', `sess${cards.some(card => card.sid === session.id) ? ' open' : ''}`),
+    details = make('span', 'd');
+  details.append(make('span', '', ago(session.mtime)));
+  if (installed().length > 1) details.prepend(make('span', 'agent', title(session.backend ?? 'claude'))); // which agent's, once there's a choice
+  open.append(make('span', 't', session.title), details);
+  open.title = session.title;
+  open.onclick = () => resume(session);
+  const row = make('div', 'sessrow'); // the copy button beside the row's button, not inside it (no nested buttons)
+  row.append(
+    open,
+    copyButton(() => session.id, copySidTip(session.backend ?? 'claude', session.id)),
+  );
+  return row;
+}
+
+/** A session ID typed or pasted that isn't in the list (older than its newest 50, or not listed yet). */
+function continueRow(id: string) {
+  const open = make('button', 'sess');
+  open.append(make('span', 't', `Continue session ${id}`), make('span', 'd', 'Open it by its ID'));
+  open.onclick = () => resumeById(id);
+  return open;
+}
+
+/** The first thing you typed in a transcript, to name its card. Text in <tags> is the CLI's own (a slash command, a
+ *  caveat), not something you typed, as the server's list skips it too. */
+function firstPrompt(messages: SavedMessage[]) {
+  for (const message of messages) {
+    if (message.role !== 'user' || (message as { isMeta?: boolean }).isMeta) continue;
+    const text =
+      typeof message.content === 'string'
+        ? message.content
+        : message.content.find(block => block.type === 'text' && !block.text?.startsWith('<'))?.text;
+    if (text?.trim() && !text.startsWith('<')) return text.trim();
+  }
+}
+
+/** A session asked for by its ID, and the agent that had it. */
+interface FoundSession {
+  backend: string;
+  messages: SavedMessage[];
+}
+
+/** Continue a session by its ID: each installed agent is asked for it, and the first that has it opens it.
+ *  ponytail: only this folder's sessions (where each CLI keeps them); one from another project isn't found. */
+async function resumeById(id: string) {
+  const open = cards.find(card => card.sid === id);
+  if (open) return resume({ id, title: open.title, backend: open.backend });
+  const tries = installed().map(agent =>
+    api<SavedMessage[]>(sessionPath(id, agent.name)).then(messages => {
+      // empty: Codex's answer for another project's thread, nothing to continue
+      if (!Array.isArray(messages) || !messages.length) throw new Error('missing');
+      return { backend: agent.name, messages };
+    }),
+  );
+  let found: FoundSession;
+  try {
+    found = await Promise.any(tries);
+  } catch {
+    return toast(`No saved session with the ID ${id} in this folder.`);
+  }
+  findBox.value = '';
+  await resume({ id, title: firstPrompt(found.messages) ?? id, backend: found.backend }, undefined, {
+    got: Promise.resolve(found.messages),
+  });
+}
+
+const SEARCH_DELAY_MS = 200; // ask the server once typing pauses, not on every key
+const findBox = $('#sessfind') as HTMLInputElement;
+searchBox(findBox, { delayMs: SEARCH_DELAY_MS, search: loadSessions, results: $('#sessions'), rowSelector: '.sess' });
 
 const SHOWN = 300; // messages put in the page when a session opens
 

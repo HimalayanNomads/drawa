@@ -13,14 +13,13 @@
 @media (max-width:560px){
   #btn-more{display:inline-flex}
   #btn-help{display:none} /* keyboard shortcuts: no use on a phone, and the bar has no room for it */
-  #bar-more{position:fixed;top:64px;right:12px;display:none;flex-direction:column;gap:2px;min-width:200px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
+  #bar-more{position:fixed;top:var(--below-bar);right:8px;display:none;flex-direction:column;gap:2px;min-width:200px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift)}
   #bar-more.open{display:flex;animation:enter .15s var(--ease)}
   #bar #bar-more .btn{justify-content:flex-start;width:auto;padding:0 10px;border-color:transparent}
   #bar-more .btn .lbl{display:inline}
   #btn-theme::after{content:attr(aria-label)} /* an icon alone doesn't say what it does in a list */
   #btn-settings::after{content:attr(aria-label)}
 }
-@media (max-width:340px){#bar{gap:4px}} /* the smallest phones: tighter, rather than scrolling */
 .brand-text{display:flex;flex-direction:column;justify-content:center;min-width:0;line-height:1.25}
 #pname{overflow:hidden;text-overflow:ellipsis}
 .logo{align-self:center;width:18px;height:18px;flex:none;background:conic-gradient(from 200deg,var(--edit-hue),var(--write-hue),var(--run-hue),var(--read-hue),var(--edit-hue));
@@ -28,7 +27,7 @@
 .brand b{min-width:0;font-weight:650;font-size:14px;white-space:nowrap}
 /* narrower windows: the toolbar steps down instead of overlapping (labels stay as aria-labels and tooltips) */
 @media (max-width:1280px){#ppath{display:none}}
-@media (max-width:1100px){#btn-find{padding:0 8px}#btn-draw .lbl,#btn-scratch .lbl,#btn-git .lbl,#btn-drawer .lbl{display:none}#btn-draw,#btn-scratch,#btn-git,#btn-drawer{padding:0 8px}#bar .xsel-label{max-width:150px}}
+@media (max-width:1100px){#btn-find{padding:0 8px}#btn-draw .lbl,#btn-scratch .lbl,#btn-git .lbl,#btn-history .lbl,#btn-files .lbl{display:none}#btn-draw,#btn-scratch,#btn-git,#btn-history,#btn-files{padding:0 8px}#bar .xsel-label{max-width:150px}}
 @media (max-width:560px){#pname{display:none}} /* phones: the logo stays; a squeezed name would be a sliver */
 @media (max-width:820px){#btn-new .lbl{display:none}#btn-new{padding:0 8px}#bar .xsel-label{max-width:110px}}
 #ppath{font:10px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:28vw}
@@ -36,7 +35,7 @@
 #btn-theme,#btn-settings{width:32px;padding:0;justify-content:center}
 #btn-settings[aria-expanded=true]{background:var(--sel);border-color:var(--accent)}
 
-#inkbar{top:64px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow);animation:enter .2s var(--ease)}
+#inkbar{top:var(--below-bar);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow);animation:enter .2s var(--ease)}
 #inkbar .sep{margin:0 4px}
 #inkbar .sw{width:26px;height:26px;border-radius:50%;border:2px solid transparent;background:var(--c);box-shadow:inset 0 0 0 2px var(--bg)}
 #inkbar .sw.on{border-color:var(--c)}
@@ -45,7 +44,7 @@
 #inkbar .sz.on,#inkbar .sz:hover{background:var(--hover)}
 #inkbar .icon.on{background:var(--sel);color:var(--accent-text)}
 
-#settings{top:64px;left:12px;width:360px;max-height:calc(100dvh - 76px);overflow:auto;padding:4px 16px 12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);font-size:12.5px;animation:enter .18s var(--ease)}
+#settings{top:var(--below-bar);left:12px;width:360px;max-height:calc(100dvh - var(--below-bar) - 12px);overflow:auto;padding:4px 16px 12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-box);box-shadow:var(--shadow-lift);font-size:12.5px;animation:enter .18s var(--ease)}
 #settings section{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;gap:8px 14px;padding:12px 0;border-bottom:1px solid var(--line)}
 #settings h3{grid-column:1/-1;margin:0 0 2px;font-size:12.5px;font-weight:600;color:var(--ink)}
 #settings label{font-size:12.5px;color:var(--muted)}
@@ -131,3 +130,20 @@
 @media (hover:none){html:not([data-keys]) [data-key]::after{display:none}} /* until a hardware key is pressed (main.ts) */
 @media (hover:hover){#bar .btn[data-key],#modes button[data-key]{padding-right:12px}}
 html[data-keys] :is(#bar .btn,#modes button)[data-key]{padding-right:12px} /* room for it beside the label or icon */
+@media (hover:hover){#bar .btn[data-key*="⇧"]{padding-right:24px}#bar .btn[data-key^="Ctrl"]{padding-right:36px}}
+html[data-keys] #bar .btn[data-key*="⇧"]{padding-right:24px} /* a combo is wider than one key: ⌘⇧H, or Ctrl⇧H off a Mac */
+html[data-keys] #bar .btn[data-key^="Ctrl"]{padding-right:36px}
+/* phones (after the key hints' padding above, which it undoes): a smaller, quieter bar that leaves the canvas the room. Key hints go (no keyboard), controls are 28px */
+@media (max-width:560px){
+  #bar{top:8px;left:8px;max-width:calc(100vw - 16px);gap:4px;padding:4px}
+  #bar .btn{height:28px;padding:0 7px}
+  #bar #btn-more{width:28px;padding:0}
+  #modes{height:28px}
+  #modes button{height:22px;padding:0 5px}
+  #bar .newagent{margin-left:-4px}
+  .brand{padding:0 4px}
+  #bar [data-key]::after{display:none}
+  :is(html,html[data-keys]) :is(#bar .btn,#modes button)[data-key]{padding-right:7px}
+  :is(html,html[data-keys]) #bar .btn:is([data-key*="⇧"],[data-key^="Ctrl"]){padding-right:7px}
+  #bar #bar-more .btn{height:34px} /* the ⋯ menu's rows stay easy to tap */
+}
