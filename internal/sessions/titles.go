@@ -136,7 +136,7 @@ func (t *titles) readFrom(f *os.File) {
 
 // skim is a long transcript's first read: its start until the first prompt and reply are found (lines starting in
 // its first headBytes; the one crossing it is read whole if it ends within maxHeadLine more), then its last
-// tailBytes. Lines are read up to that bound and no further, so a huge one costs nothing.
+// tailBytes. A line is read no further than that bound, so a huge one costs at most maxHeadLine of reading.
 func (t *titles) skim(f *os.File, size int64) {
 	head := bufio.NewReaderSize(f, 64<<10)
 	for t.offset < headBytes && (t.prompt == "" || !t.replied) {

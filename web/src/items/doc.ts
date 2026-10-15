@@ -52,7 +52,7 @@ const groupOpened = new MutationObserver(records => {
   for (const record of records) {
     const doc = record.target as HTMLElement,
       body = bodyOf(doc);
-    if (hidden(doc) || shown.has(doc) || !body) continue;
+    if (!doc.isConnected || hidden(doc) || shown.has(doc) || !body) continue; // gone docs stay unwatched
     visibleDocs.unobserve(body);
     visibleDocs.observe(body);
   }

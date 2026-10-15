@@ -104,9 +104,12 @@ func (panickingHistory) List() []sessions.Info { panic("boom") }
 func (panickingHistory) Load(string, string) ([]map[string]any, bool) {
 	panic("boom")
 }
+func (panickingHistory) Search(string) []sessions.Info { panic("boom") }
 
 func TestHistoryOfBackendSurvivesAPanic(t *testing.T) {
-	if found := historyOfBackend("broken", panickingHistory{}, ""); found != nil {
-		t.Fatalf("a panicking backend should be left out: %v", found)
+	for _, query := range []string{"", "login"} { // its list, and its search (where Codex pages through app-server)
+		if found := historyOfBackend("broken", panickingHistory{}, query); found != nil {
+			t.Fatalf("a panicking backend should be left out (query %q): %v", query, found)
+		}
 	}
 }
