@@ -28,11 +28,12 @@ type Info struct {
 // titles is what a transcript is called, gathered as it's read: the CLI appends a `custom-title` line on /rename
 // and an `ai-title` line when it names the session itself, again and again as it goes (the last one counts).
 type titles struct {
-	offset    int64  // how far the file has been read: transcripts only grow, so the next read starts here
-	prompt    string // the first thing typed
-	replied   bool   // the model answered: a transcript without that (Drawa's /usage probe) isn't listed
-	custom    string // the user's /rename
-	generated string // the CLI's own name for it
+	offset    int64     // how far the file has been read: transcripts only grow, so the next read starts here
+	modified  time.Time // the file's mtime at that read: the same size with a newer one means it was rewritten
+	prompt    string    // the first thing typed
+	replied   bool      // the model answered: a transcript without that (Drawa's /usage probe) isn't listed
+	custom    string    // the user's /rename
+	generated string    // the CLI's own name for it
 }
 
 // title is what the list calls a session: your /rename first, then the CLI's name for it, then your first prompt.
@@ -74,28 +75,30 @@ var (
 // writes its title lines again and again as it goes, so the newest is near the end. ponytail: a /rename followed by
 // more than tailBytes without another title line is missed (the list falls back to the generated name or prompt).
 const (
-	headBytes = 1 << 20 // read at most this much of a long transcript's start for its first prompt and reply
-	tailBytes = 1 << 20 // and then this much of its end for its titles
+	headBytes   = 1 << 20 // read the lines starting in this much of a long transcript's start for its first prompt and reply
+	tailBytes   = 1 << 20 // and then this much of its end for its titles
+	maxHeadLine = 8 << 20 // a line crossing headBytes is read whole up to this (a first message with a pasted picture)
 )
 
 // read takes in the lines written since the last read. A last line without its newline is still being written:
 // it's left for next time.
 func (t *titles) read(path string) {
-	if info, err := os.Stat(path); err == nil && info.Size() == t.offset {
-		return // nothing written since: the list asks after every turn, mostly of files that haven't changed
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || info.Size() < t.offset {
-		*t = titles{} // rewritten, not appended to: start over
-	}
 	if err != nil {
 		return
 	}
+	switch size := info.Size(); {
+	case size < t.offset, size == t.offset && !info.ModTime().Equal(t.modified):
+		*t = titles{} // rewritten, not appended to: start over
+	case size == t.offset:
+		return // nothing written since: the list asks after every turn, mostly of files that haven't changed
+	}
+	defer func() { t.modified = info.ModTime() }()
 	if t.offset == 0 && info.Size() > headBytes+tailBytes {
 		t.skim(f, info.Size())
 		return
@@ -119,10 +122,12 @@ func (t *titles) readFrom(f *os.File) {
 }
 
 // skim is a long transcript's first read: its start until the first prompt and reply are found (lines starting in
-// its first headBytes, so a huge first message, a pasted picture, is still read whole), then its last tailBytes.
+// its first headBytes; the one crossing it is read whole if it ends within maxHeadLine more), then its last
+// tailBytes.
 func (t *titles) skim(f *os.File, size int64) {
 	eachLine(f, func(line []byte) bool {
-		if line[len(line)-1] != '\n' || t.offset >= headBytes {
+		end := t.offset + int64(len(line))
+		if line[len(line)-1] != '\n' || t.offset >= headBytes || end > headBytes+maxHeadLine {
 			return false
 		}
 		t.offset += int64(len(line))

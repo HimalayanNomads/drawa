@@ -46,6 +46,7 @@ const (
 // what it found so far, not to be kept as the whole list.
 func threads(limit int, every bool) (out []thread, ok bool) {
 	out = []thread{}
+	defer func() { sortNewestFirst(out) }()
 	deadline := time.Now().Add(oneOffTimeout)
 	cursor := ""
 	for range maxSearchPages {
@@ -77,6 +78,12 @@ func threads(limit int, every bool) (out []thread, ok bool) {
 	return out, true
 }
 
+// sortNewestFirst orders threads by when they last changed, as the history list shows them whatever order
+// app-server pages in, once per fetch rather than per search.
+func sortNewestFirst(list []thread) {
+	slices.SortStableFunc(list, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
+}
+
 var listCache, searchCache sessions.Cache[thread]
 
 const (
@@ -93,18 +100,10 @@ func (history) List() []sessions.Info {
 	return out
 }
 
-// everyThread is every thread threads finds while searching, newest first as the list shows them: sorted once per
-// fetch, not per keystroke.
-func everyThread() ([]thread, bool) {
-	all, ok := threads(searchPageSize, true)
-	slices.SortStableFunc(all, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
-	return all, ok
-}
-
 // Search is the newest of all this project's threads whose name, first message or id has every word of query.
 func (history) Search(query string) []sessions.Info {
 	out := []sessions.Info{}
-	for _, t := range searchCache.Get(searchFresh, everyThread) {
+	for _, t := range searchCache.Get(searchFresh, func() ([]thread, bool) { return threads(searchPageSize, true) }) {
 		if len(out) == sessions.MaxListed {
 			break
 		}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -235,11 +236,7 @@ func allSessions(query string) []sessions.Info {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			found := historyOf(k.History, query)
-			for at := range found {
-				found[at].Backend = name
-			}
-			each[index] = found
+			each[index] = historyOfBackend(name, k.History, query)
 		}()
 	}
 	wg.Wait()
@@ -249,6 +246,22 @@ func allSessions(query string) []sessions.Info {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
 	return out[:min(len(out), sessions.MaxListed)]
+}
+
+// historyOfBackend is historyOf tagged with the backend's name. It runs off the request's goroutine, which
+// net/http's recover doesn't reach: a backend that panics is left out of the list, not the server brought down.
+func historyOfBackend(name string, history live.History, query string) (found []sessions.Info) {
+	defer func() {
+		if failed := recover(); failed != nil {
+			log.Printf("%s history: %v", name, failed)
+			found = nil
+		}
+	}()
+	found = historyOf(history, query)
+	for at := range found {
+		found[at].Backend = name
+	}
+	return found
 }
 
 // historyOf is a backend's sessions matching query ("" is its list).

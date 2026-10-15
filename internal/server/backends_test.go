@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"drawa/internal/config"
+	"drawa/internal/sessions"
 )
 
 func call(t *testing.T, srv *httptest.Server, method, path, body string) (int, string) {
@@ -93,5 +94,19 @@ func TestStartFailureSaysWhy(t *testing.T) {
 	var j map[string]string
 	if status != 500 || json.Unmarshal([]byte(body), &j) != nil || !strings.Contains(j["error"], "install it: https://") {
 		t.Fatalf("send with no claude on PATH: %d %s", status, body)
+	}
+}
+
+// panickingHistory is a backend history whose every call panics.
+type panickingHistory struct{}
+
+func (panickingHistory) List() []sessions.Info { panic("boom") }
+func (panickingHistory) Load(string, string) ([]map[string]any, bool) {
+	panic("boom")
+}
+
+func TestHistoryOfBackendSurvivesAPanic(t *testing.T) {
+	if found := historyOfBackend("broken", panickingHistory{}, ""); found != nil {
+		t.Fatalf("a panicking backend should be left out: %v", found)
 	}
 }

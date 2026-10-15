@@ -285,3 +285,46 @@ func TestLongTranscriptSkimsItsMiddle(t *testing.T) {
 		t.Fatalf("later reads pick up from where the skim stopped: got %q", got)
 	}
 }
+
+func TestHugeFirstMessageIsReadWhole(t *testing.T) {
+	dir := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(dir, "picture.jsonl"))
+	defer f.Close()
+	// a first message carrying a pasted picture, crossing headBytes: its prompt still names the session
+	writeLine(f, "user", []any{
+		map[string]any{"type": "text", "text": "what is in this screenshot"},
+		map[string]any{"type": "image", "source": map[string]any{"data": strings.Repeat("A", headBytes+headBytes/2)}},
+	})
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "a cat"}})
+	filler := []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}}
+	for written := 0; written < tailBytes+headBytes; written += 4096 {
+		writeLine(f, "assistant", filler)
+	}
+	writeLine(f, "user", "a later question")
+	if got := List()[0].Title; got != "what is in this screenshot" {
+		t.Fatalf("the first prompt, past a huge first line: got %q", got)
+	}
+}
+
+func TestRewrittenToTheSameSizeIsReadAgain(t *testing.T) {
+	dir := withTempSessions(t)
+	path := filepath.Join(dir, "same.jsonl")
+	write := func(prompt string, when time.Time) {
+		f, _ := os.Create(path)
+		writeLine(f, "user", prompt)
+		writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
+		f.Close()
+		os.Chtimes(path, when, when)
+	}
+	write("first prompt AAAA", time.Now().Add(-time.Hour))
+	if got := List()[0].Title; got != "first prompt AAAA" {
+		t.Fatalf("got %q", got)
+	}
+	if got := List()[0].Title; got != "first prompt AAAA" {
+		t.Fatalf("unchanged, asked again: got %q", got)
+	}
+	write("other prompt BBBB", time.Now()) // the same length: only its mtime says it changed
+	if got := List()[0].Title; got != "other prompt BBBB" {
+		t.Fatalf("a rewrite to the same size should be read again: got %q", got)
+	}
+}
