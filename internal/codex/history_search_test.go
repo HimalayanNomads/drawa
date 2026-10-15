@@ -4,7 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
+
+	"drawa/internal/sessions"
 )
 
 func TestSearchPagesThroughThreads(t *testing.T) {
@@ -22,28 +23,12 @@ done
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	listCache, searchCache = cachedThreads{}, cachedThreads{}
+	listCache, searchCache = sessions.Cache[thread]{}, sessions.Cache[thread]{}
 	found := (history{}).Search("login")
 	if len(found) != 2 || found[0].Title != "Auth rework" || found[1].Title != "fix the login page" {
 		t.Fatalf("Search should page through, skip sub-agents, name renamed threads by their name, newest first: %v", found)
 	}
 	if found := (history{}).Search("000000000001"); len(found) != 1 {
 		t.Fatalf("Search by id: %v", found)
-	}
-}
-
-func TestFailedFetchIsNotCached(t *testing.T) {
-	var cache cachedThreads
-	calls := 0
-	load := func() ([]thread, bool) {
-		calls++
-		return []thread{{ID: "x"}}, calls > 1 // the first fails
-	}
-	cache.get(time.Minute, load)
-	if got := cache.get(time.Minute, load); calls != 2 || len(got) != 1 {
-		t.Fatalf("a failed fetch should be tried again: %d calls, %v", calls, got)
-	}
-	if cache.get(time.Minute, load); calls != 2 {
-		t.Fatalf("a good fetch should be kept: %d calls", calls)
 	}
 }

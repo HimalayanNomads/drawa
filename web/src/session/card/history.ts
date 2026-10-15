@@ -16,7 +16,8 @@ import { replay } from '../stream/stream';
 import { pinToBottom, renderCard } from './render';
 import { cards, focus, newSession } from './session';
 
-let saved: SessionInfo[] = []; // what the server answered for the search box's query (all, newest first, when empty)
+let saved: SessionInfo[] = []; // what the server answered for savedFor (all, newest first, when empty)
+let savedFor = ''; // the query the list shows the answer to: the box can be ahead of it
 let asked = ''; // the query the newest request was for: an answer to an older one is dropped
 
 /** List this folder's saved conversations in the History panel (the open ones marked): the newest, or every one
@@ -32,6 +33,7 @@ export async function loadSessions() {
   }
   if (query !== asked) return;
   saved = found;
+  savedFor = query;
   showSessions();
 }
 
@@ -41,7 +43,7 @@ const maybeId = (query: string) => query.length >= MIN_ID_LENGTH && !/\s/.test(q
 
 /** Draw the list. An ID that matched nothing gets a row to continue it (another agent's, or one not listed). */
 function showSessions() {
-  const query = findBox.value.trim();
+  const query = savedFor;
   const rows: HTMLElement[] = saved.map(sessionRow);
   // after the matches, so Enter (which opens the first row) opens a match rather than asking for an ID that isn't one
   if (maybeId(query) && !saved.some(session => session.id === query)) rows.push(continueRow(query));
@@ -107,7 +109,8 @@ async function resumeById(id: string) {
   if (open) return resume({ id, title: open.title, backend: open.backend });
   const tries = installed().map(agent =>
     api<SavedMessage[]>(sessionPath(id, agent.name)).then(messages => {
-      if (!Array.isArray(messages)) throw new Error('missing');
+      // empty: Codex's answer for another project's thread, nothing to continue
+      if (!Array.isArray(messages) || !messages.length) throw new Error('missing');
       return { backend: agent.name, messages };
     }),
   );
@@ -135,6 +138,7 @@ findBox.onkeydown = async event => {
     if (!findBox.value.trim()) return;
     clearTimeout(searchTimer);
     await loadSessions(); // what was typed may not have been searched yet
+    if (savedFor !== findBox.value.trim()) return; // the search failed: the list is still an older query's
     $('#sessions').querySelector<HTMLButtonElement>('.sess')?.click();
     return;
   }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"drawa/internal/config"
+	"drawa/internal/sessions"
 )
 
 // fakeCLI puts an executable script named name first on PATH.
@@ -30,7 +31,7 @@ func TestSearchAllSessions(t *testing.T) {
 {"id":"ses_oldoldoldoldold","title":"Old login rework","updated":1000,"directory":%[1]q}]' ;;
 esac
 `, root))
-	listCache, searchCache = cachedSessions{}, cachedSessions{}
+	listCache, searchCache = sessions.Cache[session]{}, sessions.Cache[session]{}
 	if list := (history{}).List(); len(list) != 1 {
 		t.Fatalf("List: %v", list)
 	}

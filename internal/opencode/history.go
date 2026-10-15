@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"drawa/internal/config"
@@ -34,56 +33,38 @@ const (
 	searchCount = 1_000_000 // while searching: all of them (the CLI has no folder filter)
 )
 
-// projectSessions is this project's top-level sessions among the newest count of every folder, newest first.
-func projectSessions(count int) []session {
-	out := []session{}
+// projectSessions is this project's top-level sessions among the newest count of every folder, newest first. ok is
+// false when the CLI failed or its answer didn't parse.
+func projectSessions(count int) (out []session, ok bool) {
+	out = []session{}
 	r, err := ocRun(30*time.Second, "", "session", "list", "--format", "json", "--max-count", strconv.Itoa(count))
 	if err != nil || r.Code != 0 {
-		return out
+		return out, false
 	}
 	var all []session
-	json.Unmarshal([]byte(r.Stdout), &all)
+	if json.Unmarshal([]byte(r.Stdout), &all) != nil {
+		return out, false
+	}
 	for _, s := range all {
 		if s.Directory == config.Root && s.ParentID == "" && sidRe.MatchString(s.ID) {
 			out = append(out, s)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Updated > out[j].Updated })
-	return out
+	return out, true
 }
 
-// cachedSessions is a list kept for a few seconds, since each fetch starts the CLI (~1s) and the page asks again
-// after every turn (the list) or every pause in typing (a search).
-type cachedSessions struct {
-	sync.Mutex
-	at       time.Time
-	sessions []session
-}
-
-var (
-	listCache   cachedSessions
-	searchCache cachedSessions
-)
+var listCache, searchCache sessions.Cache[session]
 
 const (
 	listFresh   = 3 * time.Second
 	searchFresh = 15 * time.Second // one search's keystrokes reuse the full list
 )
 
-// get returns the cached sessions while they're fresh, else fetches them again.
-func (c *cachedSessions) get(fresh time.Duration, count int) []session {
-	c.Lock()
-	defer c.Unlock()
-	if time.Since(c.at) >= fresh {
-		c.at, c.sessions = time.Now(), projectSessions(count)
-	}
-	return c.sessions
-}
-
 // List is this project's newest 50 top-level sessions.
 func (history) List() []sessions.Info {
 	out := []sessions.Info{}
-	for _, s := range listCache.get(listFresh, listCount) {
+	for _, s := range listCache.Get(listFresh, func() ([]session, bool) { return projectSessions(listCount) }) {
 		if len(out) == sessions.MaxListed {
 			break
 		}
@@ -95,7 +76,7 @@ func (history) List() []sessions.Info {
 // Search is the newest of all this project's sessions whose title or id has every word of query.
 func (history) Search(query string) []sessions.Info {
 	out := []sessions.Info{}
-	for _, s := range searchCache.get(searchFresh, searchCount) {
+	for _, s := range searchCache.Get(searchFresh, func() ([]session, bool) { return projectSessions(searchCount) }) {
 		if len(out) == sessions.MaxListed {
 			break
 		}
