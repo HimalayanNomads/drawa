@@ -334,6 +334,8 @@ type claudeHistory struct{}
 
 func (claudeHistory) List() []sessions.Info { return sessions.List() }
 
+func (claudeHistory) Search(query string) []sessions.Info { return sessions.Search(query) }
+
 func (claudeHistory) Load(sid, agent string) ([]map[string]any, bool) {
 	// the CLI writes it once the first message is queued; until then the page reads the live process instead
 	if _, err := os.Stat(filepath.Join(config.Sessions, sid+".jsonl")); err != nil {

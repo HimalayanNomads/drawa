@@ -71,6 +71,12 @@ type History interface {
 	Load(sid, agent string) ([]map[string]any, bool) // false: not written yet (the page reads the live stream)
 }
 
+// Searcher is a History that searches every saved session, beyond the ones its List returns. A History without it
+// is searched by filtering its List.
+type Searcher interface {
+	Search(query string) []sessions.Info
+}
+
 // Kind is one backend. Adding one is a package that calls Register from its init().
 type Kind struct {
 	Bin, Label, Install string          // the executable, how preflight names it, where to get it

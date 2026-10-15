@@ -2,10 +2,12 @@ package sessions
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"drawa/internal/config"
 )
@@ -189,5 +191,72 @@ func TestListTitles(t *testing.T) {
 	want := map[string]string{"pasted": "what is this", "plain": "hello"}
 	if len(got) != len(want) || got["pasted"] != want["pasted"] || got["plain"] != want["plain"] {
 		t.Fatalf("List titles = %v, want %v", got, want)
+	}
+}
+
+func writeRaw(w *os.File, entry map[string]any) {
+	b, _ := json.Marshal(entry)
+	w.Write(b)
+	w.Write([]byte("\n"))
+}
+
+func TestTitlePrefersRename(t *testing.T) {
+	dir := withTempSessions(t)
+	path := filepath.Join(dir, "renamed.jsonl")
+	f, _ := os.Create(path)
+	defer f.Close()
+	writeLine(f, "user", "fix the login bug")
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": `I'll grep for "custom-title"`}})
+	titleOf := func() string { return List()[0].Title }
+	if got := titleOf(); got != "fix the login bug" {
+		t.Fatalf("first prompt: got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "ai-title", "aiTitle": "Login bug fix"})
+	if got := titleOf(); got != "Login bug fix" {
+		t.Fatalf("generated title (read from where the last list stopped): got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "AUTH"})
+	writeRaw(f, map[string]any{"type": "ai-title", "aiTitle": "Later name"})
+	if got := titleOf(); got != "AUTH" {
+		t.Fatalf("rename wins over a later generated title: got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "AUTH v2"})
+	if got := titleOf(); got != "AUTH v2" {
+		t.Fatalf("the last rename counts: got %q", got)
+	}
+	for _, query := range []string{"auth", "login BUG", "later", "renamed"} {
+		if len(Search(query)) != 1 {
+			t.Fatalf("Search(%q) should find it by any of its names or its id", query)
+		}
+	}
+	if len(Search("auth payments")) != 0 {
+		t.Fatal("every word must match")
+	}
+}
+
+func TestSearchBeyondTheList(t *testing.T) {
+	dir := withTempSessions(t)
+	reply := []any{map[string]any{"type": "text", "text": "ok"}}
+	for index := range MaxListed + 10 {
+		path := filepath.Join(dir, fmt.Sprintf("s%03d.jsonl", index))
+		f, _ := os.Create(path)
+		prompt := "routine work"
+		if index == 0 {
+			prompt = "the oldest one"
+		}
+		writeLine(f, "user", prompt)
+		writeLine(f, "assistant", reply)
+		f.Close()
+		at := time.Now().Add(time.Duration(index) * time.Minute) // s000 oldest
+		os.Chtimes(path, at, at)
+	}
+	if list := List(); len(list) != MaxListed || list[len(list)-1].ID == "s000" {
+		t.Fatalf("List: want the newest %d, got %d", MaxListed, len(list))
+	}
+	if found := Search("oldest"); len(found) != 1 || found[0].ID != "s000" {
+		t.Fatalf("Search past the list: got %v", found)
+	}
+	if found := Search("s000"); len(found) != 1 {
+		t.Fatalf("Search by id: got %v", found)
 	}
 }
