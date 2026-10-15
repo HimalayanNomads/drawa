@@ -306,25 +306,36 @@ func TestHugeFirstMessageIsReadWhole(t *testing.T) {
 	}
 }
 
-func TestRewrittenToTheSameSizeIsReadAgain(t *testing.T) {
+func TestRewrittenTranscriptIsReadAgain(t *testing.T) {
 	dir := withTempSessions(t)
-	path := filepath.Join(dir, "same.jsonl")
-	write := func(prompt string, when time.Time) {
+	path := filepath.Join(dir, "rewritten.jsonl")
+	write := func(prompts ...string) {
 		f, _ := os.Create(path)
-		writeLine(f, "user", prompt)
-		writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
-		f.Close()
-		os.Chtimes(path, when, when)
+		defer f.Close()
+		for _, prompt := range prompts {
+			writeLine(f, "user", prompt)
+			writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
+		}
 	}
-	write("first prompt AAAA", time.Now().Add(-time.Hour))
+	write("first prompt AAAA")
 	if got := List()[0].Title; got != "first prompt AAAA" {
 		t.Fatalf("got %q", got)
 	}
 	if got := List()[0].Title; got != "first prompt AAAA" {
 		t.Fatalf("unchanged, asked again: got %q", got)
 	}
-	write("other prompt BBBB", time.Now()) // the same length: only its mtime says it changed
+	write("other prompt BBBB") // the same size: only its content says it changed
 	if got := List()[0].Title; got != "other prompt BBBB" {
 		t.Fatalf("a rewrite to the same size should be read again: got %q", got)
+	}
+	write("a longer, different prompt", "and more") // bigger, so it looks appended to
+	if got := List()[0].Title; got != "a longer, different prompt" {
+		t.Fatalf("a rewrite to a bigger size should be read again: got %q", got)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Appended name"})
+	f.Close()
+	if got := List()[0].Title; got != "Appended name" {
+		t.Fatalf("a real append is still read from where it stopped: got %q", got)
 	}
 }

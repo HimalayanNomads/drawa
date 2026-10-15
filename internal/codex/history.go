@@ -41,9 +41,9 @@ const (
 )
 
 // threads is this project's threads (not sub-agents'), newest first: one page of limit, or with every set, page
-// after page (up to maxSearchPages), all within one oneOffTimeout. ponytail: past maxSearchPages×searchPageSize
-// threads the oldest are left out (and that list is cached as whole); raise the cap or page lazily if that's reached. ok is false when a call failed or time ran out:
-// what it found so far, not to be kept as the whole list.
+// after page (up to maxSearchPages), all within one oneOffTimeout. ok is false when a call failed or time ran out:
+// what it found so far, not to be kept as the whole list. ponytail: past maxSearchPages×searchPageSize threads the
+// oldest are left out, and that list is kept as the whole one; raise the cap or page on demand if that's reached.
 func threads(limit int, every bool) (out []thread, ok bool) {
 	out = []thread{}
 	defer func() { sortNewestFirst(out) }()
@@ -54,7 +54,9 @@ func threads(limit int, every bool) (out []thread, ok bool) {
 		if left <= 0 {
 			return out, false
 		}
-		params := map[string]any{"cwd": config.Root, "limit": limit}
+		// by last change, as the list shows them (app-server's default is creation, which would page out an old
+		// thread resumed today)
+		params := map[string]any{"cwd": config.Root, "limit": limit, "sortKey": "updated_at"}
 		if cursor != "" {
 			params["cursor"] = cursor
 		}
@@ -78,8 +80,8 @@ func threads(limit int, every bool) (out []thread, ok bool) {
 	return out, true
 }
 
-// sortNewestFirst orders threads by when they last changed, as the history list shows them whatever order
-// app-server pages in, once per fetch rather than per search.
+// sortNewestFirst orders threads by when they last changed, for an app-server too old to take sortKey (it pages by
+// creation), once per fetch rather than per search.
 func sortNewestFirst(list []thread) {
 	slices.SortStableFunc(list, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) })
 }

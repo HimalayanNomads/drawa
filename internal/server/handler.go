@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -253,7 +254,7 @@ func allSessions(query string) []sessions.Info {
 func historyOfBackend(name string, history live.History, query string) (found []sessions.Info) {
 	defer func() {
 		if failed := recover(); failed != nil {
-			log.Printf("%s history: %v", name, failed)
+			log.Printf("%s history: %v\n%s", name, failed, debug.Stack())
 			found = nil
 		}
 	}()

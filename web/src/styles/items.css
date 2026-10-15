@@ -277,6 +277,7 @@
 
 /* a Markdown doc: rendered like a reply, scrolls inside; editing swaps in its source */
 .mdoc-b{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 18px 16px;cursor:text}
+.item[data-hidden-in] .mdoc-b{display:none} /* in a collapsed group: not "on screen" to doc.ts's observer, so it renders when the group opens */
 .mdoc-md{margin:0}
 /* the source editor: the file editor's look (.pvnode-ed), in a field of its own that scrolls */
 .mdoc-ed{flex:1;min-height:0;margin:8px;overflow:auto;border:1px solid var(--field-edge);border-radius:var(--r-ctl);background:var(--bg);cursor:text}

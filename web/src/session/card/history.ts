@@ -47,7 +47,15 @@ export async function loadSessions() {
 /** The session ID the query could be: it as typed, or lowercased (a UUID copied in capitals), if that has the shape
  *  of some installed agent's IDs. */
 const sessionIdIn = (query: string) =>
-  [query, query.toLowerCase()].find(id => installed().some(agent => agent.sid && new RegExp(agent.sid).test(id)));
+  [query, query.toLowerCase()].find(id => idShapes().some(shape => shape.test(id)));
+const shapes = new Map<string, RegExp>(); // each agent's ID pattern, compiled once: the list redraws after every turn
+/** The installed agents' session ID shapes. */
+const idShapes = () =>
+  installed().flatMap(agent => {
+    if (!agent.sid) return [];
+    if (!shapes.has(agent.sid)) shapes.set(agent.sid, new RegExp(agent.sid));
+    return [shapes.get(agent.sid)!];
+  });
 
 /** Draw the list. An ID that matched nothing gets a row to continue it (another agent's, or one not listed). */
 function showSessions() {
