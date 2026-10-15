@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -258,7 +259,8 @@ func historyOfBackend(name string, history live.History, query string) (found []
 			found = nil
 		}
 	}()
-	found = historyOf(history, query)
+	// a copy, tagged: what a backend returns may be its cache, which concurrent requests share
+	found = slices.Clone(historyOf(history, query))
 	for at := range found {
 		found[at].Backend = name
 	}

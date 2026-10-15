@@ -4,7 +4,7 @@
 // first edit), kept as you type. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with
 // canvas_create / canvas_update (kind "doc").
 
-import { items, onGone, type Rect, savedRect } from '../canvas/core/items';
+import { hidden, items, onGone, type Rect, savedRect } from '../canvas/core/items';
 import { centerOn, freeSpot } from '../canvas/core/placement';
 import { referable } from '../canvas/core/refs';
 import { creatable } from '../canvas/core/tools';
@@ -37,15 +37,26 @@ referable('doc', {
 
 const shown = new WeakMap<HTMLElement, string>(); // the source each doc's view was last drawn from
 const editors = new Map<HTMLElement, Editor>(); // the docs being edited, and their editors
-// watches each doc's body, not its window: a collapsed doc's tab is on screen while its body isn't drawn (a doc in a
-// collapsed group has its body undrawn too, canvas.css, so it renders when the group opens)
+// watches each doc's body, not its window: a collapsed doc's tab is on screen while its body isn't drawn. A doc in a
+// collapsed group is only invisible (it keeps its size and scroll), which the observer still counts as on screen, so
+// it's skipped and looked at again when the group opens.
 const visibleDocs = new IntersectionObserver(entries => {
   for (const entry of entries) {
     const doc = entry.target.closest<HTMLElement>('.mdoc');
-    if (entry.isIntersecting && doc?.isConnected && !shown.has(doc)) render(doc);
+    if (entry.isIntersecting && doc?.isConnected && !hidden(doc) && !shown.has(doc)) render(doc);
   }
 });
 const bodyOf = (doc: HTMLElement) => doc.querySelector('.mdoc-b');
+/** A doc's group opened: watching its body afresh reports at once whether it's on screen now. */
+const groupOpened = new MutationObserver(records => {
+  for (const record of records) {
+    const doc = record.target as HTMLElement,
+      body = bodyOf(doc);
+    if (hidden(doc) || shown.has(doc) || !body) continue;
+    visibleDocs.unobserve(body);
+    visibleDocs.observe(body);
+  }
+});
 onPrefs(p => {
   for (const ed of editors.values()) ed.setVim(p.vim === 'on');
 });
@@ -171,6 +182,7 @@ export function docWindow(o: { id?: string; title?: string; text?: string; rect?
   });
   setSrc(el, o.text ?? '');
   visibleDocs.observe(view);
+  groupOpened.observe(el, { attributeFilter: ['data-hidden-in'] });
   if (o.edit) {
     centerOn(el);
     toggle(true);

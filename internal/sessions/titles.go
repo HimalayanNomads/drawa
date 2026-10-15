@@ -29,7 +29,7 @@ type Info struct {
 // and an `ai-title` line when it names the session itself, again and again as it goes (the last one counts).
 type titles struct {
 	offset    int64  // how far the file has been read: transcripts only grow, so the next read starts here
-	start     string // the file's first bytes at that read: different ones mean it was rewritten, not appended to
+	seam      []byte // the last bytes before offset at that read: an append leaves them, a rewrite changes them
 	prompt    string // the first thing typed
 	replied   bool   // the model answered: a transcript without that (Drawa's /usage probe) isn't listed
 	custom    string // the user's /rename
@@ -78,7 +78,7 @@ const (
 	headBytes   = 1 << 20 // read the lines starting in this much of a long transcript's start for its first prompt and reply
 	tailBytes   = 1 << 20 // and then this much of its end for its titles
 	maxHeadLine = 8 << 20 // a line crossing headBytes is read whole up to this (a first message with a pasted picture)
-	startBytes  = 256     // how much of a transcript's start tells it apart from a rewrite: its first line has its id
+	seamBytes   = 64      // how many bytes before where a read stopped tell an append from a rewrite
 )
 
 // read takes in the lines written since the last read. A last line without its newline is still being written:
@@ -94,23 +94,29 @@ func (t *titles) read(path string) {
 		return
 	}
 	size := info.Size()
-	start := make([]byte, min(size, startBytes))
-	if _, err := f.ReadAt(start, 0); err != nil && err != io.EOF {
+	if size == t.offset {
+		// nothing written since: the list asks after every turn, mostly of files that haven't changed. ponytail: a
+		// rewrite to exactly the old size isn't noticed until the file grows; keep an mtime too if that ever matters
 		return
 	}
-	// the first bytes only grow while the file is appended to (a short one has fewer): compare what both have
-	if size < t.offset || !strings.HasPrefix(string(start), t.start[:min(len(t.start), len(start))]) {
+	if size < t.offset || !bytes.Equal(seamAt(f, t.offset), t.seam) {
 		*t = titles{} // rewritten, not appended to: start over
 	}
-	t.start = string(start)
-	if size == t.offset {
-		return // nothing written since: the list asks after every turn, mostly of files that haven't changed
-	}
+	defer func() { t.seam = seamAt(f, t.offset) }()
 	if t.offset == 0 && size > headBytes+tailBytes {
 		t.skim(f, size)
 		return
 	}
 	t.readFrom(f)
+}
+
+// seamAt is the seamBytes of f just before offset (fewer near the start; none at 0 or if it can't be read).
+func seamAt(f *os.File, offset int64) []byte {
+	seam := make([]byte, min(offset, seamBytes))
+	if _, err := f.ReadAt(seam, offset-int64(len(seam))); err != nil {
+		return nil
+	}
+	return seam
 }
 
 // readFrom takes in every whole line from t.offset on.

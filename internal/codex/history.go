@@ -44,9 +44,15 @@ const (
 // after page (up to maxSearchPages), all within one oneOffTimeout. ok is false when a call failed or time ran out:
 // what it found so far, not to be kept as the whole list. ponytail: past maxSearchPages×searchPageSize threads the
 // oldest are left out, and that list is kept as the whole one; raise the cap or page on demand if that's reached.
-func threads(limit int, every bool) (out []thread, ok bool) {
+func threads(limit int, every bool) ([]thread, bool) {
+	found, ok := pages(limit, every)
+	sortNewestFirst(found)
+	return found, ok
+}
+
+// pages is threads before sorting: what each thread/list page answered, in order.
+func pages(limit int, every bool) (out []thread, ok bool) {
 	out = []thread{}
-	defer func() { sortNewestFirst(out) }()
 	deadline := time.Now().Add(oneOffTimeout)
 	cursor := ""
 	for range maxSearchPages {

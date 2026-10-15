@@ -309,28 +309,28 @@ func TestHugeFirstMessageIsReadWhole(t *testing.T) {
 func TestRewrittenTranscriptIsReadAgain(t *testing.T) {
 	dir := withTempSessions(t)
 	path := filepath.Join(dir, "rewritten.jsonl")
-	write := func(prompts ...string) {
+	// real transcripts open with the same queue-operation line however the rest is rewritten, so the start can't
+	// tell a rewrite from an append
+	header := map[string]any{"type": "queue-operation", "sessionId": "rewritten", "content": "same opening line"}
+	write := func(title string, padding int) {
 		f, _ := os.Create(path)
 		defer f.Close()
-		for _, prompt := range prompts {
-			writeLine(f, "user", prompt)
-			writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
-		}
+		writeRaw(f, header)
+		writeLine(f, "user", "the first prompt")
+		writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": strings.Repeat("ok", padding)}})
+		writeRaw(f, map[string]any{"type": "custom-title", "customTitle": title})
 	}
-	write("first prompt AAAA")
-	if got := List()[0].Title; got != "first prompt AAAA" {
+	write("Old name", 1)
+	if got := List()[0].Title; got != "Old name" {
 		t.Fatalf("got %q", got)
 	}
-	if got := List()[0].Title; got != "first prompt AAAA" {
-		t.Fatalf("unchanged, asked again: got %q", got)
+	write("New name", 40) // bigger, so it looks appended to
+	if got := List()[0].Title; got != "New name" {
+		t.Fatalf("a rewrite keeping the first line should be read again: got %q", got)
 	}
-	write("other prompt BBBB") // the same size: only its content says it changed
-	if got := List()[0].Title; got != "other prompt BBBB" {
-		t.Fatalf("a rewrite to the same size should be read again: got %q", got)
-	}
-	write("a longer, different prompt", "and more") // bigger, so it looks appended to
-	if got := List()[0].Title; got != "a longer, different prompt" {
-		t.Fatalf("a rewrite to a bigger size should be read again: got %q", got)
+	write("Shorter", 2)
+	if got := List()[0].Title; got != "Shorter" {
+		t.Fatalf("a rewrite to a smaller size should be read again: got %q", got)
 	}
 	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Appended name"})

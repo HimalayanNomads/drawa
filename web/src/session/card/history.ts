@@ -46,8 +46,10 @@ export async function loadSessions() {
 
 /** The session ID the query could be: it as typed, or lowercased (a UUID copied in capitals), if that has the shape
  *  of some installed agent's IDs. */
-const sessionIdIn = (query: string) =>
-  [query, query.toLowerCase()].find(id => idShapes().some(shape => shape.test(id)));
+function sessionIdIn(query: string) {
+  const known = idShapes();
+  return [query, query.toLowerCase()].find(id => known.some(shape => shape.test(id)));
+}
 const shapes = new Map<string, RegExp>(); // each agent's ID pattern, compiled once: the list redraws after every turn
 /** The installed agents' session ID shapes. */
 const idShapes = () =>
