@@ -24,8 +24,8 @@ web/src/
     image/     image, crop
     snippet/   snippet, pinmarks (a snippet's source stays marked)
     preview/   preview (a project file opened from Ctrl+K), fileedit (editing it in place, saved through `POST /api/file`, and the Vim setting)
-  panels/      side panels: file tree + inspector, filefind (the Files pane's search: files by name, then code symbols), diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs` with the clicked diff's `repo` (its `data-repo`: a nested repo's or a worktree's commits search that repo), picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
-  types/       data shapes, one file per feature: session (`Session`), canvas (every item's actions), ink (the drawing's actions), notes (a note, and its actions), drawer (the drawer's panes)
+  panels/      side panels: drawer (one pane at a time, History or Files; panes register with `drawerPane()`), file tree + inspector, filefind (the Files pane's search: files by name, then code symbols), diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs` with the clicked diff's `repo` (its `data-repo`: a nested repo's or a worktree's commits search that repo), picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
+  types/       data shapes, one file per feature: session (`Session`), canvas (every item's actions), ink (the drawing's actions), notes (a note, and its actions), drawer (the drawer's panes and what each one is)
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
 

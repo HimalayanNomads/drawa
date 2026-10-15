@@ -144,33 +144,47 @@ func promptText(raw json.RawMessage) string {
 }
 
 // titleCache keeps each transcript's titles and how far it was read, so a list or a search reads only what was
-// written since. ponytail: a simple cap, not true LRU.
+// written since. Each entry has its own lock: searches a keystroke apart that both find a transcript unread take
+// turns on it, so the second reads only what the first left, rather than both reading it all.
 var titleCache = struct {
 	sync.Mutex
-	byPath map[string]*titles
-}{byPath: map[string]*titles{}}
+	byPath map[string]*cachedTitles
+}{byPath: map[string]*cachedTitles{}}
 
-const maxCachedTitles = 4096
+type cachedTitles struct {
+	sync.Mutex
+	titles
+}
 
 // titlesOf brings a transcript's titles up to date and returns a copy of them.
 func titlesOf(path string) titles {
 	titleCache.Lock()
 	cached := titleCache.byPath[path]
 	if cached == nil {
-		if len(titleCache.byPath) >= maxCachedTitles {
-			titleCache.byPath = map[string]*titles{}
-		}
-		cached = &titles{}
+		cached = &cachedTitles{}
 		titleCache.byPath[path] = cached
 	}
 	titleCache.Unlock()
-	// ponytail: two lists at once can read the same new lines twice; harmless (the same titles), and rare
-	fresh := *cached
-	fresh.read(path)
+	cached.Lock()
+	defer cached.Unlock()
+	cached.read(path)
+	return cached.titles
+}
+
+// forgetGone drops the cached titles of transcripts that are no longer there, so the cache holds this folder's
+// sessions and no more.
+func forgetGone(all []transcript) {
+	kept := make(map[string]bool, len(all))
+	for _, file := range all {
+		kept[file.path] = true
+	}
 	titleCache.Lock()
-	*cached = fresh
-	titleCache.Unlock()
-	return fresh
+	defer titleCache.Unlock()
+	for path := range titleCache.byPath {
+		if !kept[path] {
+			delete(titleCache.byPath, path)
+		}
+	}
 }
 
 type transcript struct {
@@ -208,7 +222,9 @@ func List() []Info {
 // matches all. It reads every transcript once, then only what each one gained since.
 func Search(query string) []Info {
 	out := []Info{}
-	for _, file := range transcripts() {
+	all := transcripts()
+	forgetGone(all)
+	for _, file := range all {
 		if len(out) == MaxListed {
 			break
 		}

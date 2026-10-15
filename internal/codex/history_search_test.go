@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSearchPagesThroughThreads(t *testing.T) {
@@ -28,5 +29,21 @@ done
 	}
 	if found := (history{}).Search("000000000001"); len(found) != 1 {
 		t.Fatalf("Search by id: %v", found)
+	}
+}
+
+func TestFailedFetchIsNotCached(t *testing.T) {
+	var cache cachedThreads
+	calls := 0
+	load := func() ([]thread, bool) {
+		calls++
+		return []thread{{ID: "x"}}, calls > 1 // the first fails
+	}
+	cache.get(time.Minute, load)
+	if got := cache.get(time.Minute, load); calls != 2 || len(got) != 1 {
+		t.Fatalf("a failed fetch should be tried again: %d calls, %v", calls, got)
+	}
+	if cache.get(time.Minute, load); calls != 2 {
+		t.Fatalf("a good fetch should be kept: %d calls", calls)
 	}
 }

@@ -42,11 +42,17 @@ const (
 )
 
 // threads is this project's threads (not sub-agents'), newest first: one page of limit, or with every set, page
-// after page (up to maxSearchPages).
-func threads(limit int, every bool) []thread {
-	out := []thread{}
+// after page (up to maxSearchPages), all within one oneOffTimeout. ok is false when a call failed or time ran out:
+// what it found so far, not to be kept as the whole list.
+func threads(limit int, every bool) (out []thread, ok bool) {
+	out = []thread{}
+	deadline := time.Now().Add(oneOffTimeout)
 	cursor := ""
 	for range maxSearchPages {
+		left := time.Until(deadline)
+		if left <= 0 {
+			return out, false
+		}
 		params := map[string]any{"cwd": config.Root, "limit": limit}
 		if cursor != "" {
 			params["cursor"] = cursor
@@ -55,8 +61,8 @@ func threads(limit int, every bool) []thread {
 			Data       []thread `json:"data"`
 			NextCursor string   `json:"nextCursor"`
 		}
-		if oneOff("thread/list", params, &r) != nil {
-			break
+		if oneOffWithin(left, "thread/list", params, &r) != nil {
+			return out, false
 		}
 		for _, t := range r.Data {
 			if t.Parent == "" && config.UUIDRe.MatchString(t.ID) {
@@ -68,14 +74,22 @@ func threads(limit int, every bool) []thread {
 		}
 		cursor = r.NextCursor
 	}
-	return out
+	return out, true
 }
 
 // cachedThreads is a list kept for a few seconds, since each fetch starts app-server and the page asks again after
-// every turn (the list) or every pause in typing (a search).
+// every turn (the list) or every pause in typing (a search). Asks while a fetch runs share it rather than start
+// another; the lock is never held through one.
 type cachedThreads struct {
 	sync.Mutex
-	at      time.Time
+	at       time.Time
+	threads  []thread
+	fetching *fetch
+}
+
+// fetch is one fetch in progress: done closes once threads holds its answer.
+type fetch struct {
+	done    chan struct{}
 	threads []thread
 }
 
@@ -89,20 +103,38 @@ const (
 	searchFresh = 15 * time.Second // one search's keystrokes reuse the full list
 )
 
-// get returns the cached threads while they're fresh, else fetches them again.
-func (c *cachedThreads) get(fresh time.Duration, fetch func() []thread) []thread {
+// get returns the cached threads while they're fresh, else fetches them again (or waits for the fetch already
+// running). A failed fetch isn't kept: the next ask tries again.
+func (c *cachedThreads) get(fresh time.Duration, load func() ([]thread, bool)) []thread {
 	c.Lock()
-	defer c.Unlock()
-	if time.Since(c.at) >= fresh {
-		c.at, c.threads = time.Now(), fetch()
+	if time.Since(c.at) < fresh {
+		defer c.Unlock()
+		return c.threads
 	}
-	return c.threads
+	if running := c.fetching; running != nil {
+		c.Unlock()
+		<-running.done
+		return running.threads
+	}
+	running := &fetch{done: make(chan struct{})}
+	c.fetching = running
+	c.Unlock()
+	found, ok := load()
+	c.Lock()
+	if ok {
+		c.at, c.threads = time.Now(), found
+	}
+	c.fetching = nil
+	c.Unlock()
+	running.threads = found
+	close(running.done)
+	return found
 }
 
 // List is this project's newest 50 threads (not sub-agents').
 func (history) List() []sessions.Info {
 	out := []sessions.Info{}
-	for _, t := range listCache.get(listFresh, func() []thread { return threads(sessions.MaxListed, false) }) {
+	for _, t := range listCache.get(listFresh, func() ([]thread, bool) { return threads(sessions.MaxListed, false) }) {
 		out = append(out, t.info())
 	}
 	return out
@@ -110,7 +142,7 @@ func (history) List() []sessions.Info {
 
 // Search is the newest of all this project's threads whose name, first message or id has every word of query.
 func (history) Search(query string) []sessions.Info {
-	all := slices.Clone(searchCache.get(searchFresh, func() []thread { return threads(searchPageSize, true) }))
+	all := slices.Clone(searchCache.get(searchFresh, func() ([]thread, bool) { return threads(searchPageSize, true) }))
 	slices.SortStableFunc(all, func(a, b thread) int { return cmp.Compare(b.UpdatedAt, a.UpdatedAt) }) // newest first, as the list shows them
 	out := []sessions.Info{}
 	for _, t := range all {

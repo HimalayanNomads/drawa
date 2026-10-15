@@ -43,7 +43,8 @@ const maybeId = (query: string) => query.length >= MIN_ID_LENGTH && !/\s/.test(q
 function showSessions() {
   const query = findBox.value.trim();
   const rows: HTMLElement[] = saved.map(sessionRow);
-  if (maybeId(query) && !saved.some(session => session.id === query)) rows.unshift(continueRow(query));
+  // after the matches, so Enter (which opens the first row) opens a match rather than asking for an ID that isn't one
+  if (maybeId(query) && !saved.some(session => session.id === query)) rows.push(continueRow(query));
   if (rows.length) return $('#sessions').replaceChildren(...rows);
   $('#sessions').replaceChildren(
     make(

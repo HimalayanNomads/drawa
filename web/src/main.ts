@@ -9,8 +9,8 @@ import { symbolsOn } from './lib/symbols'; // code symbols for Ctrl+K and diffs;
 import './lib/tooltip'; // the app's own tooltips for every title="…"
 import './lib/update'; // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api';
-import { $, make, ICON, project, typing, pressed, spinWhile } from './lib/dom';
-import { command, keysOf } from './lib/keys';
+import { $, make, ICON, project, typing, pressed } from './lib/dom';
+import { command } from './lib/keys';
 import { showTip } from './lib/help';
 import { persist, restore, saveSoon } from './lib/store';
 import { onReconnect } from './lib/connection';
@@ -49,58 +49,27 @@ import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
 import { loadSessions } from './session/card/history';
 import { DrawerPane } from './types/drawer';
+import { drawerPane, drawerOpen, toggleDrawer, closeDrawer } from './panels/drawer';
 import { agentsReady, installed, lastAgent, setLastAgent, title, blurb, chooser } from './lib/agents';
 
-const drawer = $('#drawer'),
-  inspector = $('#inspector');
-const PANE_TITLES: Record<DrawerPane, string> = { [DrawerPane.History]: 'History', [DrawerPane.Files]: 'Files' };
-const PANE_BUTTONS: Record<DrawerPane, string> = {
-  [DrawerPane.History]: '#btn-history',
-  [DrawerPane.Files]: '#btn-files',
-};
-const PANE_LOADERS: Record<DrawerPane, () => Promise<unknown>> = {
-  [DrawerPane.History]: loadSessions,
-  [DrawerPane.Files]: loadTree,
-};
-const PANE_SEARCHES: Record<DrawerPane, string> = {
-  [DrawerPane.History]: '#sessfind',
-  [DrawerPane.Files]: '#filefind',
-};
-let shownPane = DrawerPane.History;
+const inspector = $('#inspector');
 const HISTORY_KEYS = '$mod+Shift+h',
   FILES_KEYS = '$mod+Shift+e';
-// the toolbar buttons show their keys as the ? sheet does: ⌘ on a Mac, Ctrl elsewhere
-for (const [selector, combo] of [
-  ['#btn-history', HISTORY_KEYS],
-  ['#btn-files', FILES_KEYS],
-]) {
-  const button = $(selector),
-    caps = keysOf(combo);
-  button.dataset.key = caps.map(cap => (cap === 'Shift' ? '⇧' : cap)).join('');
-  button.title = `${button.title} (${caps.join('+')})`;
-}
-/** Show a pane in the drawer, or close the drawer when that pane is already showing (its button toggles it).
- *  Opening a pane reloads it and puts you in its search box. */
-function toggleDrawer(pane: DrawerPane) {
-  const open = drawer.hidden || shownPane !== pane;
-  shownPane = pane;
-  drawer.hidden = !open;
-  $('#dtitle').textContent = PANE_TITLES[pane];
-  for (const each of Object.values(DrawerPane)) {
-    $(`#${each}`).hidden = each !== pane;
-    $(PANE_BUTTONS[each]).setAttribute('aria-expanded', String(open && each === pane));
-  }
-  if (!open) return;
-  if (pane === DrawerPane.Files) wordFileFind();
-  reloadPane();
-  $(PANE_SEARCHES[pane]).focus();
-}
-/** Reload the pane that's showing, its refresh icon spinning until it's done. */
-const reloadPane = () => spinWhile($('#refresh'), PANE_LOADERS[shownPane]());
-/** Close the drawer, whichever pane it shows. */
-function closeDrawer() {
-  if (!drawer.hidden) toggleDrawer(shownPane);
-}
+drawerPane(DrawerPane.History, {
+  title: 'History',
+  button: '#btn-history',
+  keys: HISTORY_KEYS,
+  search: '#sessfind',
+  load: loadSessions,
+});
+drawerPane(DrawerPane.Files, {
+  title: 'Files',
+  button: '#btn-files',
+  keys: FILES_KEYS,
+  search: '#filefind',
+  load: loadTree,
+  opening: wordFileFind,
+});
 
 $('#btn-new').onclick = () => newSession();
 
@@ -158,11 +127,7 @@ function newSessionMenu() {
 }
 $('#btn-scratch').onclick = () => docWindow({ edit: true });
 $('#btn-git').onclick = () => openGit();
-$('#btn-history').onclick = () => toggleDrawer(DrawerPane.History);
-$('#btn-files').onclick = () => toggleDrawer(DrawerPane.Files);
 $('#iclose').onclick = closeInspector;
-$('#dclose').onclick = closeDrawer;
-$('#refresh').onclick = reloadPane;
 for (const tab of document.querySelectorAll('.seg [data-r]')) pressed(tab, tab.classList.contains('on'));
 for (const b of document.querySelectorAll<HTMLElement>('[data-r]'))
   b.onclick = () => showTab(b.dataset.r as 'changes' | 'viewer');
@@ -345,7 +310,7 @@ const closable = (): (() => void) | undefined =>
       }
     : !inspector.hidden
       ? closeInspector
-      : !drawer.hidden
+      : drawerOpen()
         ? closeDrawer
         : undefined;
 command({
