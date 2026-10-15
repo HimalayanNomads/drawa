@@ -9,8 +9,8 @@ import { symbolsOn } from './lib/symbols'; // code symbols for Ctrl+K and diffs;
 import './lib/tooltip'; // the app's own tooltips for every title="…"
 import './lib/update'; // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api';
-import { $, make, ICON, project, typing, pressed } from './lib/dom';
-import { command } from './lib/keys';
+import { $, make, ICON, project, typing, pressed, spinWhile } from './lib/dom';
+import { command, keysOf } from './lib/keys';
 import { showTip } from './lib/help';
 import { persist, restore, saveSoon } from './lib/store';
 import { onReconnect } from './lib/connection';
@@ -43,20 +43,64 @@ import './canvas/core/layers'; // bring forward / send back: the tab's right-cli
 import { openGit } from './items/git/git';
 import { openGitHub } from './items/github/github';
 import { loadTree, closeInspector, showTab } from './panels/files';
+import { wordFileFind } from './panels/filefind';
 import { cards, cur, newSession, meta, cycleCards } from './session/card/session';
 import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
 import { loadSessions } from './session/card/history';
+import { DrawerPane } from './types/drawer';
 import { agentsReady, installed, lastAgent, setLastAgent, title, blurb, chooser } from './lib/agents';
 
 const drawer = $('#drawer'),
-  inspector = $('#inspector'),
-  drawerBtn = $('#btn-drawer');
-/** Open or close the drawer (files and History). */
-const toggleDrawer = (open = drawer.hidden) => {
-  drawer.hidden = !open;
-  drawerBtn.setAttribute('aria-expanded', String(open));
+  inspector = $('#inspector');
+const PANE_TITLES: Record<DrawerPane, string> = { [DrawerPane.History]: 'History', [DrawerPane.Files]: 'Files' };
+const PANE_BUTTONS: Record<DrawerPane, string> = {
+  [DrawerPane.History]: '#btn-history',
+  [DrawerPane.Files]: '#btn-files',
 };
+const PANE_LOADERS: Record<DrawerPane, () => Promise<unknown>> = {
+  [DrawerPane.History]: loadSessions,
+  [DrawerPane.Files]: loadTree,
+};
+const PANE_SEARCHES: Record<DrawerPane, string> = {
+  [DrawerPane.History]: '#sessfind',
+  [DrawerPane.Files]: '#filefind',
+};
+let shownPane = DrawerPane.History;
+const HISTORY_KEYS = '$mod+Shift+h',
+  FILES_KEYS = '$mod+Shift+e';
+// the toolbar buttons show their keys as the ? sheet does: ⌘ on a Mac, Ctrl elsewhere
+for (const [selector, combo] of [
+  ['#btn-history', HISTORY_KEYS],
+  ['#btn-files', FILES_KEYS],
+]) {
+  const button = $(selector),
+    caps = keysOf(combo);
+  button.dataset.key = caps.map(cap => (cap === 'Shift' ? '⇧' : cap)).join('');
+  button.title = `${button.title} (${caps.join('+')})`;
+}
+/** Show a pane in the drawer, or close the drawer when that pane is already showing (its button toggles it).
+ *  Opening a pane reloads it and puts you in its search box. */
+function toggleDrawer(pane: DrawerPane) {
+  const open = drawer.hidden || shownPane !== pane;
+  shownPane = pane;
+  drawer.hidden = !open;
+  $('#dtitle').textContent = PANE_TITLES[pane];
+  for (const each of Object.values(DrawerPane)) {
+    $(`#${each}`).hidden = each !== pane;
+    $(PANE_BUTTONS[each]).setAttribute('aria-expanded', String(open && each === pane));
+  }
+  if (!open) return;
+  if (pane === DrawerPane.Files) wordFileFind();
+  reloadPane();
+  $(PANE_SEARCHES[pane]).focus();
+}
+/** Reload the pane that's showing, its refresh icon spinning until it's done. */
+const reloadPane = () => spinWhile($('#refresh'), PANE_LOADERS[shownPane]());
+/** Close the drawer, whichever pane it shows. */
+function closeDrawer() {
+  if (!drawer.hidden) toggleDrawer(shownPane);
+}
 
 $('#btn-new').onclick = () => newSession();
 
@@ -76,7 +120,9 @@ const showMore = (open: boolean) => {
   more.setAttribute('aria-expanded', String(open));
 };
 showMore(false);
-tail.append(...['#btn-scratch', '#btn-git', '#btn-drawer', '#btn-theme', '#btn-settings'].map(s => $(s)));
+tail.append(
+  ...['#btn-scratch', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(s => $(s)),
+);
 $('#bar').append(more, tail);
 more.onclick = () => showMore(!tail.classList.contains('open'));
 tail.addEventListener('click', () => showMore(false)); // picking one closes the menu
@@ -112,21 +158,12 @@ function newSessionMenu() {
 }
 $('#btn-scratch').onclick = () => docWindow({ edit: true });
 $('#btn-git').onclick = () => openGit();
-drawerBtn.onclick = () => toggleDrawer();
-$('#dclose').onclick = () => toggleDrawer(false);
+$('#btn-history').onclick = () => toggleDrawer(DrawerPane.History);
+$('#btn-files').onclick = () => toggleDrawer(DrawerPane.Files);
 $('#iclose').onclick = closeInspector;
-$('#refresh').onclick = () => {
-  loadTree();
-  loadSessions();
-};
-for (const b of document.querySelectorAll('.seg [data-l], .seg [data-r]')) pressed(b, b.classList.contains('on'));
-for (const b of document.querySelectorAll<HTMLElement>('.seg [data-l]')) {
-  b.onclick = () => {
-    for (const o of document.querySelectorAll('.seg [data-l]')) pressed(o, o === b);
-    $('#tree').hidden = b.dataset.l !== 'tree';
-    $('#sessions').hidden = b.dataset.l !== 'sessions';
-  };
-}
+$('#dclose').onclick = closeDrawer;
+$('#refresh').onclick = reloadPane;
+for (const tab of document.querySelectorAll('.seg [data-r]')) pressed(tab, tab.classList.contains('on'));
 for (const b of document.querySelectorAll<HTMLElement>('[data-r]'))
   b.onclick = () => showTab(b.dataset.r as 'changes' | 'viewer');
 
@@ -157,6 +194,7 @@ const fitSelection = () => {
 };
 /** Outside Draw mode, whose keys these are (P/A/E/T and 7/5/0/8 pick its tools, canvas/ink/ink.ts). */
 const notDrawing = () => !drawing;
+const noDialog = () => !document.querySelector('dialog[open]');
 for (const c of [
   {
     label: 'Pan (Shift: farther)',
@@ -233,10 +271,20 @@ for (const c of [
   { label: 'Git', keys: ['g'], when: notDrawing, run: () => openGit(), tip: '`G` opens Git: changes, commit and push' },
   { label: 'GitHub', keys: ['Shift+g'], run: () => openGitHub() },
   {
-    label: 'History & files',
-    keys: ['Shift+h'],
-    run: () => toggleDrawer(),
-    tip: '`Shift+H` opens past sessions and the project files',
+    label: 'History',
+    keys: [HISTORY_KEYS],
+    anywhere: true, // a Ctrl/⌘ combo types nothing, so it works from a message box too, as Ctrl+K does
+    when: noDialog,
+    run: () => toggleDrawer(DrawerPane.History),
+    tip: '`Ctrl+Shift+H` opens past sessions: search them by name, or paste a session ID to continue it',
+  },
+  {
+    label: 'Files',
+    keys: [FILES_KEYS],
+    anywhere: true,
+    when: noDialog,
+    run: () => toggleDrawer(DrawerPane.Files),
+    tip: '`Ctrl+Shift+E` opens the project files: search them by name, or code symbols',
   },
 ])
   command({ ...c, group: 'Items' });
@@ -298,7 +346,7 @@ const closable = (): (() => void) | undefined =>
     : !inspector.hidden
       ? closeInspector
       : !drawer.hidden
-        ? () => toggleDrawer(false)
+        ? closeDrawer
         : undefined;
 command({
   label: 'Close the menu or side panel',

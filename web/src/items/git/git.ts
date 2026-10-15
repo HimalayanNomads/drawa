@@ -9,7 +9,7 @@ import { changed } from '../../canvas/core/view';
 import { makeWindow } from '../../canvas/core/window';
 import { forget } from '../../canvas/graph/graph';
 import { api, post } from '../../lib/api';
-import { button, confirmBox, ICON, iconButton, make, ping, project } from '../../lib/dom';
+import { button, confirmBox, ICON, iconButton, make, ping, project, spinWhile } from '../../lib/dom';
 import { persist } from '../../lib/store';
 import { definable, showRefs } from '../../panels/defs';
 import { GH_ICON, openGitHub } from '../github/github';
@@ -178,7 +178,7 @@ async function reload() {
   if (!w || w.el.ariaBusy) return;
   w.el.ariaBusy = 'true';
   try {
-    await refresh('fresh');
+    await spinWhile(w.el.querySelector<HTMLElement>('.grefresh')!, refresh('fresh'));
     for (const v of w.views.values()) if (w.single || isOpen(v)) v.gh.refresh();
   } finally {
     w.el.ariaBusy = null;

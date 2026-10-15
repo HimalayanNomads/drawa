@@ -3,7 +3,7 @@
 // pull request or issue in detail (ghpr.ts, ghissue.ts; runs and checks in ghruns.ts). Anything here can go to Claude
 // (see gh.ts), and every write asks first (publish() in gh.ts). One per canvas, like Git; with repos in the project's
 // subfolders it shows one of them at a time, picked at the top of its lists.
-import { make, ICON, iconButton, button, ping, extLink, ago, pressed, project } from '../../lib/dom';
+import { make, ICON, iconButton, button, ping, extLink, ago, pressed, project, spinWhile } from '../../lib/dom';
 import { api, q } from '../../lib/api';
 import { md, enhance } from '../../lib/markdown';
 import { enhance as enhanceSelect } from '../../lib/select';
@@ -61,6 +61,7 @@ export let win:
       more: number;
       repos: Promise<string[]>;
       list: string[]; // the repos it can show, asked when it opens
+      refresh?: HTMLElement; // its refresh button, one for every redraw of the bar, so a spin under way carries on
     }
   | undefined;
 
@@ -216,14 +217,21 @@ export function topBar(...extra: HTMLElement[]) {
     pressed(b, v.tab === tab);
     tabs.append(b);
   }
-  bar.append(...repoPicker(), tabs, make('span', 'spacer'), ...extra, iconButton(REFRESH, 'Refresh', refreshAll));
+  bar.append(...repoPicker(), tabs, make('span', 'spacer'), ...extra, refreshButton());
   return bar;
 }
 
 /** Refresh asks again which repos there are too (one cloned meanwhile). */
+/** The window's refresh button: its icon spins until the view is drawn again. */
+function refreshButton() {
+  const w = win!;
+  w.refresh ??= iconButton(REFRESH, 'Refresh', () => spinWhile(w.refresh!, refreshAll()));
+  return w.refresh;
+}
+
 function refreshAll() {
   win!.repos = api<string[]>('git/repos').catch(() => win?.list ?? []);
-  showView();
+  return showView();
 }
 
 /** Which repo: a line of its own over the tabs, while there's more than one. */

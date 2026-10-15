@@ -42,3 +42,4 @@ textarea::placeholder,input::placeholder{color:var(--muted)}
 @keyframes enter{from{opacity:.35;transform:translateY(3px)}}
 @keyframes pulse{to{opacity:.3}}
 @keyframes spin{to{transform:rotate(360deg)}}
+button[aria-busy=true]{cursor:progress} /* a refresh button at work (spinWhile in lib/dom.ts) */
