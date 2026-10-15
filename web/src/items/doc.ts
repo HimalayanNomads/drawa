@@ -37,17 +37,20 @@ referable('doc', {
 
 const shown = new WeakMap<HTMLElement, string>(); // the source each doc's view was last drawn from
 const editors = new Map<HTMLElement, Editor>(); // the docs being edited, and their editors
+// watches each doc's body, not its window: a collapsed doc's tab is on screen while its body isn't drawn
 const visibleDocs = new IntersectionObserver(entries => {
   for (const entry of entries) {
-    const doc = entry.target as HTMLElement;
-    if (entry.isIntersecting && doc.isConnected && !shown.has(doc)) render(doc);
+    const doc = entry.target.closest<HTMLElement>('.mdoc');
+    if (entry.isIntersecting && doc?.isConnected && !shown.has(doc)) render(doc);
   }
 });
+const bodyOf = (doc: HTMLElement) => doc.querySelector('.mdoc-b');
 onPrefs(p => {
   for (const ed of editors.values()) ed.setVim(p.vim === 'on');
 });
 onGone(el => {
-  visibleDocs.unobserve(el);
+  const body = bodyOf(el);
+  if (body) visibleDocs.unobserve(body);
   editors.get(el)?.destroy();
   editors.delete(el);
 }); // deleted while editing, for good
@@ -58,7 +61,7 @@ function render(el: HTMLElement) {
     shown.delete(el); // redraw in the current theme when the preview is shown again
     return;
   }
-  visibleDocs.unobserve(el);
+  visibleDocs.unobserve(bodyOf(el)!);
   const out = el.querySelector<HTMLElement>('.mdoc-md')!,
     src = el.dataset.src ?? '';
   out.innerHTML = md(src.trim() || '*Empty. Double-click to write.*');
@@ -166,7 +169,7 @@ export function docWindow(o: { id?: string; title?: string; text?: string; rect?
     if (ed && !box.contains(e.relatedTarget as Node)) setSrc(el, ed.text());
   });
   setSrc(el, o.text ?? '');
-  visibleDocs.observe(el);
+  visibleDocs.observe(view);
   if (o.edit) {
     centerOn(el);
     toggle(true);
