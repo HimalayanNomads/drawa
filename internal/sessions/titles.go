@@ -29,6 +29,7 @@ type Info struct {
 // and an `ai-title` line when it names the session itself, again and again as it goes (the last one counts).
 type titles struct {
 	offset    int64  // how far the file has been read: transcripts only grow, so the next read starts here
+	seam      []byte // the last bytes before offset at that read: an append leaves them, a rewrite changes them
 	prompt    string // the first thing typed
 	replied   bool   // the model answered: a transcript without that (Drawa's /usage probe) isn't listed
 	custom    string // the user's /rename
@@ -74,8 +75,10 @@ var (
 // writes its title lines again and again as it goes, so the newest is near the end. ponytail: a /rename followed by
 // more than tailBytes without another title line is missed (the list falls back to the generated name or prompt).
 const (
-	headBytes = 1 << 20 // read at most this much of a long transcript's start for its first prompt and reply
-	tailBytes = 1 << 20 // and then this much of its end for its titles
+	headBytes   = 1 << 20 // read the lines starting in this much of a long transcript's start for its first prompt and reply
+	tailBytes   = 1 << 20 // and then this much of its end for its titles
+	maxHeadLine = 8 << 20 // a line crossing headBytes is read whole up to this (a first message with a pasted picture)
+	seamBytes   = 64      // how many bytes before where a read stopped tell an append from a rewrite
 )
 
 // read takes in the lines written since the last read. A last line without its newline is still being written:
@@ -87,17 +90,33 @@ func (t *titles) read(path string) {
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || info.Size() < t.offset {
-		*t = titles{} // rewritten, not appended to: start over
-	}
 	if err != nil {
 		return
 	}
-	if t.offset == 0 && info.Size() > headBytes+tailBytes {
-		t.skim(f, info.Size())
+	size := info.Size()
+	if size == t.offset {
+		// nothing written since: the list asks after every turn, mostly of files that haven't changed. ponytail: a
+		// rewrite to exactly the old size isn't noticed until the file grows; keep an mtime too if that ever matters
+		return
+	}
+	if size < t.offset || !bytes.Equal(seamAt(f, t.offset), t.seam) {
+		*t = titles{} // rewritten, not appended to: start over
+	}
+	defer func() { t.seam = seamAt(f, t.offset) }()
+	if t.offset == 0 && size > headBytes+tailBytes {
+		t.skim(f, size)
 		return
 	}
 	t.readFrom(f)
+}
+
+// seamAt is the seamBytes of f just before offset (fewer near the start; none at 0 or if it can't be read).
+func seamAt(f *os.File, offset int64) []byte {
+	seam := make([]byte, min(offset, seamBytes))
+	if _, err := f.ReadAt(seam, offset-int64(len(seam))); err != nil {
+		return nil
+	}
+	return seam
 }
 
 // readFrom takes in every whole line from t.offset on.
@@ -115,17 +134,19 @@ func (t *titles) readFrom(f *os.File) {
 	})
 }
 
-// skim is a long transcript's first read: its start until the first prompt and reply are found (headBytes at
-// most), then its last tailBytes.
+// skim is a long transcript's first read: its start until the first prompt and reply are found (lines starting in
+// its first headBytes; the one crossing it is read whole if it ends within maxHeadLine more), then its last
+// tailBytes. A line is read no further than that bound, so a huge one costs at most maxHeadLine of reading.
 func (t *titles) skim(f *os.File, size int64) {
-	eachLine(f, func(line []byte) bool {
-		if line[len(line)-1] != '\n' || t.offset+int64(len(line)) > headBytes {
-			return false
+	head := bufio.NewReaderSize(f, 64<<10)
+	for t.offset < headBytes && (t.prompt == "" || !t.replied) {
+		line, whole := lineUpTo(head, headBytes+maxHeadLine-t.offset)
+		if !whole {
+			break
 		}
 		t.offset += int64(len(line))
 		t.take(line)
-		return t.prompt == "" || !t.replied
-	})
+	}
 	tail := size - tailBytes
 	if tail <= t.offset {
 		t.readFrom(f)
@@ -141,6 +162,25 @@ func (t *titles) skim(f *os.File, size int64) {
 	}
 	t.offset = tail + int64(len(partial))
 	t.readFrom(f)
+}
+
+// lineUpTo is the reader's next line with its newline, if it has one within limit bytes; false when it doesn't (too
+// long, or not written yet), having read at most limit bytes of it.
+func lineUpTo(reader *bufio.Reader, limit int64) ([]byte, bool) {
+	var line []byte
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		if int64(len(line)+len(chunk)) > limit {
+			return nil, false
+		}
+		line = append(line, chunk...)
+		if err == nil {
+			return line, true
+		}
+		if err != bufio.ErrBufferFull {
+			return nil, false
+		}
+	}
 }
 
 // take reads one line: a prompt or a reply until both are found, and every title line.

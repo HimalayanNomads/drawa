@@ -52,6 +52,9 @@ function giveFocusBack(hadFocus: boolean) {
 /** Reload the pane that's showing, its refresh icon spinning until it's done. */
 const reloadPane = () => shownPane && spinWhile($('#refresh'), panes.get(shownPane)!.load());
 
+/** Is this pane on screen? */
+export const paneShown = (pane: DrawerPane) => !drawer.hidden && shownPane === pane;
+
 /** Is the drawer showing? */
 export const drawerOpen = () => !drawer.hidden;
 

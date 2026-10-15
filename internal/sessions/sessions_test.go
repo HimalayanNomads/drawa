@@ -285,3 +285,57 @@ func TestLongTranscriptSkimsItsMiddle(t *testing.T) {
 		t.Fatalf("later reads pick up from where the skim stopped: got %q", got)
 	}
 }
+
+func TestHugeFirstMessageIsReadWhole(t *testing.T) {
+	dir := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(dir, "picture.jsonl"))
+	defer f.Close()
+	// a first message carrying a pasted picture, crossing headBytes: its prompt still names the session
+	writeLine(f, "user", []any{
+		map[string]any{"type": "text", "text": "what is in this screenshot"},
+		map[string]any{"type": "image", "source": map[string]any{"data": strings.Repeat("A", headBytes+headBytes/2)}},
+	})
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "a cat"}})
+	filler := []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}}
+	for written := 0; written < tailBytes+headBytes; written += 4096 {
+		writeLine(f, "assistant", filler)
+	}
+	writeLine(f, "user", "a later question")
+	if got := List()[0].Title; got != "what is in this screenshot" {
+		t.Fatalf("the first prompt, past a huge first line: got %q", got)
+	}
+}
+
+func TestRewrittenTranscriptIsReadAgain(t *testing.T) {
+	dir := withTempSessions(t)
+	path := filepath.Join(dir, "rewritten.jsonl")
+	// real transcripts open with the same queue-operation line however the rest is rewritten, so the start can't
+	// tell a rewrite from an append
+	header := map[string]any{"type": "queue-operation", "sessionId": "rewritten", "content": "same opening line"}
+	write := func(title string, padding int) {
+		f, _ := os.Create(path)
+		defer f.Close()
+		writeRaw(f, header)
+		writeLine(f, "user", "the first prompt")
+		writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": strings.Repeat("ok", padding)}})
+		writeRaw(f, map[string]any{"type": "custom-title", "customTitle": title})
+	}
+	write("Old name", 1)
+	if got := List()[0].Title; got != "Old name" {
+		t.Fatalf("got %q", got)
+	}
+	write("New name", 40) // bigger, so it looks appended to
+	if got := List()[0].Title; got != "New name" {
+		t.Fatalf("a rewrite keeping the first line should be read again: got %q", got)
+	}
+	write("Shorter", 2)
+	if got := List()[0].Title; got != "Shorter" {
+		t.Fatalf("a rewrite to a smaller size should be read again: got %q", got)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Appended name"})
+	f.Close()
+	if got := List()[0].Title; got != "Appended name" {
+		t.Fatalf("a real append is still read from where it stopped: got %q", got)
+	}
+}

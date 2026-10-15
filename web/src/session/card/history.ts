@@ -12,6 +12,8 @@ import { $, ago, button, copyButton, make, quietPings, toast } from '../../lib/d
 import { enhanceMarked } from '../../lib/markdown';
 import { searchBox } from '../../lib/searchbox';
 import { save } from '../../lib/store';
+import { paneShown } from '../../panels/drawer';
+import { DrawerPane } from '../../types/drawer';
 import type { Session } from '../../types/session';
 import { replay } from '../stream/stream';
 import { pinToBottom, renderCard } from './render';
@@ -21,15 +23,12 @@ let saved: SessionInfo[] = []; // what the server answered for savedFor (all, ne
 let savedFor = ''; // the query the list shows the answer to: the box can be ahead of it
 let asked = ''; // the query the newest request was for: an answer to an older one is dropped
 
-/** Is the History pane on screen? Opening it loads it, so while it's closed there's nothing to keep fresh. */
-const historyShown = () => !$('#drawer').hidden && !$('#history').hidden;
-
 /** List this folder's saved conversations in the History panel (the open ones marked): the newest, or every one
  *  that matches the search box, by name or ID (the server searches them all, not only the newest). Skipped while the
  *  pane is closed: callers reload it after every turn, and a query left in the box would search everything each
  *  time. False when the list wasn't drawn for what the box holds (closed, failed, or a newer search took over). */
 export async function loadSessions() {
-  if (!historyShown()) return false;
+  if (!paneShown(DrawerPane.History)) return false; // opening it loads it
   const query = findBox.value.trim();
   asked = query;
   let found: SessionInfo[];
@@ -45,15 +44,28 @@ export async function loadSessions() {
   return true;
 }
 
-/** Could the query be a session ID: does it have the shape of some installed agent's? */
-const maybeId = (query: string) => installed().some(agent => agent.sid && new RegExp(agent.sid).test(query));
+/** The session ID the query could be: it as typed, or lowercased (a UUID copied in capitals), if that has the shape
+ *  of some installed agent's IDs. */
+function sessionIdIn(query: string) {
+  const known = idShapes();
+  return [query, query.toLowerCase()].find(id => known.some(shape => shape.test(id)));
+}
+const shapes = new Map<string, RegExp>(); // each agent's ID pattern, compiled once: the list redraws after every turn
+/** The installed agents' session ID shapes. */
+const idShapes = () =>
+  installed().flatMap(agent => {
+    if (!agent.sid) return [];
+    if (!shapes.has(agent.sid)) shapes.set(agent.sid, new RegExp(agent.sid));
+    return [shapes.get(agent.sid)!];
+  });
 
 /** Draw the list. An ID that matched nothing gets a row to continue it (another agent's, or one not listed). */
 function showSessions() {
   const query = savedFor;
   const rows: HTMLElement[] = saved.map(sessionRow);
   // after the matches, so Enter (which opens the first row) opens a match rather than asking for an ID that isn't one
-  if (maybeId(query) && !saved.some(session => session.id === query)) rows.push(continueRow(query));
+  const id = sessionIdIn(query);
+  if (id && !saved.some(session => session.id === id)) rows.push(continueRow(id));
   if (rows.length) return $('#sessions').replaceChildren(...rows);
   $('#sessions').replaceChildren(
     make(

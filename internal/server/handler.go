@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -19,8 +20,10 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"drawa/internal/config"
@@ -222,19 +225,44 @@ func sidPattern(k live.Kind) string {
 // ponytail: each list is its newest sessions.MaxListed, and so is the merged one; paginate if needed.
 func allSessions(query string) []sessions.Info {
 	query = strings.TrimSpace(query)
-	out := []sessions.Info{}
-	for _, name := range live.Names() {
+	// every backend at once: the ones that ask their CLI can each take seconds, which shouldn't add up
+	names := live.Names()
+	each := make([][]sessions.Info, len(names))
+	var wg sync.WaitGroup
+	for index, name := range names {
 		k, _ := live.Lookup(name)
 		if k.History == nil {
 			continue
 		}
-		for _, s := range historyOf(k.History, query) {
-			s.Backend = name
-			out = append(out, s)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			each[index] = historyOfBackend(name, k.History, query)
+		}()
+	}
+	wg.Wait()
+	out := []sessions.Info{}
+	for _, found := range each {
+		out = append(out, found...)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
 	return out[:min(len(out), sessions.MaxListed)]
+}
+
+// historyOfBackend is historyOf tagged with the backend's name. It runs off the request's goroutine, which
+// net/http's recover doesn't reach: a backend that panics is left out of the list, not the server brought down.
+func historyOfBackend(name string, history live.History, query string) (found []sessions.Info) {
+	defer func() {
+		if failed := recover(); failed != nil {
+			log.Printf("%s history: %v\n%s", name, failed, debug.Stack())
+			found = nil
+		}
+	}()
+	for _, session := range historyOf(history, query) {
+		session.Backend = name // on a copy: what a backend returns may be its cache, which other requests share
+		found = append(found, session)
+	}
+	return found
 }
 
 // historyOf is a backend's sessions matching query ("" is its list).

@@ -514,7 +514,6 @@ export function handleMessage(S: Session, m: Msg) {
     save();
     loadSessions();
     loadTree();
-
     if (!S.replaying) document.dispatchEvent(new Event('turnend'));
   }
 }
