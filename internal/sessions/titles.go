@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -69,6 +70,14 @@ var (
 	generatedMark = []byte(`"ai-title"`)
 )
 
+// A first read of a long transcript skips its middle: the first prompt and reply are near the start, and the CLI
+// writes its title lines again and again as it goes, so the newest is near the end. ponytail: a /rename followed by
+// more than tailBytes without another title line is missed (the list falls back to the generated name or prompt).
+const (
+	headBytes = 1 << 20 // read at most this much of a long transcript's start for its first prompt and reply
+	tailBytes = 1 << 20 // and then this much of its end for its titles
+)
+
 // read takes in the lines written since the last read. A last line without its newline is still being written:
 // it's left for next time.
 func (t *titles) read(path string) {
@@ -77,9 +86,22 @@ func (t *titles) read(path string) {
 		return
 	}
 	defer f.Close()
-	if info, err := f.Stat(); err != nil || info.Size() < t.offset {
+	info, err := f.Stat()
+	if err != nil || info.Size() < t.offset {
 		*t = titles{} // rewritten, not appended to: start over
 	}
+	if err != nil {
+		return
+	}
+	if t.offset == 0 && info.Size() > headBytes+tailBytes {
+		t.skim(f, info.Size())
+		return
+	}
+	t.readFrom(f)
+}
+
+// readFrom takes in every whole line from t.offset on.
+func (t *titles) readFrom(f *os.File) {
 	if _, err := f.Seek(t.offset, io.SeekStart); err != nil {
 		return
 	}
@@ -91,6 +113,34 @@ func (t *titles) read(path string) {
 		t.take(line)
 		return true
 	})
+}
+
+// skim is a long transcript's first read: its start until the first prompt and reply are found (headBytes at
+// most), then its last tailBytes.
+func (t *titles) skim(f *os.File, size int64) {
+	eachLine(f, func(line []byte) bool {
+		if line[len(line)-1] != '\n' || t.offset+int64(len(line)) > headBytes {
+			return false
+		}
+		t.offset += int64(len(line))
+		t.take(line)
+		return t.prompt == "" || !t.replied
+	})
+	tail := size - tailBytes
+	if tail <= t.offset {
+		t.readFrom(f)
+		return
+	}
+	// the tail starts mid-line: step past that line's end, then read on as usual
+	if _, err := f.Seek(tail, io.SeekStart); err != nil {
+		return
+	}
+	partial, err := bufio.NewReader(f).ReadBytes('\n')
+	if err != nil {
+		return
+	}
+	t.offset = tail + int64(len(partial))
+	t.readFrom(f)
 }
 
 // take reads one line: a prompt or a reply until both are found, and every title line.

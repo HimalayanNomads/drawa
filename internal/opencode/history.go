@@ -28,12 +28,14 @@ func (s session) info() sessions.Info {
 	return sessions.Info{ID: s.ID, Title: s.Title, Mtime: s.Updated / 1000}
 }
 
+// The CLI lists the sessions of the project it runs in (procx runs it in the project folder), where a project is
+// the git repo: sessions started in the repo's other folders come too, hence the directory check below.
 const (
-	listCount   = 200       // the newest sessions of every folder, which the list keeps this project's 50 of
-	searchCount = 1_000_000 // while searching: all of them (the CLI has no folder filter)
+	listCount   = 200       // the newest of the repo's sessions, which the list keeps this folder's 50 of
+	searchCount = 1_000_000 // while searching: all of them
 )
 
-// projectSessions is this project's top-level sessions among the newest count of every folder, newest first. ok is
+// projectSessions is this folder's top-level sessions among the newest count of its repo's, newest first. ok is
 // false when the CLI failed or its answer didn't parse.
 func projectSessions(count int) (out []session, ok bool) {
 	out = []session{}

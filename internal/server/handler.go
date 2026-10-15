@@ -204,9 +204,17 @@ func agents() []map[string]any {
 		}
 		sort.Strings(modes)
 		out = append(out, map[string]any{"name": name, "title": k.Title, "blurb": k.Blurb, "installed": err == nil, "install": k.Install,
-			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume, "noEffort": k.NoEffort, "textOnly": k.TextOnly})
+			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume, "sid": sidPattern(k), "noEffort": k.NoEffort, "textOnly": k.TextOnly})
 	}
 	return out
+}
+
+// sidPattern is the shape of a backend's session ids, as a regex the page can use too ("": it takes none).
+func sidPattern(k live.Kind) string {
+	if k.Sid == nil {
+		return ""
+	}
+	return k.Sid.String()
 }
 
 // allSessions is every backend's history list, newest first, each entry tagged with its backend. With a query: the

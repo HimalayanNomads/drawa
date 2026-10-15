@@ -10,6 +10,7 @@ import { copySidTip, installed, title } from '../../lib/agents';
 import { api, q, type SavedMessage, type SessionInfo } from '../../lib/api';
 import { $, ago, button, copyButton, make, quietPings, toast } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
+import { searchBox } from '../../lib/searchbox';
 import { save } from '../../lib/store';
 import type { Session } from '../../types/session';
 import { replay } from '../stream/stream';
@@ -20,26 +21,32 @@ let saved: SessionInfo[] = []; // what the server answered for savedFor (all, ne
 let savedFor = ''; // the query the list shows the answer to: the box can be ahead of it
 let asked = ''; // the query the newest request was for: an answer to an older one is dropped
 
+/** Is the History pane on screen? Opening it loads it, so while it's closed there's nothing to keep fresh. */
+const historyShown = () => !$('#drawer').hidden && !$('#history').hidden;
+
 /** List this folder's saved conversations in the History panel (the open ones marked): the newest, or every one
- *  that matches the search box, by name or ID (the server searches them all, not only the newest). */
+ *  that matches the search box, by name or ID (the server searches them all, not only the newest). Skipped while the
+ *  pane is closed: callers reload it after every turn, and a query left in the box would search everything each
+ *  time. False when the list wasn't drawn for what the box holds (closed, failed, or a newer search took over). */
 export async function loadSessions() {
+  if (!historyShown()) return false;
   const query = findBox.value.trim();
   asked = query;
   let found: SessionInfo[];
   try {
     found = await api<SessionInfo[]>(query ? `sessions?q=${q(query)}` : 'sessions');
   } catch {
-    return;
+    return false;
   }
-  if (query !== asked) return;
+  if (query !== asked) return false;
   saved = found;
   savedFor = query;
   showSessions();
+  return true;
 }
 
-/** A query with no spaces this long may be a session ID: the server checks its shape per agent. */
-const MIN_ID_LENGTH = 8;
-const maybeId = (query: string) => query.length >= MIN_ID_LENGTH && !/\s/.test(query);
+/** Could the query be a session ID: does it have the shape of some installed agent's? */
+const maybeId = (query: string) => installed().some(agent => agent.sid && new RegExp(agent.sid).test(query));
 
 /** Draw the list. An ID that matched nothing gets a row to continue it (another agent's, or one not listed). */
 function showSessions() {
@@ -84,15 +91,16 @@ function continueRow(id: string) {
   return open;
 }
 
-/** The first thing you typed in a transcript, to name its card. */
+/** The first thing you typed in a transcript, to name its card. Text in <tags> is the CLI's own (a slash command, a
+ *  caveat), not something you typed, as the server's list skips it too. */
 function firstPrompt(messages: SavedMessage[]) {
   for (const message of messages) {
     if (message.role !== 'user' || (message as { isMeta?: boolean }).isMeta) continue;
     const text =
       typeof message.content === 'string'
         ? message.content
-        : message.content.find(block => block.type === 'text')?.text;
-    if (text?.trim()) return text.trim();
+        : message.content.find(block => block.type === 'text' && !block.text?.startsWith('<'))?.text;
+    if (text?.trim() && !text.startsWith('<')) return text.trim();
   }
 }
 
@@ -128,25 +136,7 @@ async function resumeById(id: string) {
 
 const SEARCH_DELAY_MS = 200; // ask the server once typing pauses, not on every key
 const findBox = $('#sessfind') as HTMLInputElement;
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-findBox.oninput = () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadSessions, SEARCH_DELAY_MS);
-};
-findBox.onkeydown = async event => {
-  if (event.key === 'Enter') {
-    if (!findBox.value.trim()) return;
-    clearTimeout(searchTimer);
-    await loadSessions(); // what was typed may not have been searched yet
-    if (savedFor !== findBox.value.trim()) return; // the search failed: the list is still an older query's
-    $('#sessions').querySelector<HTMLButtonElement>('.sess')?.click();
-    return;
-  }
-  if (event.key !== 'Escape') return;
-  if (!findBox.value) return findBox.blur(); // the next Escape closes the drawer
-  findBox.value = '';
-  loadSessions();
-};
+searchBox(findBox, { delayMs: SEARCH_DELAY_MS, search: loadSessions, results: $('#sessions'), rowSelector: '.sess' });
 
 const SHOWN = 300; // messages put in the page when a session opens
 

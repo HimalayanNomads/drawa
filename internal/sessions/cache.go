@@ -22,7 +22,8 @@ type fetch[T any] struct {
 }
 
 // Get returns the cached items while they're fresh, else loads them again (or waits for the load already running).
-// load's ok is false when it failed: its items are returned, not kept, and the next ask tries again.
+// load's ok is false when it failed: the last good items are returned instead (none before the first good load), and
+// the next ask tries again.
 func (c *Cache[T]) Get(fresh time.Duration, load func() (items []T, ok bool)) []T {
 	c.mu.Lock()
 	if time.Since(c.at) < fresh {
@@ -37,14 +38,21 @@ func (c *Cache[T]) Get(fresh time.Duration, load func() (items []T, ok bool)) []
 	running := &fetch[T]{done: make(chan struct{})}
 	c.fetching = running
 	c.mu.Unlock()
+	// deferred, so a load that panics still lets the asks waiting on it go, and the next one tries again
+	defer func() {
+		c.mu.Lock()
+		c.fetching = nil
+		c.mu.Unlock()
+		close(running.done)
+	}()
 	found, ok := load()
 	c.mu.Lock()
 	if ok {
 		c.at, c.items = time.Now(), found
+	} else if c.items != nil {
+		found = c.items
 	}
-	c.fetching = nil
 	c.mu.Unlock()
 	running.items = found
-	close(running.done)
 	return found
 }

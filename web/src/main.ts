@@ -43,7 +43,7 @@ import './canvas/core/layers'; // bring forward / send back: the tab's right-cli
 import { openGit } from './items/git/git';
 import { openGitHub } from './items/github/github';
 import { loadTree, closeInspector, showTab } from './panels/files';
-import { wordFileFind } from './panels/filefind';
+import { reloadFiles, wordFileFind } from './panels/filefind';
 import { cards, cur, newSession, meta, cycleCards } from './session/card/session';
 import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
@@ -67,7 +67,7 @@ drawerPane(DrawerPane.Files, {
   button: '#btn-files',
   keys: FILES_KEYS,
   search: '#filefind',
-  load: loadTree,
+  load: reloadFiles,
   opening: wordFileFind,
 });
 
@@ -90,7 +90,9 @@ const showMore = (open: boolean) => {
 };
 showMore(false);
 tail.append(
-  ...['#btn-scratch', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(s => $(s)),
+  ...['#btn-scratch', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(selector =>
+    $(selector),
+  ),
 );
 $('#bar').append(more, tail);
 more.onclick = () => showMore(!tail.classList.contains('open'));

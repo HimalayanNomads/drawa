@@ -221,14 +221,14 @@ export function topBar(...extra: HTMLElement[]) {
   return bar;
 }
 
-/** Refresh asks again which repos there are too (one cloned meanwhile). */
 /** The window's refresh button: its icon spins until the view is drawn again. */
 function refreshButton() {
-  const w = win!;
-  w.refresh ??= iconButton(REFRESH, 'Refresh', () => spinWhile(w.refresh!, refreshAll()));
-  return w.refresh;
+  const githubWindow = win!;
+  githubWindow.refresh ??= iconButton(REFRESH, 'Refresh', () => spinWhile(githubWindow.refresh!, refreshAll()));
+  return githubWindow.refresh;
 }
 
+/** Refresh asks again which repos there are too (one cloned meanwhile). */
 function refreshAll() {
   win!.repos = api<string[]>('git/repos').catch(() => win?.list ?? []);
   return showView();

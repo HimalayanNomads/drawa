@@ -260,3 +260,28 @@ func TestSearchBeyondTheList(t *testing.T) {
 		t.Fatalf("Search by id: got %v", found)
 	}
 }
+
+func TestLongTranscriptSkimsItsMiddle(t *testing.T) {
+	dir := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(dir, "long.jsonl"))
+	defer f.Close()
+	writeLine(f, "user", "start the big refactor")
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
+	filler := []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Old name"})
+	for written := 0; written < headBytes+tailBytes; written += 4096 {
+		writeLine(f, "assistant", filler)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Newest name"})
+	writeLine(f, "assistant", filler)
+	if got := List()[0].Title; got != "Newest name" {
+		t.Fatalf("the newest title from the end: got %q", got)
+	}
+	if len(Search("refactor")) != 1 {
+		t.Fatal("the first prompt from the start")
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Renamed later"})
+	if got := List()[0].Title; got != "Renamed later" {
+		t.Fatalf("later reads pick up from where the skim stopped: got %q", got)
+	}
+}
