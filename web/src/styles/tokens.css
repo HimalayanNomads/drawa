@@ -66,3 +66,7 @@
   --z-grip:4; /* resize grips, over everything in a window */
   --r-hair:1px; /* marks a few px across: resize handles, minimap boxes */
 }
+/* where things under the toolbar start (the drawer, the inspector, Settings, its ⋯ menu, the drawing tools, full
+   view): the toolbar is smaller on phones (chrome.css), so they move up with it */
+:root{--below-bar:64px}
+@media (max-width:560px){:root{--below-bar:50px}}

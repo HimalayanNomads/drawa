@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -19,8 +20,10 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"drawa/internal/config"
@@ -143,7 +146,7 @@ var getRoutes = map[string]routeFunc{
 	"/api/symbols":   symbolsRoute,
 	"/api/refs":      refsRoute,
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
-	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(), 200, nil },
+	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(q.Get("q")), 200, nil },
 	"/api/agents":    func(q url.Values) (any, int, error) { return agents(), 200, nil },
 	"/api/prefs":     func(q url.Values) (any, int, error) { return prefsAnswer(prefs.Load()), 200, nil },
 	"/api/session":   sessionRoute,
@@ -204,27 +207,79 @@ func agents() []map[string]any {
 		}
 		sort.Strings(modes)
 		out = append(out, map[string]any{"name": name, "title": k.Title, "blurb": k.Blurb, "installed": err == nil, "install": k.Install,
-			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume, "noEffort": k.NoEffort, "textOnly": k.TextOnly})
+			"modes": modes, "canWrite": k.OneShot != nil, "canUnsend": k.Unsend, "resume": k.Resume, "sid": sidPattern(k), "noEffort": k.NoEffort, "textOnly": k.TextOnly})
 	}
 	return out
 }
 
-// allSessions is every backend's history list, newest first, each entry tagged with its backend.
-// ponytail: each list is its newest 50, and so is the merged one; paginate if needed.
-func allSessions() []sessions.Info {
-	out := []sessions.Info{}
-	for _, name := range live.Names() {
+// sidPattern is the shape of a backend's session ids, as a regex the page can use too ("": it takes none).
+func sidPattern(k live.Kind) string {
+	if k.Sid == nil {
+		return ""
+	}
+	return k.Sid.String()
+}
+
+// allSessions is every backend's history list, newest first, each entry tagged with its backend. With a query: the
+// sessions whose title or id has every word of it, from all of a backend's sessions when it can search them.
+// ponytail: each list is its newest sessions.MaxListed, and so is the merged one; paginate if needed.
+func allSessions(query string) []sessions.Info {
+	query = strings.TrimSpace(query)
+	// every backend at once: the ones that ask their CLI can each take seconds, which shouldn't add up
+	names := live.Names()
+	each := make([][]sessions.Info, len(names))
+	var wg sync.WaitGroup
+	for index, name := range names {
 		k, _ := live.Lookup(name)
 		if k.History == nil {
 			continue
 		}
-		for _, s := range k.History.List() {
-			s.Backend = name
-			out = append(out, s)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			each[index] = historyOfBackend(name, k.History, query)
+		}()
+	}
+	wg.Wait()
+	out := []sessions.Info{}
+	for _, found := range each {
+		out = append(out, found...)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
-	return out[:min(len(out), 50)]
+	return out[:min(len(out), sessions.MaxListed)]
+}
+
+// historyOfBackend is historyOf tagged with the backend's name. It runs off the request's goroutine, which
+// net/http's recover doesn't reach: a backend that panics is left out of the list, not the server brought down.
+func historyOfBackend(name string, history live.History, query string) (found []sessions.Info) {
+	defer func() {
+		if failed := recover(); failed != nil {
+			log.Printf("%s history: %v\n%s", name, failed, debug.Stack())
+			found = nil
+		}
+	}()
+	for _, session := range historyOf(history, query) {
+		session.Backend = name // on a copy: what a backend returns may be its cache, which other requests share
+		found = append(found, session)
+	}
+	return found
+}
+
+// historyOf is a backend's sessions matching query ("" is its list).
+func historyOf(history live.History, query string) []sessions.Info {
+	if query == "" {
+		return history.List()
+	}
+	if searcher, ok := history.(live.Searcher); ok {
+		return searcher.Search(query)
+	}
+	matched := []sessions.Info{}
+	for _, s := range history.List() {
+		if sessions.Matches(s.Title+"\n"+s.ID, query) {
+			matched = append(matched, s)
+		}
+	}
+	return matched
 }
 
 // sessionRoute is one saved session (?id=, ?backend=, optionally one sub-agent's ?agent=).

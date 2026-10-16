@@ -4,7 +4,7 @@
 // first edit), kept as you type. S or the toolbar's Scratchpad makes one in view; Claude makes and edits them with
 // canvas_create / canvas_update (kind "doc").
 
-import { items, onGone, type Rect, savedRect } from '../canvas/core/items';
+import { hidden, items, onGone, type Rect, savedRect } from '../canvas/core/items';
 import { centerOn, freeSpot } from '../canvas/core/placement';
 import { referable } from '../canvas/core/refs';
 import { creatable } from '../canvas/core/tools';
@@ -37,16 +37,43 @@ referable('doc', {
 
 const shown = new WeakMap<HTMLElement, string>(); // the source each doc's view was last drawn from
 const editors = new Map<HTMLElement, Editor>(); // the docs being edited, and their editors
+// watches each doc's body, not its window: a collapsed doc's tab is on screen while its body isn't drawn. A doc in a
+// collapsed group is only invisible (it keeps its size and scroll), which the observer still counts as on screen, so
+// it's skipped and looked at again when the group opens.
+const visibleDocs = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    const doc = entry.target.closest<HTMLElement>('.mdoc');
+    if (entry.isIntersecting && doc?.isConnected && !hidden(doc) && !shown.has(doc)) render(doc);
+  }
+});
+const bodyOf = (doc: HTMLElement) => doc.querySelector('.mdoc-b');
+/** A doc's group opened: watching its body afresh reports at once whether it's on screen now. */
+const groupOpened = new MutationObserver(records => {
+  for (const record of records) {
+    const doc = record.target as HTMLElement,
+      body = bodyOf(doc);
+    if (!doc.isConnected || hidden(doc) || shown.has(doc) || !body) continue; // gone docs stay unwatched
+    visibleDocs.unobserve(body);
+    visibleDocs.observe(body);
+  }
+});
 onPrefs(p => {
   for (const ed of editors.values()) ed.setVim(p.vim === 'on');
 });
 onGone(el => {
+  const body = bodyOf(el);
+  if (body) visibleDocs.unobserve(body);
   editors.get(el)?.destroy();
   editors.delete(el);
 }); // deleted while editing, for good
 
 /** Show the source rendered. The content sits inside the scroller so a redraw keeps the ink layer next to it. */
 function render(el: HTMLElement) {
+  if (editors.has(el)) {
+    shown.delete(el); // redraw in the current theme when the preview is shown again
+    return;
+  }
+  visibleDocs.unobserve(bodyOf(el)!);
   const out = el.querySelector<HTMLElement>('.mdoc-md')!,
     src = el.dataset.src ?? '';
   out.innerHTML = md(src.trim() || '*Empty. Double-click to write.*');
@@ -60,7 +87,7 @@ function setSrc(el: HTMLElement, text: string) {
   const t = el.querySelector('.win-h .t'),
     h = headingOf(text);
   if (t && h && t.textContent === 'Scratchpad') t.textContent = h; // untitled: named after its first heading (a rename wins)
-  if (shown.get(el) !== el.dataset.src) render(el); // unchanged (a click in and out): no redraw, no Mermaid rerun
+  if (shown.has(el) && !editors.has(el) && shown.get(el) !== el.dataset.src) render(el); // unchanged: no Mermaid rerun
   changed();
 }
 /** Claude's text: refused whole rather than cut short, so it hears why. */
@@ -106,7 +133,9 @@ export function docWindow(o: { id?: string; title?: string; text?: string; rect?
       box.hidden = true;
       view.hidden = false;
       pressed(pencil, false);
-      return setSrc(el, text);
+      setSrc(el, text);
+      if (!shown.has(el)) render(el);
+      return;
     }
     if (ed || opening) return;
     opening = true;
@@ -152,6 +181,8 @@ export function docWindow(o: { id?: string; title?: string; text?: string; rect?
     if (ed && !box.contains(e.relatedTarget as Node)) setSrc(el, ed.text());
   });
   setSrc(el, o.text ?? '');
+  visibleDocs.observe(view);
+  groupOpened.observe(el, { attributeFilter: ['data-hidden-in'] });
   if (o.edit) {
     centerOn(el);
     toggle(true);
@@ -161,7 +192,11 @@ export function docWindow(o: { id?: string; title?: string; text?: string; rect?
 
 // Mermaid draws in the theme's colors. ponytail: redraws whole docs, and relies on diagram.ts's onTheme (registered
 // first) re-initialising Mermaid before these run; redraw only the diagrams if docs get big or many.
-onTheme(() => items('doc').forEach(render));
+onTheme(() =>
+  items('doc')
+    .filter(doc => shown.has(doc))
+    .forEach(render),
+);
 
 creatable('doc', {
   size: () => ({ w: 420, h: 360 }),
@@ -172,8 +207,6 @@ creatable('doc', {
     setSrc(el, text);
   },
 });
-// ponytail: every doc is drawn at boot, Mermaid included, even far off-screen; draw on first sight
-// (IntersectionObserver) if boot slows with dozens of diagram-heavy docs
 persist(
   'docs',
   () =>

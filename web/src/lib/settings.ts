@@ -1,6 +1,6 @@
 // The toolbar's Settings panel (the gear): appearance, editor, completion alerts and fonts.
-// Each setting's module fills in its own controls; this one opens and
-// closes the panel.
+// Each setting's module fills in its own controls (theme, uimode, symbols, fonts, sendkey, completion); this one
+// opens and closes the panel.
 import './completion';
 import { $ } from './dom';
 import { command } from './keys';

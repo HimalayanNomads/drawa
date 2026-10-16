@@ -1,6 +1,6 @@
 # Contributing to Drawa
 
-Thanks for helping out. This page covers running Drawa from source and finding your way around the code. [`CLAUDE.md`](CLAUDE.md) holds the rules the codebase follows (where things go, the registries, styling and performance rules). Read it before a non-trivial change, whether you write the code yourself or an agent does.
+Thanks for helping out. This page covers running Drawa from source and finding your way around the code. [`CLAUDE.md`](CLAUDE.md) holds the rules the codebase follows (the checks before you finish, performance and the server), [`web/CLAUDE.md`](web/CLAUDE.md) the frontend's (where things go, the registries) and [`web/DESIGN.md`](web/DESIGN.md) its styling rules. Read them before a non-trivial change, whether you write the code yourself or an agent does.
 
 Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -95,7 +95,7 @@ sequenceDiagram
    Push the branch to your fork (`git push -u origin fix/short-name`) and open the pull request from there. Never work on your fork's `main`. When `main` moves on while you work, merge it in with `git fetch upstream && git merge upstream/main`.
 2. Keep one change per pull request. A bug fix doesn't need to bring a refactor along.
 3. Follow [`CLAUDE.md`](CLAUDE.md). A new feature plugs into the existing registries (`persist()`, `referable()`, `creatable()`...) instead of adding special cases. Go code uses the standard library only, and the frontend gets no new dependency for something a few lines can do.
-4. Update the docs in the same pull request when you change behavior, a shortcut or a setting (`README.md`), or add a folder or a registry (`CLAUDE.md`).
+4. Update the docs in the same pull request when you change behavior, a shortcut or a setting (`README.md`), or add a folder or a registry (`CLAUDE.md`, or `web/CLAUDE.md` for the frontend).
 5. Write commit messages as a short sentence in the imperative that says what changes, the way the history does: `Git window: say git isn't installed instead of offering git init`.
 
 ## Before you open a pull request
@@ -149,7 +149,7 @@ flowchart TB
   go <-- "stream-json · HTTP and events · JSON-RPC · MCP · subprocesses" --> tools
 ```
 
-Arrows inside the frontend show which way imports go. The rules for where code goes are in [`CLAUDE.md`](CLAUDE.md).
+Arrows inside the frontend show which way imports go. The rules for where code goes are in [`web/CLAUDE.md`](web/CLAUDE.md).
 
 ## License
 

@@ -3,8 +3,8 @@ package opencode
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"drawa/internal/config"
@@ -15,40 +15,77 @@ import (
 // dependency-free, so no driver).
 type history struct{}
 
-var listCache struct {
-	sync.Mutex
-	at   time.Time
-	list []sessions.Info
+// session is one entry of `opencode session list`.
+type session struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title"` // OpenCode's own: its generated title, or the one you renamed it to
+	Updated   float64 `json:"updated"`
+	Directory string  `json:"directory"`
+	ParentID  string  `json:"parentID"`
 }
 
+func (s session) info() sessions.Info {
+	return sessions.Info{ID: s.ID, Title: s.Title, Mtime: s.Updated / 1000}
+}
+
+// The CLI lists the sessions of the project it runs in (procx runs it in the project folder), where a project is
+// the git repo: sessions started in the repo's other folders come too, hence the directory check below.
+const (
+	listCount   = 200       // the newest of the repo's sessions, which the list keeps this folder's 50 of
+	searchCount = 1_000_000 // while searching: all of them
+)
+
+// projectSessions is this folder's top-level sessions among the newest count of its repo's, newest first. ok is
+// false when the CLI failed or its answer didn't parse.
+func projectSessions(count int) (out []session, ok bool) {
+	out = []session{}
+	r, err := ocRun(30*time.Second, "", "session", "list", "--format", "json", "--max-count", strconv.Itoa(count))
+	if err != nil || r.Code != 0 {
+		return out, false
+	}
+	var all []session
+	if json.Unmarshal([]byte(r.Stdout), &all) != nil {
+		return out, false
+	}
+	for _, s := range all {
+		if s.Directory == config.Root && s.ParentID == "" && sidRe.MatchString(s.ID) {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Updated > out[j].Updated })
+	return out, true
+}
+
+var listCache, searchCache sessions.Cache[session]
+
+const (
+	listFresh   = 3 * time.Second
+	searchFresh = 15 * time.Second // one search's keystrokes reuse the full list
+)
+
 // List is this project's newest 50 top-level sessions.
-// ponytail: cached for 3s, since each call starts the CLI (~1s) and the page asks after every turn.
 func (history) List() []sessions.Info {
-	listCache.Lock()
-	defer listCache.Unlock()
-	if time.Since(listCache.at) < 3*time.Second {
-		return listCache.list
-	}
 	out := []sessions.Info{}
-	r, err := ocRun(30*time.Second, "", "session", "list", "--format", "json", "--max-count", "200")
-	if err == nil && r.Code == 0 {
-		var all []struct {
-			ID        string  `json:"id"`
-			Title     string  `json:"title"`
-			Updated   float64 `json:"updated"`
-			Directory string  `json:"directory"`
-			ParentID  string  `json:"parentID"`
+	for _, s := range listCache.Get(listFresh, func() ([]session, bool) { return projectSessions(listCount) }) {
+		if len(out) == sessions.MaxListed {
+			break
 		}
-		json.Unmarshal([]byte(r.Stdout), &all)
-		for _, s := range all {
-			if s.Directory == config.Root && s.ParentID == "" && sidRe.MatchString(s.ID) {
-				out = append(out, sessions.Info{ID: s.ID, Title: s.Title, Mtime: s.Updated / 1000})
-			}
+		out = append(out, s.info())
+	}
+	return out
+}
+
+// Search is the newest of all this project's sessions whose title or id has every word of query.
+func (history) Search(query string) []sessions.Info {
+	out := []sessions.Info{}
+	for _, s := range searchCache.Get(searchFresh, func() ([]session, bool) { return projectSessions(searchCount) }) {
+		if len(out) == sessions.MaxListed {
+			break
+		}
+		if sessions.Matches(s.Title+"\n"+s.ID, query) {
+			out = append(out, s.info())
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Mtime > out[j].Mtime })
-	out = out[:min(len(out), 50)]
-	listCache.at, listCache.list = time.Now(), out
 	return out
 }
 

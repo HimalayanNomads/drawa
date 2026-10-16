@@ -18,18 +18,23 @@ func TestCompletionPrefsRoutes(t *testing.T) {
 	os.WriteFile(path, []byte(`{"ui":"minimal","mine":true}`), 0o644)
 	srv := httptest.NewServer(Handler())
 	defer srv.Close()
+	if code, body := call(t, srv, "GET", "/api/prefs", ""); code != 200 || !strings.Contains(body, `"completion":"toast"`) {
+		t.Fatalf("default completion: %d %s", code, body)
+	}
 	for _, mode := range []string{"browser", "toast", "none"} {
-		if mode != "browser" {
-			if code, body := call(t, srv, "POST", "/api/prefs", `{"completion":"`+mode+`"}`); code != 200 {
-				t.Fatalf("save %s: %d %s", mode, code, body)
-			}
+		want := mode
+		if mode == "browser" {
+			want = "toast"
 		}
-		if code, body := call(t, srv, "GET", "/api/prefs", ""); code != 200 || !strings.Contains(body, `"completion":"`+mode+`"`) {
+		if code, body := call(t, srv, "POST", "/api/prefs", `{"completion":"`+mode+`"}`); code != 200 || !strings.Contains(body, `"completion":"`+want+`"`) {
+			t.Fatalf("save %s: %d %s", mode, code, body)
+		}
+		if code, body := call(t, srv, "GET", "/api/prefs", ""); code != 200 || !strings.Contains(body, `"completion":"`+want+`"`) {
 			t.Fatalf("read %s: %d %s", mode, code, body)
 		}
 		var saved map[string]any
 		data, err := os.ReadFile(path)
-		if err != nil || json.Unmarshal(data, &saved) != nil || saved["completion"] != mode || saved["mine"] != true || saved["ui"] != "minimal" {
+		if err != nil || json.Unmarshal(data, &saved) != nil || saved["completion"] != want || saved["mine"] != true || saved["ui"] != "minimal" {
 			t.Fatalf("saved %s: %s, %v", mode, data, err)
 		}
 	}

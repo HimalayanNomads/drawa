@@ -1,4 +1,5 @@
-// Completion alerts follow Settings; the unread count and question/approval/plan alerts stay independent.
+// Count unread events in the tab title and send system notifications while you're away. Completion alerts follow
+// Settings: a toast while you're here, a system notification while away, or neither; attention alerts stay on.
 
 import { watched } from '../../canvas/core/items';
 import { centerOn } from '../../canvas/core/placement';
@@ -45,27 +46,27 @@ const announce = (text: string) => {
   setTimeout(() => (live.textContent = text), 50);
 };
 
-/** Name the backend and session once, distinguishing a question from a tool approval. */
+/** A short action-first heading; each alert surface adds the session title where it fits. */
 function getHeading(session: Session, sessionStopReason: SessionStopReason, question: boolean) {
-  const name = `${who(session.backend)}: ${session.title}`;
-  if (sessionStopReason === SessionStopReason.Done) return `${name} Finished`;
-  if (sessionStopReason === SessionStopReason.Plan) return `${name} Plan ready for review`;
-  return `${name} ${question ? 'Questions asked' : 'Needs your approval'}`;
+  const name = who(session.backend);
+  if (sessionStopReason === SessionStopReason.Done) return `${name} finished`;
+  if (sessionStopReason === SessionStopReason.Plan) return `${name} has a plan ready for review`;
+  return `${name} ${question ? 'has questions' : 'needs your approval'}`;
 }
 
 /** Tell you a card finished or needs you, without changing focus until you choose its alert. */
 export function notify(session: Session, sessionStopReason: SessionStopReason, question = false) {
   const heading = getHeading(session, sessionStopReason, question),
+    message = `${heading}: ${session.title}`,
     away = isAway();
-  if (sessionStopReason !== SessionStopReason.Done) announce(heading);
+  if (sessionStopReason !== SessionStopReason.Done) announce(message);
   if (away) {
     unread++;
     updateTitle();
   }
   if (sessionStopReason === SessionStopReason.Done) {
-    const mode = prefs().completion;
-    if (mode === CompletionMode.None) return;
-    if (mode === CompletionMode.Toast) {
+    if (prefs().completion === CompletionMode.None) return;
+    if (!away) {
       if (!session.card.isConnected || (cur === session && watched(session.card))) return;
       const show = button('Show', '', () => {
         completion.remove();
@@ -74,7 +75,7 @@ export function notify(session: Session, sessionStopReason: SessionStopReason, q
         centerOn(session.card);
       });
       show.setAttribute('aria-label', `Show ${session.title}`);
-      const completion = notice(heading, show);
+      const completion = notice(message, show);
       completion.classList.add('completion');
       setTimeout(() => completion.remove(), COMPLETION_NOTICE_TIMEOUT_MS);
       return;
@@ -83,13 +84,16 @@ export function notify(session: Session, sessionStopReason: SessionStopReason, q
   if (!away) return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const notification = new Notification(heading, {
+    body: session.title,
     tag: session.cid + sessionStopReason,
     silent: sessionStopReason === SessionStopReason.Done,
   });
   notification.onclick = () => {
     window.focus();
-    focus(session);
-    centerOn(session.card);
+    if (session.card.isConnected) {
+      focus(session);
+      centerOn(session.card);
+    }
     notification.close();
   };
 }

@@ -3,7 +3,7 @@
 // then code symbols (lib/symbols.ts) matching the query are listed below the windows, the highlighted one previewed
 // beside the list; picking one opens its file in a window (see fileOpener), at the symbol's line. Commands
 // (lib/keys.ts entries with `run`) matching the query are listed above.
-import { api, q as enc } from '../../lib/api';
+import { matchingFiles, splitPath } from '../../lib/api';
 import { $, make, ping, reducedMotion, revealIn } from '../../lib/dom';
 import { command, commands, keysOf } from '../../lib/keys';
 import { enhanceMarked } from '../../lib/markdown';
@@ -158,17 +158,14 @@ function findFiles() {
     if (peekFile) got.slice(0, 3).forEach(h => peekOf(h.path!, h.line));
   };
   typing = setTimeout(() => {
-    api<string[]>(`files?q=${enc(q)}`).then(
-      l => answer(h => (found = h), l.map(fileHit)),
-      () => answer(h => (found = h), []),
-    );
-    if (withSyms) findSymbols(q).then(l => answer(h => (syms = h), l.map(symHit)));
+    matchingFiles(q).then(paths => answer(fileHits => (found = fileHits), paths.map(fileHit)));
+    if (withSyms) findSymbols(q).then(symbols => answer(symbolHits => (syms = symbolHits), symbols.map(symHit)));
   }, 120);
 }
 /** A project file as a Ctrl+K hit: its name, with its folder as the excerpt. */
 const fileHit = (path: string): Hit => {
-  const cut = path.lastIndexOf('/');
-  return { path, title: path.slice(cut + 1), kind: 'preview', excerpt: path.slice(0, cut + 1), score: 0 };
+  const { name, folder } = splitPath(path);
+  return { path, title: name, kind: 'preview', excerpt: folder, score: 0 };
 };
 /** A code symbol as a Ctrl+K hit: its name, kind and where it's defined. */
 const symHit = (s: CodeSymbol): Hit => ({

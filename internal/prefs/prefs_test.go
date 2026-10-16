@@ -114,19 +114,23 @@ func TestInvalidValueReadsAsDefault(t *testing.T) {
 func TestCompletionPreference(t *testing.T) {
 	path := home(t)
 	os.MkdirAll(filepath.Dir(path), 0o755)
-	// A pre-completion config gains browser mode without losing other settings or unknown keys.
+	// An older config gains the combined alert mode without losing settings or unknown keys.
 	os.WriteFile(path, []byte(`{"theme":"dark","mine":{"keep":true}}`), 0o644)
-	if got, err := Load(); err != nil || got["completion"] != "browser" || got["theme"] != "dark" {
+	if got, err := Load(); err != nil || got["completion"] != "toast" || got["theme"] != "dark" {
 		t.Fatalf("old config: %v, %v", got, err)
 	}
 	for _, mode := range []string{"toast", "none", "browser"} {
-		if got, err := Set(map[string]any{"completion": mode}); err != nil || got["completion"] != mode {
+		want := mode
+		if mode == "browser" {
+			want = "toast"
+		}
+		if got, err := Set(map[string]any{"completion": mode}); err != nil || got["completion"] != want {
 			t.Fatalf("Set(%s) = %v, %v", mode, got, err)
 		}
-		if got, err := Load(); err != nil || got["completion"] != mode {
+		if got, err := Load(); err != nil || got["completion"] != want {
 			t.Fatalf("reload %s: %v, %v", mode, got, err)
 		}
-		if saved := onDisk(t, path); saved["completion"] != mode || saved["theme"] != "dark" || saved["mine"] == nil {
+		if saved := onDisk(t, path); saved["completion"] != want || saved["theme"] != "dark" || saved["mine"] == nil {
 			t.Fatalf("saved %v", saved)
 		}
 	}
@@ -140,11 +144,11 @@ func TestCompletionPreference(t *testing.T) {
 		}
 	}
 	// Hand edits apply on reload, with invalid values preserved on disk but defaulted for the page.
-	for _, mode := range []string{"toast", "invalid"} {
+	for _, mode := range []string{"toast", "none", "invalid"} {
 		os.WriteFile(path, []byte(`{"completion":"`+mode+`","mine":true}`), 0o644)
 		want := mode
 		if mode == "invalid" {
-			want = "browser"
+			want = "toast"
 		}
 		if got, err := Load(); err != nil || got["completion"] != want {
 			t.Fatalf("hand edit %s: %v, %v", mode, got, err)
@@ -152,5 +156,35 @@ func TestCompletionPreference(t *testing.T) {
 		if saved := onDisk(t, path); saved["completion"] != mode || saved["mine"] != true {
 			t.Fatalf("hand edit overwritten: %v", saved)
 		}
+	}
+}
+
+// Upgrade browser-only configurations once, but never re-enable a user's disabled completion alerts.
+func TestCompletionMigration(t *testing.T) {
+	for _, mode := range []string{"browser", "toast", "none"} {
+		t.Run(mode, func(t *testing.T) {
+			path := home(t)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(`{"completion":"`+mode+`","theme":"dark","mine":true}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			want := mode
+			if mode == "browser" {
+				want = "toast"
+			}
+			for range 2 {
+				if got, err := Load(); err != nil || got["completion"] != want || got["theme"] != "dark" {
+					t.Fatalf("Load() = %v, %v; want completion %s", got, err, want)
+				}
+				if saved := onDisk(t, path); saved["completion"] != want || saved["mine"] != true {
+					t.Fatalf("saved %v", saved)
+				}
+			}
+			if got, err := Set(map[string]any{"ui": "minimal"}); err != nil || got["completion"] != want {
+				t.Fatalf("unrelated setting changed completion: %v, %v", got, err)
+			}
+		})
 	}
 }

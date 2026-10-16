@@ -176,7 +176,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 </picture>
 
 - **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
-- **Find finished work.** Settings → Notifications → **Upon completion** chooses browser notifications while away (the default), a three-second toast with **Show** to focus and center the session, or no completion alert. Toasts skip a card already visible and focused. The unread tab count and question, approval and plan alerts stay on.
+- **Find finished work.** Settings → Notifications → **Upon completion** defaults to **Show alerts**: a three-second toast with **Show** to focus and center the session while you're in Drawa, or a system notification while you're away (if allowed). Toasts skip a card already visible and focused. **Do nothing** turns completion alerts off; the unread tab count and question, approval and plan alerts stay on.
 - **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
 
 <picture>
@@ -206,7 +206,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 
 ```json
 {
-  "completion": "browser",
+  "completion": "toast",
   "darkScheme": "claude-dark",
   "lightScheme": "claude-light",
   "symbols": "auto",
@@ -218,7 +218,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 
 | Key | Default | Values |
 |---|---|---|
-| `completion` | `browser` | `browser` sends a system notification while away (if allowed); `toast` shows a three-second in-app notice; `none` skips completion alerts. Question, approval and plan alerts and the unread tab count are unchanged. Play sound is unavailable pending [#151](https://github.com/HimalayanNomads/drawa/issues/151). |
+| `completion` | `toast` | **Show alerts** (`toast`) shows a three-second notice while present and a system notification while away (if allowed); `none` turns completion alerts off. Missing values use `toast`; the old `browser` value migrates to `toast`, while an existing `none` stays off. Invalid values use the default without overwriting the hand edit. Question, approval and plan alerts and the unread tab count are unchanged. Play sound is unavailable pending [#151](https://github.com/HimalayanNomads/drawa/issues/151). |
 | `ui` | `full` | `full` shows every window's title tab; `minimal` shows a window's tab only when you hover or focus it. A session card waiting for your approval keeps its tab either way. |
 | `theme` | `system` | `system` follows your computer's light or dark mode; `light` or `dark` fixes it. |
 | `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |
@@ -234,7 +234,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | Area | Keys |
 |---|---|
 | **Canvas** | `V`/`1` select · `H` hand (hold `Space` to pan) · `Shift+1` fit all · `Shift+2` zoom to selection · `Shift+0` zoom 100% · `F` fit · `+`/`-` zoom in/out · arrows pan (`Shift`: bigger steps; with a selection they nudge it instead) |
-| **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Shift+H` history & files · `Ctrl+K` find a window, file, code symbol or command · `?` all shortcuts |
+| **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Ctrl/Cmd+Shift+H` history (search past sessions, or continue one by its ID) · `Ctrl/Cmd+Shift+E` files (search by name or code symbol) · `Ctrl+K` find a window, file, code symbol or command · `?` all shortcuts |
 | **Windows** | `W`/`Shift+W` next/previous window (selects it, so `Delete`, arrows and `Ctrl+G` act on it) · `M` collapse/expand · `Shift+F` full view · `F2` rename · `Shift+P` pin to the sidebar · `Shift+S` stick to the screen. They act on the selected window, else the one in front |
 | **File editor** | the pencil on a file window, a double-click on its text, or **Edit** at the top of the file inspector edits it · `Ctrl/Cmd+S` save · the pencil again stops editing (asks first if there are unsaved changes) · with Vim motions on (Settings): `:w` save · `:q` stop · `:q!` drop changes · `:wq` or `:x` save and stop · `gd` / `gD` the name's first use in the function / file (where it's declared), `Ctrl+O` back · `Esc` then `Tab` leaves the editor |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Ctrl+Shift+Z`/`Ctrl+Y` redo · `Esc` stop |

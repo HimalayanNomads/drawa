@@ -16,6 +16,13 @@ import (
 // the history list, a saved thread. ponytail: a process per call (about half a second); keep one around if the
 // history list is ever opened often enough for that to show.
 func oneOff(method string, params, out any) error {
+	return oneOffWithin(oneOffTimeout, method, params, out)
+}
+
+const oneOffTimeout = 30 * time.Second
+
+// oneOffWithin is oneOff given up after timeout.
+func oneOffWithin(timeout time.Duration, method string, params, out any) error {
 	args, err := projectArgs()
 	if err != nil {
 		return err
@@ -32,7 +39,7 @@ func oneOff(method string, params, out any) error {
 	}
 	kill := func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	defer func() { kill(); cmd.Wait() }()
-	timer := time.AfterFunc(30*time.Second, kill)
+	timer := time.AfterFunc(timeout, kill)
 	defer timer.Stop()
 	hello, _ := json.Marshal(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{"clientInfo": map[string]any{"name": "drawa", "version": config.Version}}})
 	req, _ := json.Marshal(map[string]any{"id": 2, "method": method, "params": params})

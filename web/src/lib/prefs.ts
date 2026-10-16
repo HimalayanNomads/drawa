@@ -23,7 +23,7 @@ const DEFAULTS: Prefs = {
   darkScheme: 'claude-dark',
   symbols: 'auto',
   vim: 'off',
-  completion: CompletionMode.Browser,
+  completion: CompletionMode.Toast,
 };
 const KEY = 'drawa:prefs';
 /** A JSON value from localStorage, or null when it's missing or doesn't parse. */
@@ -36,7 +36,7 @@ const read = (key: string) => {
 };
 
 const seen = read(KEY) as Partial<Prefs> | null;
-/** Old or invalid cached completion choices use the same default as the server. */
+/** Legacy browser-only and invalid cached choices use the combined alert default, as on the server. */
 const completionMode = (value: unknown) =>
   Object.values(CompletionMode).includes(value as CompletionMode) ? (value as CompletionMode) : DEFAULTS.completion;
 let cur: Prefs = { ...DEFAULTS, ...seen, completion: completionMode(seen?.completion) };

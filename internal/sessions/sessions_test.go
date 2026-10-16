@@ -2,10 +2,12 @@ package sessions
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"drawa/internal/config"
 )
@@ -189,5 +191,151 @@ func TestListTitles(t *testing.T) {
 	want := map[string]string{"pasted": "what is this", "plain": "hello"}
 	if len(got) != len(want) || got["pasted"] != want["pasted"] || got["plain"] != want["plain"] {
 		t.Fatalf("List titles = %v, want %v", got, want)
+	}
+}
+
+func writeRaw(w *os.File, entry map[string]any) {
+	b, _ := json.Marshal(entry)
+	w.Write(b)
+	w.Write([]byte("\n"))
+}
+
+func TestTitlePrefersRename(t *testing.T) {
+	dir := withTempSessions(t)
+	path := filepath.Join(dir, "renamed.jsonl")
+	f, _ := os.Create(path)
+	defer f.Close()
+	writeLine(f, "user", "fix the login bug")
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": `I'll grep for "custom-title"`}})
+	titleOf := func() string { return List()[0].Title }
+	if got := titleOf(); got != "fix the login bug" {
+		t.Fatalf("first prompt: got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "ai-title", "aiTitle": "Login bug fix"})
+	if got := titleOf(); got != "Login bug fix" {
+		t.Fatalf("generated title (read from where the last list stopped): got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "AUTH"})
+	writeRaw(f, map[string]any{"type": "ai-title", "aiTitle": "Later name"})
+	if got := titleOf(); got != "AUTH" {
+		t.Fatalf("rename wins over a later generated title: got %q", got)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "AUTH v2"})
+	if got := titleOf(); got != "AUTH v2" {
+		t.Fatalf("the last rename counts: got %q", got)
+	}
+	for _, query := range []string{"auth", "login BUG", "later", "renamed"} {
+		if len(Search(query)) != 1 {
+			t.Fatalf("Search(%q) should find it by any of its names or its id", query)
+		}
+	}
+	if len(Search("auth payments")) != 0 {
+		t.Fatal("every word must match")
+	}
+}
+
+func TestSearchBeyondTheList(t *testing.T) {
+	dir := withTempSessions(t)
+	reply := []any{map[string]any{"type": "text", "text": "ok"}}
+	for index := range MaxListed + 10 {
+		path := filepath.Join(dir, fmt.Sprintf("s%03d.jsonl", index))
+		f, _ := os.Create(path)
+		prompt := "routine work"
+		if index == 0 {
+			prompt = "the oldest one"
+		}
+		writeLine(f, "user", prompt)
+		writeLine(f, "assistant", reply)
+		f.Close()
+		at := time.Now().Add(time.Duration(index) * time.Minute) // s000 oldest
+		os.Chtimes(path, at, at)
+	}
+	if list := List(); len(list) != MaxListed || list[len(list)-1].ID == "s000" {
+		t.Fatalf("List: want the newest %d, got %d", MaxListed, len(list))
+	}
+	if found := Search("oldest"); len(found) != 1 || found[0].ID != "s000" {
+		t.Fatalf("Search past the list: got %v", found)
+	}
+	if found := Search("s000"); len(found) != 1 {
+		t.Fatalf("Search by id: got %v", found)
+	}
+}
+
+func TestLongTranscriptSkimsItsMiddle(t *testing.T) {
+	dir := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(dir, "long.jsonl"))
+	defer f.Close()
+	writeLine(f, "user", "start the big refactor")
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "ok"}})
+	filler := []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Old name"})
+	for written := 0; written < headBytes+tailBytes; written += 4096 {
+		writeLine(f, "assistant", filler)
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Newest name"})
+	writeLine(f, "assistant", filler)
+	if got := List()[0].Title; got != "Newest name" {
+		t.Fatalf("the newest title from the end: got %q", got)
+	}
+	if len(Search("refactor")) != 1 {
+		t.Fatal("the first prompt from the start")
+	}
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Renamed later"})
+	if got := List()[0].Title; got != "Renamed later" {
+		t.Fatalf("later reads pick up from where the skim stopped: got %q", got)
+	}
+}
+
+func TestHugeFirstMessageIsReadWhole(t *testing.T) {
+	dir := withTempSessions(t)
+	f, _ := os.Create(filepath.Join(dir, "picture.jsonl"))
+	defer f.Close()
+	// a first message carrying a pasted picture, crossing headBytes: its prompt still names the session
+	writeLine(f, "user", []any{
+		map[string]any{"type": "text", "text": "what is in this screenshot"},
+		map[string]any{"type": "image", "source": map[string]any{"data": strings.Repeat("A", headBytes+headBytes/2)}},
+	})
+	writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": "a cat"}})
+	filler := []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}}
+	for written := 0; written < tailBytes+headBytes; written += 4096 {
+		writeLine(f, "assistant", filler)
+	}
+	writeLine(f, "user", "a later question")
+	if got := List()[0].Title; got != "what is in this screenshot" {
+		t.Fatalf("the first prompt, past a huge first line: got %q", got)
+	}
+}
+
+func TestRewrittenTranscriptIsReadAgain(t *testing.T) {
+	dir := withTempSessions(t)
+	path := filepath.Join(dir, "rewritten.jsonl")
+	// real transcripts open with the same queue-operation line however the rest is rewritten, so the start can't
+	// tell a rewrite from an append
+	header := map[string]any{"type": "queue-operation", "sessionId": "rewritten", "content": "same opening line"}
+	write := func(title string, padding int) {
+		f, _ := os.Create(path)
+		defer f.Close()
+		writeRaw(f, header)
+		writeLine(f, "user", "the first prompt")
+		writeLine(f, "assistant", []any{map[string]any{"type": "text", "text": strings.Repeat("ok", padding)}})
+		writeRaw(f, map[string]any{"type": "custom-title", "customTitle": title})
+	}
+	write("Old name", 1)
+	if got := List()[0].Title; got != "Old name" {
+		t.Fatalf("got %q", got)
+	}
+	write("New name", 40) // bigger, so it looks appended to
+	if got := List()[0].Title; got != "New name" {
+		t.Fatalf("a rewrite keeping the first line should be read again: got %q", got)
+	}
+	write("Shorter", 2)
+	if got := List()[0].Title; got != "Shorter" {
+		t.Fatalf("a rewrite to a smaller size should be read again: got %q", got)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	writeRaw(f, map[string]any{"type": "custom-title", "customTitle": "Appended name"})
+	f.Close()
+	if got := List()[0].Title; got != "Appended name" {
+		t.Fatalf("a real append is still read from where it stopped: got %q", got)
 	}
 }

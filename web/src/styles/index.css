@@ -23,6 +23,10 @@
   #bar{right:12px}
   #drawer{width:auto;right:12px}
 }
+@media (max-width:560px){
+  #bar{right:8px}
+  #drawer,#inspector{left:8px;right:8px;bottom:8px;width:auto;max-width:none} /* in line with the phone's bar */
+}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
   .edge.live{stroke-dasharray:none;stroke-width:2.5}
@@ -30,7 +34,7 @@
   .frow.live .g{border-color:var(--kind)} /* a stopped spinner would read as a broken ring */
   .xsel[data-loading]::after{border-color:var(--accent)}
   .xsel-menu{animation:none}
-  .gnode[aria-busy=true] .grefresh{opacity:.6} /* no spin: dimmed while the Git window refreshes */
+  button[aria-busy=true]>svg{opacity:.6} /* a refresh button at work (spinWhile in lib/dom.ts): dimmed, not spun */
   .xsel svg{transition:none}
   .launch-tip{animation:none}
 }

@@ -12,7 +12,7 @@ import { changed, viewCenter } from '../../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
 import { inkBox } from '../../canvas/ink/stroke';
 import { api, q } from '../../lib/api';
-import { ICON, iconButton, make, revealIn } from '../../lib/dom';
+import { ICON, iconButton, make, revealIn, spinWhile } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
 import { each, persist } from '../../lib/store';
 import { isMarkdown, mdView, sourceView } from '../../panels/files';
@@ -98,6 +98,12 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
   /** Start or stop editing the file. */
   const edit = () => toggleEdit(el, host, o.path, pencil, () => load());
   const pencil = iconButton(ICON.pencil, 'Edit the file', edit);
+  const reloadButton = iconButton(
+    ICON.reload,
+    'Read the file again',
+    () => spinWhile(reloadButton, load(true)),
+    'pv-reload',
+  );
   const { el, body } = makeWindow({
     kind: 'preview',
     cls: 'pvnode',
@@ -105,11 +111,7 @@ export function preview(o: { path: string; title?: string; rect: Rect; line?: nu
     rect: o.rect,
     minW: 200,
     minH: 120,
-    actions: [
-      ...(image ? [] : [pencil]),
-      iconButton(ICON.reload, 'Read the file again', () => load(true), 'pv-reload'),
-      removeButton('Remove from canvas'),
-    ],
+    actions: [...(image ? [] : [pencil]), reloadButton, removeButton('Remove from canvas')],
   });
   el.dataset.id = `preview:${o.path}`; // the same after a reload: arrows and canvas tools find it by this
   el.dataset.path = o.path;

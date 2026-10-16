@@ -21,9 +21,9 @@ import (
 // shows every window's tab, "minimal" a window's tab only when you reach for the window. "theme": "system" follows
 // the computer's light or dark mode; each mode has its color scheme (the ids in web/src/lib/theme.ts). "symbols":
 // "auto" reads code symbols with universal-ctags when it's installed (internal/symbols), "off" never runs it.
-// "vim": "on" gives the file editor and scratchpads Vim motions. "completion" selects the completion alert;
-// "browser" keeps the system notification while away, "toast" shows an in-app notice, "none" skips the alert.
-var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "browser"}
+// "vim": "on" gives the file editor and scratchpads Vim motions. "completion": "toast" shows a notice while
+// present and a system notification while away; "none" skips completion alerts.
+var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "toast"}
 
 // checks say which values each setting may take. A scheme is only checked for shape: the page falls back to the
 // first scheme when the file names one it doesn't have, so the list of schemes lives in one place.
@@ -34,7 +34,7 @@ var checks = map[string]func(string) bool{
 	"darkScheme":  schemeRe.MatchString,
 	"symbols":     oneOf("auto", "off"),
 	"vim":         oneOf("off", "on"),
-	"completion":  oneOf("browser", "toast", "none"),
+	"completion":  oneOf("browser", "toast", "none"), // browser is a legacy alias, migrated by withDefaults
 }
 
 var schemeRe = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
@@ -102,9 +102,12 @@ func valid(k string, v any) bool {
 	return isStr && known && check(s)
 }
 
-// withDefaults adds the settings the file is missing, and says whether there were any.
+// withDefaults adds missing settings and upgrades the old browser-only completion choice, leaving none disabled.
 func withDefaults(file map[string]any) bool {
 	added := false
+	if file["completion"] == "browser" {
+		file["completion"], added = "toast", true
+	}
 	for k, v := range Defaults {
 		if _, ok := file[k]; !ok {
 			file[k], added = v, true

@@ -7,8 +7,7 @@ import { enhance } from './select';
 const completionOptions = [
   // ponytail: sound playback belongs to #151; keep the choice unavailable until that feature lands.
   { value: 'sound', textContent: 'Play sound', disabled: true },
-  { value: CompletionMode.Browser, textContent: 'Show browser' },
-  { value: CompletionMode.Toast, textContent: 'Show toast' },
+  { value: CompletionMode.Toast, textContent: 'Show alerts' },
   { value: CompletionMode.None, textContent: 'Do nothing' },
 ];
 const select = $<HTMLSelectElement>('#completion');

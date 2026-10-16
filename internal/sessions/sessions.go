@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"drawa/internal/config"
@@ -197,130 +195,6 @@ func Trimmed(line string) string {
 		return line
 	}
 	return string(b)
-}
-
-// firstPrompt is a transcript's title: its first typed prompt (a string, or the first text block beside pasted
-// images), skipping tool results and the CLI's own `<command-name>`/caveat lines. "" means it has no assistant
-// message, like the transcript of Drawa's own `/usage` probe, so List leaves it out.
-func firstPrompt(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	prompt, replied := "", false
-	eachLine(f, func(b []byte) bool {
-		var d struct {
-			Type    string `json:"type"`
-			IsMeta  bool   `json:"isMeta"`
-			Message struct {
-				Content json.RawMessage `json:"content"`
-			} `json:"message"`
-		}
-		if json.Unmarshal(b, &d) != nil {
-			return true
-		}
-		if d.Type == "assistant" {
-			replied = true
-		} else if d.Type == "user" && !d.IsMeta && prompt == "" {
-			prompt = promptText(d.Message.Content)
-		}
-		return prompt == "" || !replied // both are usually in the first few lines
-	})
-	if !replied {
-		return ""
-	}
-	if prompt == "" {
-		return "(no prompt)"
-	}
-	return prompt
-}
-
-// promptText is what the user typed in a message's content, or "" if it's only tool results or the CLI's own text.
-func promptText(raw json.RawMessage) string {
-	var c string
-	if json.Unmarshal(raw, &c) != nil {
-		var blocks []struct{ Type, Text string }
-		json.Unmarshal(raw, &blocks)
-		for _, b := range blocks {
-			if b.Type == "text" && !strings.HasPrefix(b.Text, "<") {
-				c = b.Text
-				break
-			}
-		}
-	}
-	if strings.HasPrefix(c, "<") {
-		return ""
-	}
-	return truncate(c, 120, "")
-}
-
-var promptCache = struct {
-	sync.Mutex
-	m map[string]string
-}{m: map[string]string{}}
-
-// firstPromptOf: a transcript's first prompt only changes with the file.
-func firstPromptOf(path string, mtime int64) string {
-	key := fmt.Sprintf("%s\x00%d", path, mtime)
-	promptCache.Lock()
-	if v, ok := promptCache.m[key]; ok {
-		promptCache.Unlock()
-		return v
-	}
-	promptCache.Unlock()
-	v := firstPrompt(path)
-	promptCache.Lock()
-	if len(promptCache.m) > 1024 { // ponytail: a simple cap, not true LRU
-		promptCache.m = map[string]string{}
-	}
-	promptCache.m[key] = v
-	promptCache.Unlock()
-	return v
-}
-
-type Info struct {
-	ID      string  `json:"id"`
-	Title   string  `json:"title"`
-	Mtime   float64 `json:"mtime"`
-	Backend string  `json:"backend,omitempty"` // which agent backend it belongs to (set by the server's merged list)
-}
-
-// List returns the newest 50 sessions. ponytail: newest 50, paginate if needed.
-func List() []Info {
-	entries, err := os.ReadDir(config.Sessions)
-	out := []Info{}
-	if err != nil {
-		return out
-	}
-	type fm struct {
-		path  string
-		mtime time.Time
-	}
-	var all []fm
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		all = append(all, fm{filepath.Join(config.Sessions, e.Name()), info.ModTime()})
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].mtime.After(all[j].mtime) })
-	for _, f := range all {
-		if len(out) == 50 {
-			break
-		}
-		title := firstPromptOf(f.path, f.mtime.UnixNano())
-		if title == "" {
-			continue
-		}
-		id := strings.TrimSuffix(filepath.Base(f.path), ".jsonl")
-		out = append(out, Info{ID: id, Title: title, Mtime: float64(f.mtime.UnixNano()) / 1e9})
-	}
-	return out
 }
 
 var taskDoneRe = regexp.MustCompile(`<task-notification>[\s\S]*?<tool-use-id>([^<]+)</tool-use-id>`)

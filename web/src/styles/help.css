@@ -31,4 +31,5 @@
 .launch-tip:is(:hover,:focus-within){background:var(--bg);border-color:var(--line)}
 .launch-tip:is(:hover,:focus-within) .more{display:flex}
 @media (max-width:760px){.launch-tip{left:12px;max-width:none;bottom:66px}} /* no minimap here: just the zoom row below */
+@media (hover:none){html:not([data-keys]) .launch-tip{display:none}} /* every tip is about keys: none on a touch screen until a hardware key is pressed, like the toolbar's key hints */
 .kh-r .combo+.combo::before{content:"or";margin-right:8px;color:var(--muted);font-size:11px} /* alternatives, not one combo */
