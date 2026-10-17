@@ -176,6 +176,7 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
 </picture>
 
 - **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
+- **Find finished work.** Settings → Notifications → **Upon completion** defaults to **Show alerts**: a three-second toast with **Show** to focus and center the session while you're in Drawa, or a system notification while you're away (if allowed). Toasts skip a card already visible and focused. **Do nothing** turns completion alerts off; the unread tab count and question, approval and plan alerts stay on.
 - **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
 
 <picture>
@@ -205,6 +206,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 
 ```json
 {
+  "completion": "toast",
   "darkScheme": "claude-dark",
   "lightScheme": "claude-light",
   "symbols": "auto",
@@ -216,6 +218,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 
 | Key | Default | Values |
 |---|---|---|
+| `completion` | `toast` | **Show alerts** (`toast`) shows a three-second notice while present and a system notification while away (if allowed); `none` turns completion alerts off. Missing values use `toast`; the old `browser` value migrates to `toast`, while an existing `none` stays off. Invalid values use the default without overwriting the hand edit. Question, approval and plan alerts and the unread tab count are unchanged. Play sound is unavailable pending [#151](https://github.com/HimalayanNomads/drawa/issues/151). |
 | `ui` | `full` | `full` shows every window's title tab; `minimal` shows a window's tab only when you hover or focus it. A session card waiting for your approval keeps its tab either way. |
 | `theme` | `system` | `system` follows your computer's light or dark mode; `light` or `dark` fixes it. |
 | `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |

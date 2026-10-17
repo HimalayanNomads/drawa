@@ -6,7 +6,7 @@ import { who } from '../../lib/agents';
 import { post } from '../../lib/api';
 import { button, confirmBox, make, relPath } from '../../lib/dom';
 import { change, inFile } from '../../panels/diff';
-import type { Session } from '../../types/session';
+import { type Session, SessionStopReason } from '../../types/session';
 import { notify } from '../card/notify';
 import { appendToLog, renderCard } from '../card/render';
 import { type Msg, toolArg } from './stream';
@@ -19,11 +19,11 @@ export function approval(S: Session, m: Msg) {
   S.asks.add(id);
   if (r.tool_name === 'ExitPlanMode') {
     if (!reviewPlan(S, id, r.tool_use_id, r.input?.plan)) S.asks.delete(id);
-    else notify(S, 'plan');
+    else notify(S, SessionStopReason.Plan);
     renderCard(S);
     return;
   }
-  notify(S, 'ask');
+  notify(S, SessionStopReason.Ask, r.tool_name === 'AskUserQuestion');
   if (r.tool_name === 'AskUserQuestion') return question(S, id, r.input?.questions ?? []);
   // compact prompt: what exactly will run (the command / path), Claude's own description as a caption
   const input = r.input ?? {},

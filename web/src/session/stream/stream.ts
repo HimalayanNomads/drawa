@@ -23,7 +23,7 @@ import {
 } from '../../items/agent';
 import { appendToLog, follow, renderCard } from '../card/render';
 import { clearSession } from '../card/session';
-import type { Session, ToolRow, Block } from '../../types/session';
+import { SessionStopReason, type Session, type ToolRow, type Block } from '../../types/session';
 import { approval, withdrawAsk } from './asks';
 import { thumbnail } from '../composer/images';
 import { notify } from '../card/notify';
@@ -505,7 +505,7 @@ export function handleMessage(S: Session, m: Msg) {
     if (!S.picked) S.queued.shift()?.classList.remove('queued');
     S.picked = false;
     S.pending = S.queued.length;
-    if (!S.pending) notify(S, 'done');
+    if (!S.pending) notify(S, SessionStopReason.Done);
     if (!S.pending) {
       S.log.querySelectorAll('details.run:not(.bg)').forEach(d => d.classList.remove('run'));
       if (!S.bg) requestEnded(S);

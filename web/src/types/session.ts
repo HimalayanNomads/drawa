@@ -3,6 +3,12 @@ import type { Ref } from '../canvas/core/refs';
 import type { Change } from '../panels/diff';
 import type { Pasted } from '../session/composer/images';
 
+export enum SessionStopReason {
+  Done = 'done',
+  Ask = 'ask',
+  Plan = 'plan',
+}
+
 export type ToolRow = HTMLDetailsElement & { chg?: Change };
 export interface Block {
   type: string;

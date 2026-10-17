@@ -1,11 +1,16 @@
-// Telling you when Claude needs you while you're looking elsewhere: a count in the tab title, and a system
-// notification (if you allowed them) when a turn finishes or Claude waits for an approval or an answer.
+// Count unread events in the tab title and send system notifications while you're away. Completion alerts follow
+// Settings: a toast while you're here, a system notification while away, or neither; attention alerts stay on.
 
+import { watched } from '../../canvas/core/items';
 import { centerOn } from '../../canvas/core/placement';
 import { who } from '../../lib/agents';
-import { make, project } from '../../lib/dom';
-import type { Session } from '../../types/session';
-import { focus } from './session';
+import { button, make, notice, project } from '../../lib/dom';
+import { prefs } from '../../lib/prefs';
+import { CompletionMode } from '../../types/prefs';
+import { type Session, SessionStopReason } from '../../types/session';
+import { cur, focus } from './session';
+
+const COMPLETION_NOTICE_TIMEOUT_MS = 3000;
 
 let unread = 0;
 /** Are you looking elsewhere (another tab or app)? */
@@ -41,25 +46,55 @@ const announce = (text: string) => {
   setTimeout(() => (live.textContent = text), 50);
 };
 
-/** Tell you a card finished or needs you: a count in the tab title and a system notification while you're away. */
-export function notify(S: Session, why: 'done' | 'ask' | 'plan') {
-  const head =
-    why === 'done'
-      ? `${who(S.backend)} finished`
-      : why === 'plan'
-        ? 'Plan ready for review'
-        : `${who(S.backend)} needs your approval`;
-  if (why !== 'done') announce(`${head}: ${S.title}`);
-  if (!isAway()) return;
-  unread++;
-  updateTitle();
+/** A short action-first heading; each alert surface adds the session title where it fits. */
+function getHeading(session: Session, sessionStopReason: SessionStopReason, question: boolean) {
+  const name = who(session.backend);
+  if (sessionStopReason === SessionStopReason.Done) return `${name} finished`;
+  if (sessionStopReason === SessionStopReason.Plan) return `${name} has a plan ready for review`;
+  return `${name} ${question ? 'has questions' : 'needs your approval'}`;
+}
+
+/** Tell you a card finished or needs you, without changing focus until you choose its alert. */
+export function notify(session: Session, sessionStopReason: SessionStopReason, question = false) {
+  const heading = getHeading(session, sessionStopReason, question),
+    message = `${heading}: ${session.title}`,
+    away = isAway();
+  if (sessionStopReason !== SessionStopReason.Done) announce(message);
+  if (away) {
+    unread++;
+    updateTitle();
+  }
+  if (sessionStopReason === SessionStopReason.Done) {
+    if (prefs().completion === CompletionMode.None) return;
+    if (!away) {
+      if (!session.card.isConnected || (cur === session && watched(session.card))) return;
+      const show = button('Show', '', () => {
+        completion.remove();
+        if (!session.card.isConnected) return;
+        focus(session);
+        centerOn(session.card);
+      });
+      show.setAttribute('aria-label', `Show ${session.title}`);
+      const completion = notice(message, show);
+      completion.classList.add('completion');
+      setTimeout(() => completion.remove(), COMPLETION_NOTICE_TIMEOUT_MS);
+      return;
+    }
+  }
+  if (!away) return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const n = new Notification(head, { body: S.title, tag: S.cid + why, silent: why === 'done' });
-  n.onclick = () => {
+  const notification = new Notification(heading, {
+    body: session.title,
+    tag: session.cid + sessionStopReason,
+    silent: sessionStopReason === SessionStopReason.Done,
+  });
+  notification.onclick = () => {
     window.focus();
-    focus(S);
-    centerOn(S.card);
-    n.close();
+    if (session.card.isConnected) {
+      focus(session);
+      centerOn(session.card);
+    }
+    notification.close();
   };
 }
 

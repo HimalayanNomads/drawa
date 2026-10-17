@@ -50,7 +50,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   const sync = () => {
     label.textContent = select.selectedOptions[0]?.textContent ?? '';
     if (pre) pre.textContent = rich!.prefix!();
-    for (const a of ['title', 'aria-label']) {
+    for (const a of ['title', 'aria-label', 'aria-describedby']) {
       const v = select.getAttribute(a);
       if (v == null) trigger.removeAttribute(a);
       else trigger.setAttribute(a, v);
@@ -83,7 +83,17 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-mode', 'data-loading', 'data-off', 'title', 'aria-label', 'disabled', 'selected', 'label'],
+    attributeFilter: [
+      'data-mode',
+      'data-loading',
+      'data-off',
+      'title',
+      'aria-label',
+      'aria-describedby',
+      'disabled',
+      'selected',
+      'label',
+    ],
   });
   select.addEventListener('change', sync);
   sync();
@@ -97,8 +107,11 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
         item.id = `${id}-${i}`;
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', String(o.selected));
+        if (o.disabled) item.setAttribute('aria-disabled', 'true');
         item.innerHTML = CHECK;
-        item.onpointermove = () => setActive(i);
+        item.onpointermove = () => {
+          if (!o.disabled) setActive(i);
+        };
         item.onclick = () => choose(i);
         if (rich) {
           const body = item.appendChild(make('div', 'xsel-row'));
@@ -150,7 +163,9 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
   }
   /** Indexes of the rows not filtered out. */
   const visible = () =>
-    [...list!.querySelectorAll<HTMLElement>('.xsel-item')].flatMap((el, i) => (el.hidden ? [] : [i]));
+    [...list!.querySelectorAll<HTMLElement>('.xsel-item')].flatMap((el, i) =>
+      el.hidden || select.options[i].disabled ? [] : [i],
+    );
 
   /** Highlight row `i` and scroll it into view. */
   function setActive(i: number) {
@@ -244,6 +259,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
 
   /** Pick option `i` as if natively: the select changes and fires its input and change events. */
   function choose(i: number) {
+    if (select.options[i]?.disabled) return;
     close(true);
     if (i < 0 || (i === select.selectedIndex && !('repick' in select.dataset))) return; // data-repick: a menu of actions, where the same pick acts again
     select.selectedIndex = i;
@@ -267,7 +283,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
       e.stopPropagation();
       return;
     }
-    const shown = box ? visible() : [...Array(n).keys()],
+    const shown = visible(),
       at = shown.indexOf(active);
     switch (e.key) {
       case 'ArrowDown':
@@ -313,7 +329,7 @@ export function enhance(select: HTMLSelectElement, rich?: Rich): void {
         const k = e.key.toLowerCase();
         for (let s = 1; s <= n; s++) {
           const i = (active + s) % n;
-          if (select.options[i].textContent?.trim().toLowerCase().startsWith(k)) {
+          if (!select.options[i].disabled && select.options[i].textContent?.trim().toLowerCase().startsWith(k)) {
             setActive(i);
             break;
           }
