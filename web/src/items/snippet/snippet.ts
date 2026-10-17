@@ -10,7 +10,19 @@ import { referable } from '../../canvas/core/refs';
 import { creatable } from '../../canvas/core/tools';
 import { changed, viewCenter } from '../../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
-import { button, copyButton, EDITABLE, ICON, keepOnScreen, make, perFrame, ping, truncate, uuid } from '../../lib/dom';
+import {
+  button,
+  copyButton,
+  EDITABLE,
+  ICON,
+  keepOnScreen,
+  make,
+  perFrame,
+  ping,
+  truncate,
+  typing,
+  uuid,
+} from '../../lib/dom';
 import { highlighter } from '../../lib/markdown';
 import { each, persist } from '../../lib/store';
 import { tipText } from '../../lib/tooltip';
@@ -235,6 +247,11 @@ pinBtn.innerHTML = `${ICON.pin}Pin to canvas`;
 pinBtn.hidden = true;
 let picked: Source | null = null;
 document.addEventListener('selectionchange', () => {
+  if (typing(document.activeElement)) {
+    pinBtn.hidden = true;
+    picked = null;
+    return;
+  }
   const sel = getSelection(),
     text = sel?.toString() ?? '';
   const a = sel?.anchorNode,
