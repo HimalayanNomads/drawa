@@ -16,17 +16,29 @@ export interface Pasted {
 const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']; // what the API accepts
 const MAX_EDGE = 1568; // Claude downsizes anything larger anyway; sending less keeps requests small
 
-/** Read image files into sendable images. Other types, or ones that fail to decode, are skipped. */
-export async function readImages(files: File[]): Promise<Pasted[]> {
-  const out: Pasted[] = [];
-  for (const f of files) {
+/** What decodeImages made of a batch: the images to send, and the files that couldn't be decoded. */
+export interface DecodedImages {
+  images: Pasted[];
+  failed: File[];
+}
+
+/** Decode image files into sendable images; files that fail decoding are reported in `failed`. */
+export async function decodeImages(files: File[]): Promise<DecodedImages> {
+  const images: Pasted[] = [],
+    failed: File[] = [];
+  for (const file of files) {
     try {
-      out.push(await readOne(f));
-    } catch (e) {
-      console.warn('image skipped:', f.name, e);
+      images.push(await readOne(file));
+    } catch {
+      failed.push(file);
     }
   }
-  return out;
+  return { images, failed };
+}
+
+/** Read image files into sendable images, omitting any that fail to decode. */
+export async function readImages(files: File[]): Promise<Pasted[]> {
+  return (await decodeImages(files)).images;
 }
 
 /** Read one pasted or dropped image, scaled down to what Claude uses (sent as is when it's already small enough). */

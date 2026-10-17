@@ -12,8 +12,9 @@ import { cards, focus, meta, clearSession } from '../card/session';
 import { renderCard } from '../card/render';
 import type { Session } from '../../types/session';
 import { send } from '../card/live';
-import { readImages, thumbnail, type Pasted } from './images';
+import { decodeImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';
+import { raster } from './filetypes';
 import { runShell } from './shell';
 import { modePicker } from '../card/mode';
 import { modelPicker, effortPicker, effortNote, infoBadge } from '../card/gen';
@@ -128,27 +129,29 @@ export function composer(S: Session, body: HTMLElement) {
   /** Attach images to the message, each marked "[ImageN]" at the cursor. */
   // images: paste them (Ctrl+V) or drop image files on the message box. Each gets a "[ImageN]" marker inserted at
   // the cursor, like Claude Code's terminal, so a message can say which one it means ("what's wrong in [Image2]").
-  const attach = async (files: File[]) => {
+  const attach = async (files: File[]): Promise<File[]> => {
     if (textOnly(S.backend)) {
       noImages(S);
-      return;
+      return [];
     }
-    const got = await readImages(files);
-    if (!got.length) return;
+    const { images, failed } = await decodeImages(files);
+    if (!images.length) return failed;
     const at = S.images.length;
-    S.images.push(...got);
-    const marks = `${got.map((_, i) => `[Image${at + i + 1}]`).join(' ')} `;
+    S.images.push(...images);
+    const marks = `${images.map((_, index) => `[Image${at + index + 1}]`).join(' ')} `;
     ta.setRangeText(marks, ta.selectionStart, ta.selectionEnd, 'end');
     drawChips(S);
     fit();
     ta.focus();
+    return failed;
   };
-  /** Attach dropped or pasted files: images as pictures, other text files by their contents. */
-  // anything else: text files go along as their contents (session/composer/uploads.ts)
+  /** Attach dropped or pasted files: bitmap images as pictures, text and SVG files by their contents. */
+  // images that fail to decode join the non-bitmap files in textRefs, which toasts why they weren't attached
+  // (session/composer/uploads.ts)
   const attachAny = async (files: File[]) => {
-    const images = files.filter(f => f.type.startsWith('image/'));
-    if (images.length) attach(images);
-    for (const r of await textRefs(files.filter(f => !f.type.startsWith('image/')))) addRef(S, r);
+    const bitmaps = files.filter(raster);
+    const failed = bitmaps.length ? await attach(bitmaps) : [];
+    for (const ref of await textRefs([...failed, ...files.filter(file => !raster(file))])) addRef(S, ref);
   };
   ta.addEventListener('paste', e => {
     const files = [...(e.clipboardData?.files ?? [])];

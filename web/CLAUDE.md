@@ -14,7 +14,7 @@ web/src/
     graph/     graph (a session's edges), links (your arrows), sessionwins (a session's Files and commands windows)
   session/     session cards
     card/      session (create, focus, close), render (header, status, appending to the log), saved (layout slices, referable, removable), live (the connection), history, gen (model and effort), mode, notify
-    composer/  composer (the message box), drafts, recall, images, uploads, shell
+    composer/  composer (the message box), drafts, recall, images, uploads, shell, filetypes (which dropped files are bitmaps)
     stream/    stream (rendering the agent's output), asks, notices, tasks
   items/       one folder per kind of canvas item that spans several files, one file for the rest (agent: a sub-agent's window; diagram; doc: a Markdown window, its source edited in lib/codeedit's editor; notes; sketch)
     git/       git (the window), gitrepo (one repository's lists and commit box, a group each for repos in subfolders), gitwt (a repo's worktree dropdown and removal), gitgh (a repo's pull request strip)

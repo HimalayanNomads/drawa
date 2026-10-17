@@ -5,6 +5,7 @@
 import type { Ref } from '../../canvas/core/refs';
 import { referable } from '../../canvas/core/refs';
 import { make, toast } from '../../lib/dom';
+import { raster } from './filetypes';
 
 // it all goes into one message: 200KB of text is ~50k tokens, and a few of those fill a context window
 const MAX = 200_000,
@@ -40,24 +41,29 @@ export async function textRefs(files: File[]): Promise<Ref[]> {
   const out: Ref[] = [],
     skipped: string[] = [];
   let total = 0;
-  for (const f of files) {
-    if (f.size > MAX) {
-      skipped.push(`${f.name} (over 200KB)`);
+  for (const file of files) {
+    // a bitmap only reaches textRefs after failing to decode; blaming size or text would be misleading
+    if (raster(file)) {
+      skipped.push(`${file.name} (could not be read as an image)`);
       continue;
     }
-    if (total + f.size > TOTAL) {
-      skipped.push(`${f.name} (over 500KB for one message)`);
+    if (file.size > MAX) {
+      skipped.push(`${file.name} (over 200KB)`);
       continue;
     }
-    if (!(await isText(f))) {
-      skipped.push(`${f.name} (not a text file)`);
+    if (total + file.size > TOTAL) {
+      skipped.push(`${file.name} (over 500KB for one message)`);
       continue;
     }
-    total += f.size;
+    if (!(await isText(file))) {
+      skipped.push(`${file.name} (not a text file)`);
+      continue;
+    }
+    total += file.size;
     const el = make('span');
-    el.dataset.label = f.name;
-    texts.set(el, await f.text());
-    out.push({ kind: 'upload', label: f.name, el });
+    el.dataset.label = file.name;
+    texts.set(el, await file.text());
+    out.push({ kind: 'upload', label: file.name, el });
   }
   if (skipped.length) toast(`Not attached: ${skipped.join(', ')}. Text files and images can be attached.`);
   return out;
