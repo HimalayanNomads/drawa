@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -43,7 +44,15 @@ func baseDir() string {
 // SanitizeName strips directories, path traversal, unsafe characters, and length excesses,
 // ensuring the returned file name has a safe base and a .pdf extension.
 func SanitizeName(title string) string {
-	base := filepath.Base(filepath.Clean(title))
+	// Browsers send a bare file name, but a name can still carry either separator (\ or /).
+	// Normalize \ to / and use path (not filepath) so extracting the last element is OS-independent.
+	clean := strings.ReplaceAll(strings.TrimSpace(title), "\\", "/")
+	var base string
+	if strings.HasSuffix(clean, "/") {
+		base = ""
+	} else {
+		base = path.Base(path.Clean(clean))
+	}
 	base = strings.TrimSpace(base)
 	base = safeChars.ReplaceAllString(base, "_")
 	base = strings.TrimLeft(base, "._-")
