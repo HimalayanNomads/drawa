@@ -339,3 +339,66 @@ func TestRewrittenTranscriptIsReadAgain(t *testing.T) {
 		t.Fatalf("a real append is still read from where it stopped: got %q", got)
 	}
 }
+
+// TestClipDocument verifies that Clip strips base64 data from document blocks while
+// keeping title and media_type, leaving existing image URL blocks unchanged (#136).
+func TestClipDocument(t *testing.T) {
+	blocks := []any{
+		map[string]any{
+			"type": "document",
+			"source": map[string]any{
+				"type":       "base64",
+				"media_type": "application/pdf",
+				"data":       "JVBERi0xLjQKJcTl8uXr...",
+			},
+			"title": "spec.pdf",
+		},
+		map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type":       "url",
+				"url":        "/api/images/existing.png",
+				"media_type": "image/png",
+			},
+		},
+		map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type":       "base64",
+				"media_type": "image/png",
+				"data":       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+			},
+		},
+	}
+
+	Clip(blocks)
+
+	doc := blocks[0].(map[string]any)
+	docSrc := doc["source"].(map[string]any)
+	if _, hasData := docSrc["data"]; hasData {
+		t.Fatal("document data was not stripped")
+	}
+	if docSrc["media_type"] != "application/pdf" {
+		t.Errorf("document media_type = %v, want application/pdf", docSrc["media_type"])
+	}
+	if doc["title"] != "spec.pdf" {
+		t.Errorf("document title = %v, want spec.pdf", doc["title"])
+	}
+
+	// Image URL blocks remain completely unchanged.
+	imgURL := blocks[1].(map[string]any)
+	imgURLSrc := imgURL["source"].(map[string]any)
+	if imgURLSrc["type"] != "url" || imgURLSrc["url"] != "/api/images/existing.png" || imgURLSrc["media_type"] != "image/png" {
+		t.Errorf("image URL block was altered: %v", imgURLSrc)
+	}
+
+	// Base64 image blocks convert to /api/images/ URLs without having data deleted like documents.
+	imgB64 := blocks[2].(map[string]any)
+	imgB64Src := imgB64["source"].(map[string]any)
+	if imgB64Src["type"] != "url" || !strings.HasPrefix(imgB64Src["url"].(string), "/api/images/") {
+		t.Errorf("base64 image was not converted to /api/images/ address: %v", imgB64Src)
+	}
+	if imgB64Src["media_type"] != "image/png" {
+		t.Errorf("image media_type = %v, want image/png", imgB64Src["media_type"])
+	}
+}

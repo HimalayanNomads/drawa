@@ -14,7 +14,8 @@ import type { Session } from '../../types/session';
 import { send } from '../card/live';
 import { decodeImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';
-import { raster } from './filetypes';
+import { pdfRefs } from './pdfs';
+import { pdf, raster } from './filetypes';
 import { runShell } from './shell';
 import { modePicker } from '../card/mode';
 import { modelPicker, effortPicker, effortNote, infoBadge } from '../card/gen';
@@ -145,13 +146,22 @@ export function composer(S: Session, body: HTMLElement) {
     ta.focus();
     return failed;
   };
-  /** Attach dropped or pasted files: bitmap images as pictures, text and SVG files by their contents. */
-  // images that fail to decode join the non-bitmap files in textRefs, which toasts why they weren't attached
+  /** Attach dropped or pasted files: bitmap images as pictures, PDFs as documents, text and SVG files by their contents. */
+  // images that fail to decode join the non-bitmap non-PDF files in textRefs, which toasts why they weren't attached
   // (session/composer/uploads.ts)
   const attachAny = async (files: File[]) => {
     const bitmaps = files.filter(raster);
+    const pdfFiles = files.filter(pdf);
+    const rest = files.filter(file => !raster(file) && !pdf(file));
     const failed = bitmaps.length ? await attach(bitmaps) : [];
-    for (const ref of await textRefs([...failed, ...files.filter(file => !raster(file))])) addRef(S, ref);
+    if (pdfFiles.length) {
+      if (textOnly(S.backend)) {
+        noPdfs(S);
+      } else {
+        for (const ref of await pdfRefs(pdfFiles)) addRef(S, ref);
+      }
+    }
+    for (const ref of await textRefs([...failed, ...rest])) addRef(S, ref);
   };
   ta.addEventListener('paste', e => {
     const files = [...(e.clipboardData?.files ?? [])];
@@ -364,6 +374,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
 
 /* ---------- references to canvas items ---------- */
 const noImages = (S: Session) => toast(`Images aren't supported in ${who(S.backend)}: it takes text only.`);
+const noPdfs = (S: Session) => toast(`PDFs aren't supported in ${who(S.backend)}: it takes text only.`);
 
 /** Attach a canvas item to the card's next message, with a dashed arrow to it; refused when it's a picture for a
  *  text-only agent. */

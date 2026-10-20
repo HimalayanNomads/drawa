@@ -139,6 +139,10 @@ func Clip(content any) {
 					}
 				}
 			}
+		} else if t == "document" {
+			if src, ok := b["source"].(map[string]any); ok {
+				delete(src, "data")
+			}
 		} else if t == "tool_use" {
 			if in, ok := b["input"].(map[string]any); ok {
 				for k, v := range in {

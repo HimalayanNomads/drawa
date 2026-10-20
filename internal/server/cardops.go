@@ -8,6 +8,7 @@ import (
 
 	"drawa/internal/config"
 	"drawa/internal/live"
+	"drawa/internal/uploads"
 )
 
 // modelRe: model names and aliases as Claude takes them ("opus", "claude-opus-4-1", "sonnet[1m]", Bedrock/Vertex
@@ -80,6 +81,12 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 			http.Error(w, "", 400)
 			return
 		}
+		sid := str(body["sid"])
+		content, err = uploads.PrepareContent(kindName, kind.TextOnly, sid, cid, content)
+		if err != nil {
+			sendJSON(w, map[string]any{"error": err.Error()}, 400)
+			return
+		}
 		err = lv.Send(content, id)
 
 	case "/api/unsend":
@@ -136,6 +143,10 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 
 	case "/api/close":
+		if sid := str(body["sid"]); sid != "" {
+			uploads.RemoveSession(sid)
+		}
+		uploads.RemoveSession(cid)
 		if lv != nil {
 			lv.Close() // can take 5s; never held Mu (freed above) so other cards' streams aren't stalled by it
 			sendJSON(w, map[string]any{"ok": true, "live": lv.Alive()}, 200)
