@@ -1,11 +1,12 @@
 // Text files dropped or pasted into a message box (Markdown, code, JSON, logs…): read in the browser and sent to
-// Claude as the file's contents, shown as a chip like any other reference. Images go through images.ts instead.
-// ponytail: binary files (PDF, office, archives) aren't sent; that needs an upload the CLI can Read (server side).
+// Claude as the file's contents, shown as a chip like any other reference. Images go through images.ts, and PDFs through pdfs.ts.
+// ponytail: other binary files (office, archives) aren't sent; that needs an upload the CLI can Read (server side).
 
 import type { Ref } from '../../canvas/core/refs';
 import { referable } from '../../canvas/core/refs';
 import { make, toast } from '../../lib/dom';
 import { raster } from './filetypes';
+import { getPdf } from './pdfs';
 
 // it all goes into one message: 200KB of text is ~50k tokens, and a few of those fill a context window
 const MAX = 200_000,
@@ -16,6 +17,15 @@ referable('upload', {
   icon: '▤',
   label: el => el.dataset.label ?? 'file',
   content: el => {
+    const storedPdf = getPdf(el);
+    if (storedPdf) {
+      return {
+        text: '',
+        document: storedPdf.data,
+        documentType: 'application/pdf',
+        title: storedPdf.title,
+      };
+    }
     const name = el.dataset.label ?? 'file',
       lang = /\.([\w]+)$/.exec(name)?.[1] ?? '';
     return { text: `Attached file "${name}":\n\`\`\`\`${lang}\n${texts.get(el) ?? ''}\n\`\`\`\`` };
@@ -65,6 +75,6 @@ export async function textRefs(files: File[]): Promise<Ref[]> {
     texts.set(el, await file.text());
     out.push({ kind: 'upload', label: file.name, el });
   }
-  if (skipped.length) toast(`Not attached: ${skipped.join(', ')}. Text files and images can be attached.`);
+  if (skipped.length) toast(`Not attached: ${skipped.join(', ')}. Text files, PDFs and images can be attached.`);
   return out;
 }

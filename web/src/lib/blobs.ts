@@ -43,3 +43,10 @@ export const imageBlock = (type: string, data: string) => ({
   type: 'image',
   source: { type: 'base64', media_type: type, data },
 });
+
+/** A document content block for a message (PDF). */
+export const documentBlock = (type: string, data: string, title?: string) => ({
+  type: 'document',
+  source: { type: 'base64', media_type: type, data },
+  ...(title ? { title } : {}),
+});

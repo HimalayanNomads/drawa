@@ -297,7 +297,7 @@ async function askClose(S: Session) {
 /** Close a card: stop its process, take its windows and ink with it, and refresh History (a new card if it was the
  *  last). */
 export function closeSession(S: Session) {
-  post('close', { cid: S.cid }).catch(() => {});
+  post('close', { cid: S.cid, sid: S.sid }).catch(() => {});
   S.images = [];
   keepImages(S); // its draft's pictures
   dropSession(S);
@@ -318,7 +318,7 @@ export function closeSession(S: Session) {
 export async function clearSession(S: Session) {
   S.stale = S.gen; // lines the old process still sends (a busy turn's tail, its exit) mustn't land in the cleared card
   S.log.replaceChildren(make('p', 'none', 'Clearing…')); // a send that's mid-way sees its bubble gone and stops (live.ts)
-  await post('close', { cid: S.cid }).catch(() => {});
+  await post('close', { cid: S.cid, sid: S.sid }).catch(() => {});
   dropSession(S); // its Files and commands windows belonged to that conversation
   dropPlans(S);
   dropAgents(S);

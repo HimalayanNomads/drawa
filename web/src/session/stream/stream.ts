@@ -553,6 +553,17 @@ export function replay(
             url: src.url ?? `data:${src.media_type};base64,${src.data}`,
           }),
         );
+      } else if (b.type === 'document') {
+        bubble ??= appendToLog(S, make('div', 'me'));
+        const row = bubble.querySelector('.refs.sent') ?? bubble.appendChild(make('div', 'refs sent'));
+        const title = (b as any).title ?? 'document.pdf';
+        const chip = make('span', 'chip');
+        chip.dataset.kind = 'upload';
+        const button = make('button', '', `▤ ${title}`);
+        button.type = 'button';
+        button.title = title;
+        chip.append(button);
+        row.append(chip);
       }
     }
   } else {

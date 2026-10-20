@@ -42,6 +42,7 @@ import (
 	"drawa/internal/remote"
 	"drawa/internal/server"
 	"drawa/internal/update"
+	"drawa/internal/uploads"
 	"drawa/internal/webassets"
 )
 
@@ -353,6 +354,7 @@ func main() {
 		os.Exit(130)
 	}()
 	go live.Reap()
+	_ = uploads.SweepOlderThan(24 * time.Hour)
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
 	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
 	if config.Net {
