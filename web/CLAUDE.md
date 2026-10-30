@@ -14,7 +14,7 @@ web/src/
     graph/     graph (a session's edges), links (your arrows), sessionwins (a session's Files and commands windows)
   session/     session cards
     card/      session (create, focus, close), render (header, status, appending to the log), saved (layout slices, referable, removable), live (the connection), history, gen (model and effort), mode, notify
-    composer/  composer (the message box), drafts, recall, images, uploads, pdfs, shell, filetypes (which dropped files are bitmaps or PDFs)
+    composer/  composer (the message box), drafts, recall, images, uploads, pdfs, pdfLimits, shell, filetypes (which dropped files are bitmaps or PDFs)
     stream/    stream (rendering the agent's output), asks, notices, tasks
   items/       one folder per kind of canvas item that spans several files, one file for the rest (agent: a sub-agent's window; diagram; doc: a Markdown window, its source edited in lib/codeedit's editor; notes; sketch)
     git/       git (the window), gitrepo (one repository's lists and commit box, a group each for repos in subfolders), gitwt (a repo's worktree dropdown and removal), gitgh (a repo's pull request strip)
@@ -95,6 +95,7 @@ Rules for these registries:
 - **Keep modules small.** When a file passes about 350 lines or does two jobs, split it by responsibility the way `session/` is split: card, composer, stream, asks and live are separate modules.
 - **No new dependency** for what a few lines or the platform can do. Big libraries (Mermaid, Excalidraw, html-to-image) are loaded with dynamic `import()` on first use. Keep it that way.
 - **Loose typing only where the CLI owns the schema.** Claude's stream-json messages are `Record<string, any>`. Type everything else.
+- **PDF attachments:** Dropped or attached PDFs reach agents as one document block. Composer limits (3.5MB per file and per message, `pdfLimits.ts`) are checked at attach time in `pdfs.ts` (immediate friendly toast) and at send time in `composer.ts` (before draft is cleared). In replayed transcripts, document chips render non-interactively as `.chip>.label` spans with `title` attributes.
 
 ## When you change the rules
 
