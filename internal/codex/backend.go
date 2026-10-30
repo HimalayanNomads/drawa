@@ -55,6 +55,7 @@ func versionWarning() string {
 var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 type server struct {
+	cid   string
 	p     *live.Proc
 	stdin io.WriteCloser
 	wmu   sync.Mutex // one message at a time on stdin
@@ -95,7 +96,7 @@ func spawn(s live.Spec, sink live.Sink) (live.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv := &server{tr: newTranslator("", s.Model), pending: map[int]chan reply{}, mode: s.Mode, model: s.Model, effort: s.Effort, mcp: s.MCPURL, sink: sink}
+	srv := &server{cid: s.Cid, tr: newTranslator("", s.Model), pending: map[int]chan reply{}, mode: s.Mode, model: s.Model, effort: s.Effort, mcp: s.MCPURL, sink: sink}
 	srv.tr.SetSid(s.Sid) // a saved thread is resumed on the first message, so opening a card doesn't start anything
 	p, stdin, err := live.StartProc(append([]string{"codex", "app-server"}, args...), nil, sink.Exited)
 	if err != nil {

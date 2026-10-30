@@ -214,150 +214,188 @@ func TestSweepOlderThan(t *testing.T) {
 	}
 }
 
-func TestPrepareContent(t *testing.T) {
+func TestHasDocument(t *testing.T) {
+	cases := []struct {
+		name    string
+		content any
+		want    bool
+	}{
+		{"nil", nil, false},
+		{"string", "plain text", false},
+		{"empty list", []any{}, false},
+		{"non-maps in list", []any{123, "text", true}, false},
+		{"other block type", []any{map[string]any{"type": "text", "text": "hello"}}, false},
+		{"image block", []any{map[string]any{"type": "image"}}, false},
+		{"document block", []any{map[string]any{"type": "document"}}, true},
+		{"mixed with document", []any{"str", map[string]any{"type": "text"}, map[string]any{"type": "document"}}, true},
+	}
+	for _, tc := range cases {
+		if got := HasDocument(tc.content); got != tc.want {
+			t.Errorf("HasDocument(%s) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestValidateContent(t *testing.T) {
 	root := setTestDir(t)
 
-	validPDF := []byte("%PDF-1.4 test document content")
-	b64Valid := base64.StdEncoding.EncodeToString(validPDF)
+	validHeader := []byte("%PDF-1.4 sample content")
+	b64Valid := base64.StdEncoding.EncodeToString(validHeader)
 
-	docBlock := map[string]any{
-		"type": "document",
+	// String and nil
+	if err := ValidateContent("hello"); err != nil {
+		t.Errorf("ValidateContent(string) error: %v", err)
+	}
+	if err := ValidateContent(nil); err != nil {
+		t.Errorf("ValidateContent(nil) error: %v", err)
+	}
+
+	// Non-document blocks ignored
+	if err := ValidateContent([]any{
+		"plain",
+		map[string]any{"type": "text", "text": "note"},
+		map[string]any{"type": "image", "source": "whatever"},
+	}); err != nil {
+		t.Errorf("ValidateContent(non-document blocks) error: %v", err)
+	}
+
+	// Valid document block
+	validBlock := map[string]any{
+		"type":  "document",
+		"title": "spec.pdf",
 		"source": map[string]any{
 			"type":       "base64",
 			"media_type": "application/pdf",
 			"data":       b64Valid,
 		},
-		"title": "spec.pdf",
+	}
+	if err := ValidateContent([]any{validBlock}); err != nil {
+		t.Errorf("ValidateContent(validBlock) error: %v", err)
 	}
 
-	// String content is unchanged
-	resStr, err := PrepareContent("codex", false, "sess", "card", "hello world")
-	if err != nil || resStr != "hello world" {
-		t.Errorf("PrepareContent string = %v, %v", resStr, err)
-	}
-
-	// Non-document blocks (e.g. image) untouched
-	imgBlock := map[string]any{
-		"type": "image",
+	// Missing or non-base64 source
+	badSource := map[string]any{
+		"type":  "document",
+		"title": "nosource.pdf",
 		"source": map[string]any{
-			"type":       "base64",
-			"media_type": "image/png",
-			"data":       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-		},
-	}
-	resImg, err := PrepareContent("codex", false, "sess", "card", []any{imgBlock})
-	if err != nil {
-		t.Fatalf("PrepareContent img error: %v", err)
-	}
-	if len(resImg.([]any)) != 1 || resImg.([]any)[0].(map[string]any)["type"] != "image" {
-		t.Errorf("image block was altered: %v", resImg)
-	}
-
-	// Table test over backends: claude, opencode, codex, agy
-	backendTests := []struct {
-		backend    string
-		textOnly   bool
-		wantSave   bool
-		wantDocTyp string // "document" for passthrough, "text" for rewritten
-	}{
-		{"claude", false, false, "document"},
-		{"opencode", false, false, "document"},
-		{"codex", false, true, "text"},
-		{"agy", true, false, "document"},
-	}
-
-	for _, bt := range backendTests {
-		t.Run("backend_"+bt.backend, func(t *testing.T) {
-			sessID := "sess-" + bt.backend
-			res, err := PrepareContent(bt.backend, bt.textOnly, sessID, "card-"+bt.backend, []any{
-				map[string]any{"type": "text", "text": "intro"},
-				docBlock,
-			})
-			if err != nil {
-				t.Fatalf("PrepareContent(%s) error: %v", bt.backend, err)
-			}
-			blocks := res.([]any)
-			if len(blocks) != 2 {
-				t.Fatalf("len(blocks) = %d, want 2", len(blocks))
-			}
-			b2 := blocks[1].(map[string]any)
-			gotType := b2["type"].(string)
-			if gotType != bt.wantDocTyp {
-				t.Errorf("backend %s block[1] type = %q, want %q", bt.backend, gotType, bt.wantDocTyp)
-			}
-
-			// Check file existence
-			sessDir := filepath.Join(root, sessID)
-			entries, _ := os.ReadDir(sessDir)
-			if bt.wantSave {
-				if len(entries) == 0 {
-					t.Errorf("backend %s expected saved file, but directory is empty", bt.backend)
-				}
-				textVal := b2["text"].(string)
-				if !strings.Contains(textVal, "Attached PDF \"spec.pdf\" saved at") {
-					t.Errorf("unexpected rewritten text for %s: %s", bt.backend, textVal)
-				}
-			} else {
-				if len(entries) > 0 {
-					t.Errorf("backend %s should NOT write files, found: %d", bt.backend, len(entries))
-				}
-			}
-		})
-	}
-
-	// Save error returns error and does NOT send half-rewritten message
-	b64Bad := base64.StdEncoding.EncodeToString([]byte("NOT-PDF-HEADER"))
-	badDoc := map[string]any{
-		"type": "document",
-		"source": map[string]any{
-			"type":       "base64",
+			"type":       "url",
 			"media_type": "application/pdf",
-			"data":       b64Bad,
 		},
-		"title": "bad.pdf",
 	}
-	mixedContent := []any{
-		map[string]any{"type": "text", "text": "first block"},
-		docBlock,
-		badDoc,
-	}
-	if _, err := PrepareContent("codex", false, "sess-fail", "card-fail", mixedContent); err == nil {
-		t.Error("PrepareContent accepted mixed content with a bad document block")
+	if err := ValidateContent([]any{badSource}); err == nil {
+		t.Error("ValidateContent accepted non-base64 source")
 	}
 
-	// Bad document block: missing data
-	missingData := map[string]any{
-		"type": "document",
+	// Non-PDF media_type
+	wrongMime := map[string]any{
+		"type":  "document",
+		"title": "doc.txt",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "text/plain",
+			"data":       b64Valid,
+		},
+	}
+	if err := ValidateContent([]any{wrongMime}); err == nil || !strings.Contains(err.Error(), `"doc.txt"`) {
+		t.Errorf("ValidateContent wrongMime error = %v, want error naming doc.txt", err)
+	}
+
+	// Empty data
+	emptyData := map[string]any{
+		"type":  "document",
+		"title": "empty.pdf",
 		"source": map[string]any{
 			"type":       "base64",
 			"media_type": "application/pdf",
 			"data":       "",
 		},
 	}
-	if _, err := PrepareContent("codex", false, "sess-empty", "card-empty", []any{missingData}); err == nil {
-		t.Error("PrepareContent accepted empty data")
+	if err := ValidateContent([]any{emptyData}); err == nil || !strings.Contains(err.Error(), `"empty.pdf"`) {
+		t.Errorf("ValidateContent emptyData error = %v, want error naming empty.pdf", err)
 	}
-}
 
-// TestShouldSaveToFile verifies that ShouldSaveToFile decides whether to save attachments
-// to file using native document support and the textOnly flag, without hardcoding backend names (#136).
-func TestShouldSaveToFile(t *testing.T) {
-	tests := []struct {
-		backend  string
-		textOnly bool
-		want     bool
-	}{
-		{"claude", false, false},
-		{"opencode", false, false},
-		{"codex", false, true},
-		{"agy", true, false},
-		{"agy", false, true},
-		{"custom-textonly", true, false},
-		{"custom-standard", false, true},
+	// Corrupt base64
+	corruptB64 := map[string]any{
+		"type":  "document",
+		"title": "corrupt.pdf",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       "not-base-64!@#$",
+		},
 	}
-	for _, tt := range tests {
-		if got := ShouldSaveToFile(tt.backend, tt.textOnly); got != tt.want {
-			t.Errorf("ShouldSaveToFile(%q, %v) = %v, want %v", tt.backend, tt.textOnly, got, tt.want)
-		}
+	if err := ValidateContent([]any{corruptB64}); err == nil || !strings.Contains(err.Error(), `"corrupt.pdf"`) {
+		t.Errorf("ValidateContent corruptB64 error = %v, want error naming corrupt.pdf", err)
+	}
+
+	// Valid base64 but missing %PDF- header (e.g. text file renamed .pdf)
+	nonPdfBytes := base64.StdEncoding.EncodeToString([]byte("plain text file contents"))
+	fakePdf := map[string]any{
+		"type":  "document",
+		"title": "renamed.pdf",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       nonPdfBytes,
+		},
+	}
+	if err := ValidateContent([]any{fakePdf}); err == nil || !strings.Contains(err.Error(), `"renamed.pdf" is not a PDF file`) {
+		t.Errorf("ValidateContent fakePdf error = %v, want error saying not a PDF file", err)
+	}
+
+	// Default title when title is empty
+	unnamedFakePdf := map[string]any{
+		"type": "document",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       nonPdfBytes,
+		},
+	}
+	if err := ValidateContent([]any{unnamedFakePdf}); err == nil || !strings.Contains(err.Error(), `"document.pdf" is not a PDF file`) {
+		t.Errorf("ValidateContent unnamedFakePdf error = %v, want error naming document.pdf", err)
+	}
+
+	// Exactly MaxSize accepted
+	maxBytes := make([]byte, MaxSize)
+	copy(maxBytes, []byte("%PDF-"))
+	b64Max := base64.StdEncoding.EncodeToString(maxBytes)
+	maxBlock := map[string]any{
+		"type":  "document",
+		"title": "exact.pdf",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       b64Max,
+		},
+	}
+	if err := ValidateContent([]any{maxBlock}); err != nil {
+		t.Errorf("ValidateContent(exact MaxSize) error: %v", err)
+	}
+
+	// MaxSize + 1 rejected
+	overBytes := make([]byte, MaxSize+1)
+	copy(overBytes, []byte("%PDF-"))
+	b64Over := base64.StdEncoding.EncodeToString(overBytes)
+	overBlock := map[string]any{
+		"type":  "document",
+		"title": "toolarge.pdf",
+		"source": map[string]any{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       b64Over,
+		},
+	}
+	if err := ValidateContent([]any{overBlock}); err == nil || !strings.Contains(err.Error(), `"toolarge.pdf" is over 3.5 MB`) {
+		t.Errorf("ValidateContent(over MaxSize) error = %v, want error saying over 3.5 MB", err)
+	}
+
+	// Verify ValidateContent wrote nothing to disk
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) > 0 {
+		t.Errorf("ValidateContent wrote files to disk: %d entries", len(entries))
 	}
 }

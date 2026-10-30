@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -81,9 +82,15 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 			http.Error(w, "", 400)
 			return
 		}
-		sid := str(body["sid"])
-		content, err = uploads.PrepareContent(kindName, kind.TextOnly, sid, cid, content)
-		if err != nil {
+		if kind.TextOnly && uploads.HasDocument(content) {
+			name := kind.Title
+			if name == "" {
+				name = kindName
+			}
+			sendJSON(w, map[string]any{"error": fmt.Sprintf("%s takes text only; PDFs can't be attached", name)}, 400)
+			return
+		}
+		if err = uploads.ValidateContent(content); err != nil {
 			sendJSON(w, map[string]any{"error": err.Error()}, 400)
 			return
 		}
@@ -143,9 +150,6 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 
 	case "/api/close":
-		if sid := str(body["sid"]); sid != "" {
-			uploads.RemoveSession(sid)
-		}
 		uploads.RemoveSession(cid)
 		if lv != nil {
 			lv.Close() // can take 5s; never held Mu (freed above) so other cards' streams aren't stalled by it
@@ -154,6 +158,11 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 	}
 	if err != nil {
+		var refused *live.Refused
+		if errors.As(err, &refused) {
+			sendJSON(w, map[string]any{"error": refused.Error()}, 500)
+			return
+		}
 		http.Error(w, "", 500)
 		return
 	}

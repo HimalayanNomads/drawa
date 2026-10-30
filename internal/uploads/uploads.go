@@ -1,5 +1,5 @@
-// Package uploads handles PDF and document attachments: validation, temporary storage
-// for backends that lack native document support (Codex), and cleanup of session upload directories.
+// Package uploads handles PDF and document attachments: validation, temporary storage,
+// and cleanup of session upload directories.
 package uploads
 
 import (
@@ -25,7 +25,7 @@ var pdfMagic = []byte("%PDF-")
 var safeChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
 // BaseDir returns the root uploads directory, ~/.drawa/uploads.
-// ponytail: a shared ~/.drawa helper across prefs/agy/uploads would be cleaner,
+// ponytail: a shared ~/.drawa helper across prefs and uploads would be cleaner,
 // but is deferred to avoid refactoring existing packages in this PR.
 func BaseDir() string {
 	home, err := os.UserHomeDir()
@@ -164,88 +164,54 @@ func SweepOlderThan(maxAge time.Duration) error {
 	return nil
 }
 
-// HasNativeDocumentSupport reports whether a backend accepts native Anthropic/OpenCode document blocks.
-func HasNativeDocumentSupport(backend string) bool {
-	switch backend {
-	case "claude", "opencode":
-		return true
-	default:
-		return false
-	}
-}
-
-// ShouldSaveToFile reports whether a backend should save document attachments to disk
-// and rewrite them to text blocks. Backends with native document support (Claude, OpenCode)
-// and text-only backends (TextOnly) must NOT save files to disk.
-func ShouldSaveToFile(backend string, textOnly bool) bool {
-	if textOnly {
-		return false
-	}
-	return !HasNativeDocumentSupport(backend)
-}
-
-// PrepareContent validates document blocks in a message and, for backends that lack native
-// document block support (Codex), saves them to disk and rewrites them into text blocks.
-// Native backends (Claude, OpenCode) and text-only backends (Antigravity) pass through untouched.
-func PrepareContent(backend string, textOnly bool, sessionID, cardID string, content any) (any, error) {
+// HasDocument reports whether content contains at least one document block.
+func HasDocument(content any) bool {
 	list, ok := content.([]any)
 	if !ok {
-		return content, nil
+		return false
 	}
-	folder := sessionID
-	if folder == "" {
-		folder = cardID
+	for _, item := range list {
+		if blockMap, ok := item.(map[string]any); ok && blockMap["type"] == "document" {
+			return true
+		}
 	}
-	saveFile := ShouldSaveToFile(backend, textOnly)
-	out := make([]any, 0, len(list))
+	return false
+}
 
+// ValidateContent validates all document blocks in content. Non-document blocks and strings
+// are ignored. It checks source type, media type, base64 data, length, and PDF magic header.
+func ValidateContent(content any) error {
+	list, ok := content.([]any)
+	if !ok {
+		return nil
+	}
 	for _, item := range list {
 		blockMap, ok := item.(map[string]any)
 		if !ok || blockMap["type"] != "document" {
-			out = append(out, item)
 			continue
 		}
-
-		source, ok := blockMap["source"].(map[string]any)
-		if !ok {
-			return nil, errors.New("document block missing source")
+		title, _ := blockMap["title"].(string)
+		if strings.TrimSpace(title) == "" {
+			title = "document.pdf"
 		}
-		if source["type"] != "base64" || source["media_type"] != "application/pdf" {
-			return nil, errors.New("document block must be base64 application/pdf")
+		source, ok := blockMap["source"].(map[string]any)
+		if !ok || source["type"] != "base64" || source["media_type"] != "application/pdf" {
+			return fmt.Errorf("%q must be a base64 application/pdf document", title)
 		}
 		b64Data, ok := source["data"].(string)
 		if !ok || b64Data == "" {
-			return nil, errors.New("document block missing data")
+			return fmt.Errorf("%q missing document data", title)
 		}
-
 		data, err := base64.StdEncoding.DecodeString(b64Data)
 		if err != nil {
-			return nil, fmt.Errorf("invalid base64 document data: %w", err)
+			return fmt.Errorf("%q has invalid base64 data", title)
 		}
 		if len(data) > MaxSize {
-			return nil, fmt.Errorf("PDF exceeds 3.5MB limit (%d bytes)", len(data))
+			return fmt.Errorf("%q is over 3.5 MB", title)
 		}
 		if !bytes.HasPrefix(data, pdfMagic) {
-			return nil, errors.New("file is not a PDF (missing %PDF- header)")
+			return fmt.Errorf("%q is not a PDF file", title)
 		}
-
-		title, _ := blockMap["title"].(string)
-		if title == "" {
-			title = "document.pdf"
-		}
-
-		if !saveFile {
-			out = append(out, blockMap)
-			continue
-		}
-
-		// Non-native, non-text-only backend (Codex): save to file and rewrite to text block.
-		savedPath, err := Save(folder, title, data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save PDF: %w", err)
-		}
-		textNote := fmt.Sprintf("Attached PDF %q saved at %s; open it with your file tools.", title, savedPath)
-		out = append(out, map[string]any{"type": "text", "text": textNote})
 	}
-	return out, nil
+	return nil
 }
