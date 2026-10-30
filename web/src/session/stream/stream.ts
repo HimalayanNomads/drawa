@@ -559,10 +559,9 @@ export function replay(
         const title = (b as any).title ?? 'document.pdf';
         const chip = make('span', 'chip');
         chip.dataset.kind = 'upload';
-        const button = make('button', '', `▤ ${title}`);
-        button.type = 'button';
-        button.title = title;
-        chip.append(button);
+        const label = make('span', 'label', `▤ ${title}`);
+        label.title = title;
+        chip.append(label);
         row.append(chip);
       }
     }
