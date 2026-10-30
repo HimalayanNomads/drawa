@@ -20,6 +20,12 @@ import (
 // MaxSize is the maximum allowed size for an uploaded PDF (3.5MB, matching the image cap).
 const MaxSize = 3_500_000
 
+// MaxAge is the retention duration for uploads: files older than this are swept.
+const MaxAge = 72 * time.Hour
+
+// SweepEvery is the interval between periodic sweep passes.
+const SweepEvery = time.Hour
+
 var pdfMagic = []byte("%PDF-")
 
 var safeChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -103,6 +109,13 @@ func Save(sessionID, title string, data []byte) (string, error) {
 
 	targetPath := filepath.Join(dir, filename)
 	file, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil && os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", err
+		}
+		_ = os.Chmod(dir, 0o700)
+		file, err = os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -140,6 +153,11 @@ func SweepOlderThan(maxAge time.Duration) error {
 			continue
 		}
 		sessDir := filepath.Join(base, entry.Name())
+		dirInfo, err := os.Stat(sessDir)
+		if err != nil {
+			continue
+		}
+		dirOld := dirInfo.ModTime().Before(cutoff)
 		files, err := os.ReadDir(sessDir)
 		if err != nil {
 			continue
@@ -157,7 +175,7 @@ func SweepOlderThan(maxAge time.Duration) error {
 				}
 			}
 		}
-		if remaining <= 0 {
+		if remaining <= 0 && dirOld {
 			_ = os.Remove(sessDir)
 		}
 	}

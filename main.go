@@ -354,7 +354,12 @@ func main() {
 		os.Exit(130)
 	}()
 	go live.Reap()
-	_ = uploads.SweepOlderThan(24 * time.Hour)
+	go func() {
+		_ = uploads.SweepOlderThan(uploads.MaxAge)
+		for range time.Tick(uploads.SweepEvery) {
+			_ = uploads.SweepOlderThan(uploads.MaxAge)
+		}
+	}()
 	url := fmt.Sprintf("http://127.0.0.1:%d", config.Port)
 	addr := fmt.Sprintf("127.0.0.1:%d", config.Port) // localhost only unless --net: this endpoint runs Claude Code with your permissions
 	if config.Net {

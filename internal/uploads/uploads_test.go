@@ -177,29 +177,70 @@ func TestRemoveSession(t *testing.T) {
 }
 
 func TestSweepOlderThan(t *testing.T) {
-	root := setTestDir(t)
+	// Missing root directory returns nil
+	setTestDir(t)
+	dirFn = func() string { return filepath.Join(t.TempDir(), "nonexistent") }
+	if err := SweepOlderThan(MaxAge); err != nil {
+		t.Fatalf("missing root dir should return nil, got: %v", err)
+	}
 
+	root := setTestDir(t)
 	validPDF := []byte("%PDF-1.4 old")
+
+	// Old session: file and dir modtime > MaxAge (100h) -> removed
 	sessOld := "sess-old"
 	pathOld, err := Save(sessOld, "old.pdf", validPDF)
 	if err != nil {
 		t.Fatal(err)
 	}
+	oldTime := time.Now().Add(-100 * time.Hour)
+	if err := os.Chtimes(pathOld, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(root, sessOld), oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
 
+	// New session: file < MaxAge -> kept
 	sessNew := "sess-new"
 	pathNew, err := Save(sessNew, "new.pdf", validPDF)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Set old file mod time to 48 hours ago
-	past := time.Now().Add(-48 * time.Hour)
-	if err := os.Chtimes(pathOld, past, past); err != nil {
+	// Mixed session: old file + new file -> old file deleted, new file kept, directory kept
+	sessMixed := "sess-mixed"
+	pathMixedOld, err := Save(sessMixed, "mixed-old.pdf", validPDF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathMixedNew, err := Save(sessMixed, "mixed-new.pdf", validPDF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(pathMixedOld, oldTime, oldTime); err != nil {
 		t.Fatal(err)
 	}
 
-	// Sweep older than 24 hours
-	if err := SweepOlderThan(24 * time.Hour); err != nil {
+	// Fresh empty directory (modtime < 72h): directory KEPT
+	sessFreshEmpty := "sess-fresh-empty"
+	freshEmptyDir := filepath.Join(root, sessFreshEmpty)
+	if err := os.MkdirAll(freshEmptyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Old empty directory (modtime > 72h): directory REMOVED
+	sessOldEmpty := "sess-old-empty"
+	oldEmptyDir := filepath.Join(root, sessOldEmpty)
+	if err := os.MkdirAll(oldEmptyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(oldEmptyDir, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sweep older than MaxAge (72 hours)
+	if err := SweepOlderThan(MaxAge); err != nil {
 		t.Fatalf("SweepOlderThan failed: %v", err)
 	}
 
@@ -211,6 +252,27 @@ func TestSweepOlderThan(t *testing.T) {
 	// sessNew should remain
 	if _, err := os.Stat(pathNew); err != nil {
 		t.Errorf("new file was swept: %v", err)
+	}
+
+	// sessMixed: old file deleted, new file kept, directory KEPT
+	if _, err := os.Stat(pathMixedOld); !os.IsNotExist(err) {
+		t.Errorf("mixed old file was not swept: %v", err)
+	}
+	if _, err := os.Stat(pathMixedNew); err != nil {
+		t.Errorf("mixed new file was swept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, sessMixed)); err != nil {
+		t.Errorf("mixed directory was removed: %v", err)
+	}
+
+	// fresh empty directory: KEPT
+	if _, err := os.Stat(freshEmptyDir); err != nil {
+		t.Errorf("fresh empty directory was swept: %v", err)
+	}
+
+	// old empty directory: REMOVED
+	if _, err := os.Stat(oldEmptyDir); !os.IsNotExist(err) {
+		t.Errorf("old empty directory still exists: %v", err)
 	}
 }
 
