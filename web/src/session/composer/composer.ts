@@ -14,7 +14,8 @@ import type { Session } from '../../types/session';
 import { send } from '../card/live';
 import { decodeImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';
-import { pdfRefs } from './pdfs';
+import { getPdf, pdfRefs } from './pdfs';
+import { MAX_MESSAGE_SIZE, pdfBytes } from './pdfLimits';
 import { pdf, raster } from './filetypes';
 import { runShell } from './shell';
 import { modePicker } from '../card/mode';
@@ -111,6 +112,11 @@ export function composer(S: Session, body: HTMLElement) {
       return;
     } // handled here: see clearSession
     if (!p && !S.refs.length && !S.images.length) return;
+    const totalPdfBytes = pdfBytes(S.refs.map(ref => getPdf(ref.el)?.size ?? 0));
+    if (totalPdfBytes > MAX_MESSAGE_SIZE) {
+      toast('PDFs add up to over 3.5MB for one message: remove one');
+      return;
+    }
     ta.value = '';
     ta.style.height = '';
     const refs = S.refs.splice(0),
@@ -158,7 +164,8 @@ export function composer(S: Session, body: HTMLElement) {
       if (textOnly(S.backend)) {
         noPdfs(S);
       } else {
-        for (const ref of await pdfRefs(pdfFiles)) addRef(S, ref);
+        const existingBytes = pdfBytes(S.refs.map(ref => getPdf(ref.el)?.size ?? 0));
+        for (const ref of await pdfRefs(pdfFiles, existingBytes)) addRef(S, ref);
       }
     }
     for (const ref of await textRefs([...failed, ...rest])) addRef(S, ref);

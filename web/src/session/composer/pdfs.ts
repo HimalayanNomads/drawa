@@ -4,16 +4,15 @@
 import type { Ref } from '../../canvas/core/refs';
 import { base64 } from '../../lib/blobs';
 import { make, toast } from '../../lib/dom';
-
-const MAX_FILE_SIZE = 3_500_000,
-  MAX_TOTAL_SIZE = 3_500_000;
+import { fitsPdf } from './pdfLimits';
 
 const pdfMagic = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
 
-/** The base64 payload and title stored for a PDF upload reference element. */
+/** The base64 payload, title, and raw byte size stored for a PDF upload reference element. */
 export interface StoredPdf {
   data: string;
   title: string;
+  size: number;
 }
 
 const pdfStore = new WeakMap<HTMLElement, StoredPdf>();
@@ -29,29 +28,30 @@ async function hasPdfHeader(file: File): Promise<boolean> {
 }
 
 /** Read the PDF files among `files` into upload references; say why any were skipped. */
-export async function pdfRefs(files: File[]): Promise<Ref[]> {
+export async function pdfRefs(files: File[], existingBytes = 0): Promise<Ref[]> {
   const refs: Ref[] = [],
     skipped: string[] = [];
-  let totalSize = 0;
+  let totalBytes = existingBytes;
 
   for (const file of files) {
-    if (file.size > MAX_FILE_SIZE) {
+    const fitStatus = fitsPdf({ size: file.size, usedBytes: totalBytes });
+    if (fitStatus === 'file-too-big') {
       skipped.push(`${file.name} (over 3.5MB)`);
       continue;
     }
-    if (totalSize + file.size > MAX_TOTAL_SIZE) {
-      skipped.push(`${file.name} (over 3.5MB for one message)`);
+    if (fitStatus === 'message-too-big') {
+      toast('PDFs add up to over 3.5MB for one message: remove one');
       continue;
     }
     if (!(await hasPdfHeader(file))) {
       skipped.push(`${file.name} (not a PDF file)`);
       continue;
     }
-    totalSize += file.size;
+    totalBytes += file.size;
     const element = make('span');
     element.dataset.label = file.name;
     const data = await base64(file);
-    pdfStore.set(element, { data, title: file.name });
+    pdfStore.set(element, { data, title: file.name, size: file.size });
     refs.push({ kind: 'upload', label: file.name, el: element });
   }
 
