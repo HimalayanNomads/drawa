@@ -214,3 +214,4 @@ func TestInputStringContentUnchanged(t *testing.T) {
 		t.Fatalf("expected single text item for string content, got: %v", items)
 	}
 }
+
