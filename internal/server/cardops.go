@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 
 	"drawa/internal/config"
 	"drawa/internal/live"
+	"drawa/internal/uploads"
 )
 
 // modelRe: model names and aliases as Claude takes them ("opus", "claude-opus-4-1", "sonnet[1m]", Bedrock/Vertex
@@ -80,6 +82,18 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 			http.Error(w, "", 400)
 			return
 		}
+		if kind.TextOnly && uploads.HasDocument(content) {
+			name := kind.Title
+			if name == "" {
+				name = kindName
+			}
+			sendJSON(w, map[string]any{"error": fmt.Sprintf("%s takes text only; PDFs can't be attached", name)}, 400)
+			return
+		}
+		if err = uploads.ValidateContent(content); err != nil {
+			sendJSON(w, map[string]any{"error": err.Error()}, 400)
+			return
+		}
 		err = lv.Send(content, id)
 
 	case "/api/unsend":
@@ -136,6 +150,7 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 
 	case "/api/close":
+		uploads.RemoveSession(cid)
 		if lv != nil {
 			lv.Close() // can take 5s; never held Mu (freed above) so other cards' streams aren't stalled by it
 			sendJSON(w, map[string]any{"ok": true, "live": lv.Alive()}, 200)
@@ -143,6 +158,11 @@ func handleCardOp(w http.ResponseWriter, r *http.Request, cid string, body map[s
 		}
 	}
 	if err != nil {
+		var refused *live.Refused
+		if errors.As(err, &refused) {
+			sendJSON(w, map[string]any{"error": refused.Error()}, 500)
+			return
+		}
 		http.Error(w, "", 500)
 		return
 	}

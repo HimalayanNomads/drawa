@@ -1,18 +1,21 @@
 // Canvas items you can reference in a message (type @ in a card, or drop the item onto a card's message box).
 // Each item kind registers how it's labelled and what Claude receives for it (text, or text plus an image).
 
-import { imageBlock } from '../../lib/blobs';
+import { documentBlock, imageBlock } from '../../lib/blobs';
 import { items } from './items';
 
 /** A window's title as shown on its tab ('' for items without one). Here, not in window.ts, so this registry
  *  imports nothing that imports it back: kinds can call referable() at their top level. */
 export const winTitle = (el: Element) => el.querySelector('.win-h .t')?.textContent ?? '';
 
-/** What Claude receives: text, maybe an image (base64; PNG unless `imageType` says otherwise). */
+/** What Claude receives: text, maybe an image (base64; PNG unless `imageType` says otherwise), or a document. */
 interface Content {
   text: string;
   image?: string;
   imageType?: string;
+  document?: string;
+  documentType?: string;
+  title?: string;
 }
 export interface Ref {
   kind: string;
@@ -70,17 +73,28 @@ export const canvasRefs = () =>
     .map(refOf)
     .filter((r): r is Ref => !!r);
 
-/** The message content for a prompt plus references: plain text, or text + image blocks when some carry images. */
+/** The message content for a prompt plus references: plain text, or text + blocks when some carry images or documents. */
 export async function toContent(prompt: string, refs: Ref[]): Promise<string | object[]> {
   if (!refs.length) return prompt;
   const parts: string[] = [],
-    images: { data: string; type: string }[] = [];
+    images: { data: string; type: string }[] = [],
+    documents: { data: string; type: string; title?: string }[] = [];
   for (const r of refs) {
     const c = await kinds.get(r.kind)!.content(r.el, r.label);
     if (c.image) images.push({ data: c.image, type: c.imageType ?? 'image/png' });
-    parts.push(c.image ? `${c.text}: attached as image ${images.length}.` : c.text);
+    if (c.document)
+      documents.push({
+        data: c.document,
+        type: c.documentType ?? 'application/pdf',
+        title: c.title ?? r.label,
+      });
+    if (c.text) parts.push(c.image ? `${c.text}: attached as image ${images.length}.` : c.text);
   }
-  const text = `${prompt}\n\nReferenced from my canvas:\n\n${parts.join('\n\n')}`;
-  if (!images.length) return text;
-  return [{ type: 'text', text }, ...images.map(i => imageBlock(i.type, i.data))];
+  const text = parts.length ? `${prompt}\n\nReferenced from my canvas:\n\n${parts.join('\n\n')}` : prompt;
+  if (!images.length && !documents.length) return text;
+  const blocks: object[] = [];
+  if (text) blocks.push({ type: 'text', text });
+  if (documents.length) blocks.push(...documents.map(d => documentBlock(d.type, d.data, d.title)));
+  if (images.length) blocks.push(...images.map(i => imageBlock(i.type, i.data)));
+  return blocks;
 }

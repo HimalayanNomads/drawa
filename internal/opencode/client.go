@@ -75,7 +75,7 @@ func parts(content any) []map[string]any {
 			if t, _ := m["text"].(string); t != "" {
 				out = append(out, map[string]any{"type": "text", "text": t})
 			}
-		case "image":
+		case "image", "document":
 			src, _ := m["source"].(map[string]any)
 			if src["type"] == "base64" {
 				mime, _ := src["media_type"].(string)
@@ -103,7 +103,7 @@ func textAndFiles(content any) (string, []map[string]any) {
 			if t, _ := m["text"].(string); t != "" {
 				text = append(text, t)
 			}
-		case "image":
+		case "image", "document":
 			src, _ := m["source"].(map[string]any)
 			if src["type"] == "base64" {
 				mime, _ := src["media_type"].(string)
