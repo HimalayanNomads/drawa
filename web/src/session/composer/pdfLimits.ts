@@ -24,4 +24,3 @@ export function fitsPdf({
 export function pdfBytes(sizes: number[]): number {
   return sizes.reduce((totalBytes, currentSize) => totalBytes + currentSize, 0);
 }
-
