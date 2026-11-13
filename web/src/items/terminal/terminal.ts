@@ -76,6 +76,7 @@ streamWith({
     if (message.exit !== undefined) ended(shell, TerminalState.Exited, `Shell exited (code ${message.exit})`);
     else if (message.gone) ended(shell, TerminalState.Gone, 'Shell ended (the server restarted)');
   },
+  dropped: () => leaveFullscreen(), // the server died: at once, not after the reachability check's two misses
 });
 /** The windows whose shell is running and on the canvas (one parked by a delete still has Undo: not read meanwhile). */
 const live = () =>

@@ -175,6 +175,7 @@ export interface StreamPart {
   key: () => string;
   query: () => string;
   take: (message: Msg) => void;
+  dropped?: () => void; // the stream broke (the server stopped or the network went): it reconnects by itself
 }
 const parts: StreamPart[] = [];
 /** Carry another part on the page's one stream (see StreamPart); `restream()` when its `key()` changes. */
@@ -209,6 +210,7 @@ function listenToCards() {
   readStream(ctrl).finally(() => {
     if (conn !== ctrl) return; // replaced by a newer stream
     conn = null;
+    for (const part of parts) part.dropped?.();
     setTimeout(listenToCards, 1000); // dropped (server restart, network): pick up where each card left off
   });
 }

@@ -64,7 +64,7 @@ The app scales through these registration points. A new feature should plug into
 | An item whose empty space is canvas (a group's frame): pans in Hand mode, with the middle button or when locked; Shift+drag draws a selection box; a selection box picks it only when it holds all of it | class `frame` on the item | `canvas/core/nav.ts`, `canvas/core/select.ts` |
 | Pressing a window's tab to drag it leaves focus where it is (typing carries on after the drag; a message box isn't one) | attribute `data-keep-focus` on the box holding the focus (`codeEditor()` sets it) | `canvas/core/drag.ts` (`draggable`) |
 | Every key goes to an element while focus is inside it, Drawa's shortcuts included (a terminal in terminal mode) | attribute `data-own-keys` on it (`dispatch()` in `lib/keys.ts` skips its keys) | `lib/keys.ts` |
-| Something else rides the page's one `/api/events` stream (a terminal's output) | `streamWith({ key, query, take })` (`query()`: its part of the URL; `key()`: changes when the stream must re-open; `take(m)`: each line that isn't a card's), `restream()` after `key()` changes | `session/card/live.ts` |
+| Something else rides the page's one `/api/events` stream (a terminal's output) | `streamWith({ key, query, take })` (`query()`: its part of the URL; `key()`: changes when the stream must re-open; `take(m)`: each line that isn't a card's; `dropped()`: the stream broke), `restream()` after `key()` changes | `session/card/live.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/` (a folder `items/<kind>/` once it needs more than one), an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
