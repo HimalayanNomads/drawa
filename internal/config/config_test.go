@@ -75,11 +75,11 @@ func TestOpenedCatchesSwappedLink(t *testing.T) {
 
 func TestNetTokenSurvivesRestart(t *testing.T) {
 	oldNet := Net
-	t.Cleanup(func() { Net = oldNet; os.Unsetenv(netTokenEnv) })
+	t.Cleanup(func() { Net = oldNet; os.Unsetenv(NetTokenEnv) })
 	Net = true
-	os.Unsetenv(netTokenEnv)
+	os.Unsetenv(NetTokenEnv)
 	a := netToken()
-	if len(a) < 22 || os.Getenv(netTokenEnv) != a {
+	if len(a) < 22 || os.Getenv(NetTokenEnv) != a {
 		t.Fatalf("token %q not long enough or not kept in the environment", a)
 	}
 	if b := netToken(); b != a {

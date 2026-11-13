@@ -17,12 +17,20 @@ import (
 // maxKeys caps one keys op: a paste bigger than this goes in several (the page batches per frame anyway).
 const maxKeys = 64 << 10
 
+// termRoute says whether terminals work here (under --net, only from this machine: see termOp)
+// and which shells the Settings panel may offer.
 func termRoute(q url.Values) (any, int, error) {
 	return map[string]any{"supported": term.Supported(), "shells": prefs.Shells()}, 200, nil
 }
 
-// termOp is POST /api/term: open, keys, resize and close a terminal window's shell.
-func termOp(w http.ResponseWriter, body map[string]any) {
+// termOp is POST /api/term: open, keys, resize and close a terminal window's shell. Only from this machine: with
+// --net, a device holding the network link may drive agents (each asks before it acts), but a raw shell is a step
+// further than that link was meant to give.
+func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
+	if config.Net && !loopback(r) {
+		sendJSON(w, map[string]any{"error": "terminals open only on the machine running drawa"}, 403)
+		return
+	}
 	num := func(k string) int { f, _ := body[k].(float64); return int(f) }
 	if str(body["op"]) == "open" {
 		id, err := term.Open(str(body["cwd"]), num("cols"), num("rows"))

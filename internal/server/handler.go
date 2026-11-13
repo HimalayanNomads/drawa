@@ -504,7 +504,7 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 		runShell(w, r, str(body["cmd"]))
 		return
 	case "/api/term":
-		termOp(w, body)
+		termOp(w, r, body)
 		return
 	case "/api/images":
 		sendJSON(w, images.Save(str(body["data"])), 200)

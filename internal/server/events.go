@@ -71,7 +71,10 @@ func streamEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	terms, ended := termSubs(q.Get("t")), map[string]bool{}
+	terms, ended := map[string]int64{}, map[string]bool{}
+	if !config.Net || loopback(r) { // a terminal's output, like its keys, stays on this machine (see termOp)
+		terms = termSubs(q.Get("t"))
+	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(200)
 	rc := http.NewResponseController(w)

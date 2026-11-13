@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestShell(t *testing.T) {
 	t.Cleanup(func() { config.Root = saved })
 	t.Setenv("SHELL", "/bin/sh")
 	t.Setenv("HOME", t.TempDir()) // the shell setting is read from ~/.drawa: none here
-	t.Setenv("ENV", "") // no rc file: a predictable prompt
+	t.Setenv("ENV", "")           // no rc file: a predictable prompt
 
 	id, err := Open("", 80, 24)
 	if err != nil {
@@ -97,5 +98,15 @@ func TestBufferTrim(t *testing.T) {
 	}
 	if data, _, _, _ := term.Since(next - 5); len(data) != 5 {
 		t.Fatal("tail")
+	}
+}
+
+// The --net sign-in token never reaches a shell's environment.
+func TestShellEnvDropsNetToken(t *testing.T) {
+	t.Setenv(config.NetTokenEnv, "secret-token-value-123456")
+	for _, v := range shellEnv() {
+		if strings.HasPrefix(v, config.NetTokenEnv+"=") {
+			t.Fatal("net token passed to the shell")
+		}
 	}
 }

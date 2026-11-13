@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 
 	"drawa/internal/config"
@@ -65,7 +66,7 @@ func Open(dir string, cols, rows int) (string, error) {
 	setSize(master, clamp(cols), clamp(rows))
 	cmd := exec.Command(shell(), "-l")
 	cmd.Dir = abs
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmd.Env = append(shellEnv(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = ttyAttr()
 	if err := cmd.Start(); err != nil {
@@ -152,6 +153,12 @@ func Close(id string) error {
 	}
 	hangUp(t.cmd.Process.Pid)
 	return t.master.Close()
+}
+
+// shellEnv is the server's environment minus the --net sign-in token: it guards Drawa's network address, and a
+// shell's `env` (shown on the canvas, readable by agents) mustn't print it.
+func shellEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(v string) bool { return strings.HasPrefix(v, config.NetTokenEnv+"=") })
 }
 
 // shell is the one your settings name (checked against /etc/shells when it was set, and again here), else $SHELL.

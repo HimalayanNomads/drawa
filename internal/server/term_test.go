@@ -88,3 +88,15 @@ func TestTerminalOverHTTP(t *testing.T) {
 		t.Fatalf("keys after close: %d", code)
 	}
 }
+
+// Under --net, terminals open only from this machine, whatever token the other device has.
+func TestTerminalLocalOnlyUnderNet(t *testing.T) {
+	saved := config.Net
+	config.Net = true
+	t.Cleanup(func() { config.Net = saved })
+	rec := httptest.NewRecorder()
+	termOp(rec, &http.Request{RemoteAddr: "192.168.1.20:5555"}, map[string]any{"op": "open"})
+	if rec.Code != 403 {
+		t.Fatalf("network device opened a terminal: %d", rec.Code)
+	}
+}

@@ -5,6 +5,7 @@
 
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
+import { toast, truncate } from '../../lib/dom';
 import { prefs } from '../../lib/prefs';
 import { isDark } from '../../lib/theme';
 
@@ -101,7 +102,16 @@ export async function emulator(box: HTMLElement, normal: HTMLElement, send: (dat
     if (encoded === '?') return true; // reading the clipboard back: refused
     try {
       const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
-      navigator.clipboard?.writeText(new TextDecoder().decode(bytes)).catch(() => {});
+      const text = new TextDecoder().decode(bytes);
+      // said out loud: any output can carry this (a file you cat), and a swapped clipboard pasted into a shell runs
+      navigator.clipboard
+        ?.writeText(text)
+        .then(() =>
+          toast(
+            `Terminal copied ${text.length.toLocaleString()} characters to the clipboard: ${truncate(text.replace(/\s+/g, ' '), 60, '…')}`,
+          ),
+        )
+        .catch(() => {});
     } catch {
       /* not base64: ignored */
     }
