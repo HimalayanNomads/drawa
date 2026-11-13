@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -22,8 +23,11 @@ import (
 // the computer's light or dark mode; each mode has its color scheme (the ids in web/src/lib/theme.ts). "symbols":
 // "auto" reads code symbols with universal-ctags when it's installed (internal/symbols), "off" never runs it.
 // "vim": "on" gives the file editor and scratchpads Vim motions. "completion": "toast" shows a notice while
-// present and a system notification while away; "none" skips completion alerts.
-var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "toast"}
+// present and a system notification while away; "none" skips completion alerts. The terminal* settings are the
+// terminal windows' (internal/term, web/src/items/terminal): a font list ("" = an installed Nerd Font, else the code
+// font), a size in px, the cursor's shape, and the shell new ones start ("" = $SHELL; else one listed in /etc/shells).
+var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "toast",
+	"terminalFont": "", "terminalFontSize": "13", "terminalCursor": "block", "terminalShell": ""}
 
 // checks say which values each setting may take. A scheme is only checked for shape: the page falls back to the
 // first scheme when the file names one it doesn't have, so the list of schemes lives in one place.
@@ -35,6 +39,27 @@ var checks = map[string]func(string) bool{
 	"symbols":     oneOf("auto", "off"),
 	"vim":         oneOf("off", "on"),
 	"completion":  oneOf("browser", "toast", "none"), // browser is a legacy alias, migrated by withDefaults
+
+	"terminalFont":     fontRe.MatchString,
+	"terminalFontSize": oneOf("10", "11", "12", "13", "14", "15", "16", "18", "20", "24"),
+	"terminalCursor":   oneOf("block", "bar", "underline"),
+	"terminalShell":    func(s string) bool { return s == "" || slices.Contains(Shells(), s) },
+}
+
+// fontRe is a CSS font list as people write one: names, quotes and commas (nothing that could end the property).
+var fontRe = regexp.MustCompile(`^[\p{L}\p{N} ,"'._-]{0,160}$`)
+
+// Shells are the login shells this machine lists in /etc/shells: the only ones a terminal may be set to start, so a
+// changed setting can't make Drawa run some other program.
+func Shells() []string {
+	data, _ := os.ReadFile("/etc/shells")
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "/") && !slices.Contains(out, line) {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 var schemeRe = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)

@@ -2,7 +2,7 @@
 // or its agents work, like the terminal); output streams in continuously (stream.ts). Every tool call also lands on
 // the graph. This module owns the card itself: creating, focusing, closing, and its header / status.
 // Its types are types.ts, drawing it render.ts, how the canvas saves and references it saved.ts.
-import { bringToFront, onCanvas, type Rect } from '../../canvas/core/items';
+import { bringToFront, items, onCanvas, type Rect } from '../../canvas/core/items';
 import { centerOn, nextColumn, spotBeside } from '../../canvas/core/placement';
 import { expand, makeWindow } from '../../canvas/core/window';
 import { dropSession, redraw } from '../../canvas/graph/graph';
@@ -294,6 +294,10 @@ async function askClose(S: Session) {
   closeSession(S);
 }
 
+/** Nothing to work in: no session card, and no terminal (one is enough to start from, e.g. running an agent's own
+ *  CLI in it). The canvas then makes a fresh session. */
+export const nothingToWorkIn = () => !cards.length && !items('terminal').length;
+
 /** Close a card: stop its process, take its windows and ink with it, and refresh History (a new card if it was the
  *  last). */
 export function closeSession(S: Session) {
@@ -308,7 +312,7 @@ export function closeSession(S: Session) {
   cards.splice(cards.indexOf(S), 1);
   attach(); // the page's stream stops reading it
   if (cur === S) cur = undefined;
-  if (!cards.length) newSession();
+  if (nothingToWorkIn()) newSession();
   save();
   loadSessions();
 }

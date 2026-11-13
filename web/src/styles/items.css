@@ -351,3 +351,16 @@ body:not(.drawing) #stage:not(.hand) .inode-b .ink-shape .ink-line{pointer-event
 .pvnode-ed .cm-tooltip{background:var(--bg);color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-box)}
 .pvnode-ed .cm-tooltip-autocomplete ul li[aria-selected]{background:var(--sel);color:var(--ink)}
 .pvnode[data-state=editing] .pvnode-s{cursor:auto}
+
+/* ---------- terminal: a shell (items/terminal/) ---------- */
+.tframe{position:relative;flex:1;min-height:0;padding:6px 4px 4px 8px;background:var(--bg);outline:none}
+.tscreen{width:100%;height:100%}
+.tscreen .xterm{height:100%}
+.tscreen .xterm-viewport{background:transparent!important}
+/* normal mode (Ctrl+\ Ctrl+N): the frame has focus, the emulator doesn't */
+.tframe:focus-visible{box-shadow:inset 0 0 0 1px var(--focus)}
+/* normal mode (the frame has focus, not the shell): only half lit, so terminal mode is the bright one */
+.tnode:focus-within:not(:has(.xterm-helper-textarea:focus)){--edge:color-mix(in oklab,var(--kind) 45%,var(--line))}
+.tbanner{display:flex;align-items:center;gap:10px;padding:6px 10px;border-top:1px solid var(--line);color:var(--ink-2);font-size:12px}
+.tbanner[hidden]{display:none}
+.tbanner span{flex:1}

@@ -39,6 +39,7 @@ export const commands = (): readonly Command[] => cmds;
  *  rest, once the focused element had its say (a menu's Esc closes the menu, not the selection behind it). */
 function dispatch(e: KeyboardEvent, anywhere: boolean) {
   if (e.defaultPrevented || e.isComposing || (!anywhere && !shortcutOk(e))) return;
+  if (e.target instanceof Element && e.target.closest('[data-own-keys]')) return; // a terminal takes every key
   for (const { c, presses } of bound) {
     if (!!c.anywhere !== anywhere || !presses.some(p => matchKeybindingPress(e, p)) || c.when?.(e) === false) continue;
     if ((c.key ? c.key(e) : c.run!()) === false) continue;

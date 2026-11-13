@@ -169,6 +169,18 @@ onOwner(on => {
   subscribed = '';
 });
 
+/** Something else the page's one stream carries (a terminal's output). `query()` is its part of the URL (`t=…`),
+ *  `key()` changes whenever the stream must re-open for it, and `take(m)` gets each line that isn't a card's. */
+export interface StreamPart {
+  key: () => string;
+  query: () => string;
+  take: (message: Msg) => void;
+}
+const parts: StreamPart[] = [];
+/** Carry another part on the page's one stream (see StreamPart); `restream()` when its `key()` changes. */
+export const streamWith = (part: StreamPart) => parts.push(part);
+export const restream = () => attach();
+
 /** Make sure this card's output is being read (it's a no-op when the stream already covers it). */
 export function attach(_S?: Session) {
   clearTimeout(soon);
@@ -181,14 +193,15 @@ function listenToCards() {
   if (!ownsServer()) return;
   // re-open when cards come or go, or when a card not attached yet got a different start (a restore sets it after the
   // card exists: e.g. line 0 for one whose transcript isn't written yet)
-  const want = cards
-    .map(S => (S.gen ? S.cid : `${S.cid}:${S.n}`))
-    .sort()
-    .join();
+  const extra = parts.map(part => part.key()).join(';'),
+    want = `${cards
+      .map(S => (S.gen ? S.cid : `${S.cid}:${S.n}`))
+      .sort()
+      .join()};${extra}`;
   if (conn && want === subscribed) return;
   conn?.abort();
   subscribed = want;
-  if (!cards.length) {
+  if (!cards.length && !extra.replace(/;/g, '')) {
     conn = null;
     return;
   }
@@ -205,7 +218,10 @@ async function readStream(ctrl: AbortController) {
   const c = cards.map(S => `${S.cid}:${S.n}:${S.gen ?? ''}`).join();
   let res: Response;
   try {
-    res = await fetch(`/api/events?page=${page}&c=${c}`, { signal: ctrl.signal });
+    const more = parts.map(part => part.query()).filter(Boolean);
+    res = await fetch(`/api/events?page=${page}&c=${c}${more.map(query => `&${query}`).join('')}`, {
+      signal: ctrl.signal,
+    });
   } catch {
     return;
   }
@@ -242,6 +258,10 @@ async function readStream(ctrl: AbortController) {
           m = JSON.parse(l);
         } catch {
           /* still one of the card's lines: counted all the same (see line) */
+        }
+        if (m && m._c === undefined) {
+          for (const part of parts) part.take(m);
+          continue;
         }
         const cid = m ? m._c : /^\{"_c":"([^"]+)"/.exec(l)?.[1];
         const S = cards.find(s => s.cid === cid);

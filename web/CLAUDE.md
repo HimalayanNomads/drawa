@@ -24,8 +24,9 @@ web/src/
     image/     image, crop
     snippet/   snippet, pinmarks (a snippet's source stays marked)
     preview/   preview (a project file opened from Ctrl+K), fileedit (editing it in place, saved through `POST /api/file`, and the Vim setting)
+    terminal/  terminal (a shell per window: `POST /api/term`, its output on `/api/events`), xterm (the emulator, loaded on first use, and its terminal/normal modes)
   panels/      side panels: drawer (one pane at a time, History or Files; panes register with `drawerPane()`), file tree + inspector, filefind (the Files pane's search: files by name, then code symbols), diffs, defs (a diff's names: go to definition, or in the Git and GitHub windows find references, `/api/refs` with the clicked diff's `repo` (its `data-repo`: a nested repo's or a worktree's commits search that repo), picked ones opening in a small window stuck to the screen), expand (a diff's "show 10 more lines" around its hunks, from the file's new side: `/api/file`, `/api/git/blob` or `/api/gh/blob`)
-  types/       data shapes, one file per feature: session (`Session`), canvas (every item's actions), ink (the drawing's actions), notes (a note, and its actions), drawer (the drawer's panes and what each one is)
+  types/       data shapes, one file per feature: session (`Session`), canvas (every item's actions), ink (the drawing's actions), notes (a note, and its actions), drawer (the drawer's panes and what each one is), terminal (a terminal window's state and saved shape)
   styles/      index.css imports tokens.css, then one stylesheet per area
 ```
 
@@ -62,6 +63,8 @@ The app scales through these registration points. A new feature should plug into
 | Windows made beside an item or at a spot land somewhere else (inside the item's group, or the group whose frame holds the spot) | `spawnIn(fn)` (`fn(from, w, h)`: `from` is an item, or a spot (a drop, a paste); returns the spot or null; `spotBeside()` and `spotAt()` ask it) | `canvas/core/placement.ts` |
 | An item whose empty space is canvas (a group's frame): pans in Hand mode, with the middle button or when locked; Shift+drag draws a selection box; a selection box picks it only when it holds all of it | class `frame` on the item | `canvas/core/nav.ts`, `canvas/core/select.ts` |
 | Pressing a window's tab to drag it leaves focus where it is (typing carries on after the drag; a message box isn't one) | attribute `data-keep-focus` on the box holding the focus (`codeEditor()` sets it) | `canvas/core/drag.ts` (`draggable`) |
+| Every key goes to an element while focus is inside it, Drawa's shortcuts included (a terminal in terminal mode) | attribute `data-own-keys` on it (`dispatch()` in `lib/keys.ts` skips its keys) | `lib/keys.ts` |
+| Something else rides the page's one `/api/events` stream (a terminal's output) | `streamWith({ key, query, take })` (`query()`: its part of the URL; `key()`: changes when the stream must re-open; `take(m)`: each line that isn't a card's), `restream()` after `key()` changes | `session/card/live.ts` |
 
 **Adding a new kind of canvas item** should mean one new file in `items/` (a folder `items/<kind>/` once it needs more than one), an import in `main.ts`, and CSS in `styles/items.css`. The item file should:
 - Build the element with `makeWindow()`, which handles the folder tab, dragging, collapsing and resizing.
