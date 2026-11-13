@@ -175,6 +175,9 @@ It also prints a QR code of the Network link, so a phone can open it with its ca
   <img src="docs/readme/github-light.png" alt="The GitHub window pinned to the sidebar beside a session card, showing a pull request with Send to Claude, Merge and its conversation">
 </picture>
 
+- **Terminals on the canvas.** A real shell in a window: the **Terminal** button, ``Ctrl+` `` or the right-click menu opens one in your project folder, as your own user with your aliases. Run vim, htop, tmux or a dev server; a reload replays its output and picks up the same shell. While you type in it, every key goes to the shell (the window lights up); `Ctrl+\` hands the keys back to the canvas, and `i` returns. Font, size, cursor and shell are in Settings → Terminal.
+  - **Ctrl+W, Ctrl+T and Ctrl+N** never reach a web page, so in a normal tab they act on the browser (Drawa asks before the tab closes). The ⤢ button on a terminal's tab goes fullscreen with the keyboard locked (Chrome, Edge), where they reach the shell.
+  - **Stuck in fullscreen?** Press and hold **Esc** until the browser leaves fullscreen (about two seconds), or click the **×** that appears at the top of the screen. `Ctrl+\`, the shell exiting and the server stopping also leave it.
 - **Picks up where you left off.** Resume past sessions from history. The whole layout survives a reload, and a reload re-attaches to sessions that are still running.
 - **Find finished work.** Settings → Notifications → **Upon completion** defaults to **Show alerts**: a three-second toast with **Show** to focus and center the session while you're in Drawa, or a system notification while you're away (if allowed). Toasts skip a card already visible and focused. **Do nothing** turns completion alerts off; the unread tab count and question, approval and plan alerts stay on.
 - **Works on your phone.** Start with `--net` and open the printed link or QR code: the same canvas, starting in Hand mode so a drag pans.
@@ -224,6 +227,10 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 | `lightScheme`, `darkScheme` | `claude-light`, `claude-dark` | The color scheme for each mode: the ids in `web/src/lib/theme.ts`, such as `rose-pine-dawn`, `catppuccin-mocha` or `nord`. |
 | `symbols` | `auto` | `auto` reads code symbols with universal-ctags when it's installed; `off` never runs it. |
 | `vim` | `off` | `on` gives the file editor and scratchpads Vim motions (`:w` saves, `:q` stops editing, `:q!` drops unsaved changes). Yanked text flashes so you see what was taken. Yanks and deletes go to the system clipboard, and `p` pastes what you copied elsewhere (once the browser lets the page read the clipboard). |
+| `terminalFont` | `""` | A font list for terminals, such as `"Fira Code"`; empty uses an installed Nerd Font, else the code font. Nerd Font icons show with any choice. |
+| `terminalFontSize` | `13` | Terminal text size in px: `10`–`24`. |
+| `terminalCursor` | `block` | `block`, `bar` or `underline`. |
+| `terminalShell` | `""` | The shell new terminals start; empty uses your login shell (`$SHELL`). Only shells listed in `/etc/shells` are accepted. |
 
 Fonts and which key sends a message are kept per browser.
 
@@ -236,6 +243,7 @@ Shortcuts follow Excalidraw's where the tool exists, and don't fire while you're
 | **Canvas** | `V`/`1` select · `H` hand (hold `Space` to pan) · `Shift+1` fit all · `Shift+2` zoom to selection · `Shift+0` zoom 100% · `F` fit · `+`/`-` zoom in/out · arrows pan (`Shift`: bigger steps; with a selection they nudge it instead) |
 | **Items** | `N` new session · `C`/`Shift+C` next/previous session (`Enter` to type) · `T` sticky note · `S` scratchpad · `9` insert picture · `G` Git · `Shift+G` GitHub · `Ctrl/Cmd+Shift+H` history (search past sessions, or continue one by its ID) · `Ctrl/Cmd+Shift+E` files (search by name or code symbol) · `Ctrl+K` find a window, file, code symbol or command · `?` all shortcuts |
 | **Windows** | `W`/`Shift+W` next/previous window (selects it, so `Delete`, arrows and `Ctrl+G` act on it) · `M` collapse/expand · `Shift+F` full view · `F2` rename · `Shift+P` pin to the sidebar · `Shift+S` stick to the screen. They act on the selected window, else the one in front |
+| **Terminal** | ``Ctrl+` `` new terminal · typing in one sends every key to the shell · `Ctrl+\` back to the canvas (normal mode: `j`/`k`, `Ctrl+D`/`Ctrl+U`, `gg`/`G` scroll) · `i`, `a` or `Enter` back to the shell · stuck in fullscreen: hold `Esc` |
 | **File editor** | the pencil on a file window, a double-click on its text, or **Edit** at the top of the file inspector edits it · `Ctrl/Cmd+S` save · the pencil again stops editing (asks first if there are unsaved changes) · with Vim motions on (Settings): `:w` save · `:q` stop · `:q!` drop changes · `:wq` or `:x` save and stop · `gd` / `gD` the name's first use in the function / file (where it's declared), `Ctrl+O` back · `Esc` then `Tab` leaves the editor |
 | **Draw** | `D` toggle Draw mode · `P`/`7` pen · `A`/`5` arrow between items · `E`/`0` eraser · `T`/`8` text · `R`/`2` rectangle · `3` diamond · `O`/`4` ellipse · `L`/`6` line (`Shift` for square, circle, 45°) · `Ctrl+Z` undo · `Ctrl+Shift+Z`/`Ctrl+Y` redo · `Esc` stop |
 | **Selection** | `Ctrl/Cmd+A` select all · arrows nudge (`Shift`: 10px) · `Delete` remove · `Esc` clear · `Ctrl/Cmd+G` group the selected windows (groups in it merge; nothing selected: an empty group) · `Ctrl/Cmd+Shift+G` ungroup the selected groups |
@@ -252,6 +260,7 @@ Drawa is built to run locally for one user:
 - Changing requests must come from Drawa's own page (a matching `Origin`).
 - File access is confined to the project folder you opened.
 - Claude's canvas tools use a per-process token, so only that session's own `claude` process can call them.
+- Terminals run as you, in the project folder, with no extra rights. With `--net` they open only on the machine running Drawa, and a shell never sees the `--net` token.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md): please open a [private security advisory](https://github.com/HimalayanNomads/drawa/security/advisories/new) rather than a public issue.
 

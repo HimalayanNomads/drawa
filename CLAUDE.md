@@ -26,7 +26,7 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 - **No decorative glows or big blurred shadows** on canvas windows. They cost paint on every pan and zoom frame, and the user rejected them visually too. Show state with `--edge` and the tab's top line.
 - **Long lists skip what's off-screen:** log entries use `content-visibility: auto`. Keep new per-entry elements as direct children of `.log`.
 - **The server sends only what the page shows.** `Clip()` in `internal/sessions/sessions.go` drops images returned by tools and thinking signatures, trims tool outputs and tool inputs to 20k characters, and turns images you sent into `/api/images` addresses. It runs on transcripts and on big live lines (`Trimmed()`, which also drops the CLI's duplicate `tool_use_result`). The live buffer per card is capped by lines and bytes (`live.Keep`/`live.KeepBytes`). New fields should be trimmed the same way.
-- **One stream per page.** Browsers allow ~6 connections per host over HTTP/1.1, so never add a long-lived request per card or per window: the page reads every card over one `/api/events` stream (`session/card/live.ts`).
+- **One stream per page.** Browsers allow ~6 connections per host over HTTP/1.1, so never add a long-lived request per card or per window: the page reads every card over one `/api/events` stream (`session/card/live.ts`). Other output (a terminal's) joins it through `streamWith()`.
 - **Big libraries load on first use** (Mermaid, Excalidraw, html-to-image, CodeMirror) with a dynamic `import()`.
 
 ## Server (`main.go`, `internal/`)

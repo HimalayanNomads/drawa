@@ -36,6 +36,7 @@ func TestRequestChecks(t *testing.T) {
 		{"POST no origin", "POST", "/api/images", good, ""},
 		{"POST evil origin", "POST", "/api/images", good, "http://evil.com"},
 		{"POST null origin", "POST", "/api/images", good, "null"},
+		{"terminal, evil origin", "POST", "/api/term", good, "http://evil.com"},
 		{"MCP with origin", "POST", "/mcp/sec/" + lv.Token, good, selfOrigin},
 		{"MCP bad token", "POST", "/mcp/sec/" + strings.Repeat("0", 32), good, ""},
 	}

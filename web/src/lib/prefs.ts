@@ -4,6 +4,7 @@
 // paints the theme and interface from it before the server answers. Keep DEFAULTS in sync with internal/prefs.
 
 import { CompletionMode } from '../types/prefs';
+import { TerminalCursor } from '../types/terminal';
 import { api, post } from './api';
 import { toast } from './dom';
 
@@ -15,6 +16,10 @@ export interface Prefs {
   symbols: 'auto' | 'off'; // lib/symbols.ts: code symbols from universal-ctags when it's installed, or never
   vim: 'off' | 'on'; // items/preview/fileedit.ts, items/doc.ts: Vim motions in the file editor and scratchpads
   completion: CompletionMode;
+  terminalFont: string; // items/terminal: a CSS font list, '' for an installed Nerd Font, else the code font
+  terminalFontSize: string; // px, as a string like every setting
+  terminalCursor: TerminalCursor;
+  terminalShell: string; // the shell new terminals start: '' for $SHELL, else one from /etc/shells
 }
 const DEFAULTS: Prefs = {
   ui: 'full',
@@ -24,6 +29,10 @@ const DEFAULTS: Prefs = {
   symbols: 'auto',
   vim: 'off',
   completion: CompletionMode.Toast,
+  terminalFont: '',
+  terminalFontSize: '13',
+  terminalCursor: TerminalCursor.Block,
+  terminalShell: '',
 };
 const KEY = 'drawa:prefs';
 /** A JSON value from localStorage, or null when it's missing or doesn't parse. */

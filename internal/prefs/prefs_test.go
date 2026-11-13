@@ -188,3 +188,28 @@ func TestCompletionMigration(t *testing.T) {
 		})
 	}
 }
+
+// Terminal settings: a shell must be one /etc/shells lists, and a font list can't carry anything that ends the
+// CSS property it lands in.
+func TestTerminalSettings(t *testing.T) {
+	home(t)
+	shells := Shells()
+	if len(shells) > 0 {
+		if _, err := Set(map[string]any{"terminalShell": shells[0]}); err != nil {
+			t.Fatalf("listed shell refused: %v", err)
+		}
+	}
+	for k, v := range map[string]string{
+		"terminalShell":    "/usr/bin/python3",
+		"terminalFont":     `x; } body { display: none`,
+		"terminalFontSize": "900",
+		"terminalCursor":   "blink",
+	} {
+		if _, err := Set(map[string]any{k: v}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s=%q accepted", k, v)
+		}
+	}
+	if _, err := Set(map[string]any{"terminalFont": `"Fira Code", monospace`, "terminalFontSize": "15", "terminalCursor": "bar"}); err != nil {
+		t.Fatal(err)
+	}
+}
