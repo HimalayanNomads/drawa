@@ -47,7 +47,7 @@ The app scales through these registration points. A new feature should plug into
 | Something on the canvas | `addItem(el, kind)` for bare nodes, or `makeWindow({...})` for windows | `canvas/core/items.ts`, `canvas/core/window.ts` |
 | Survive a reload | `persist(key, save, load, phase)` | `lib/store.ts` |
 | Referenceable with `@` or by dropping on a card | `referable(kind, { icon, name, label, status, content, copy })` (`name`: what Ctrl+K calls the kind; `status(el)`: what the item is doing, shown there in its place; `copy(el)`: the text its window's copy button copies, such as Markdown or Mermaid source; no button without it; `picture: true`: its content is an image, which a card whose agent takes text only refuses) | `canvas/core/refs.ts` |
-| Recover after the server comes back | `onReconnect(fn)` | `lib/connection.ts` |
+| Recover after the server comes back, or react when it goes away | `onReconnect(fn)`, `onDisconnect(fn)` (a fullscreen terminal lets go of the screen) | `lib/connection.ts` |
 | Post-process rendered Markdown (diagrams, anything drawn from a code block) | `onRendered(fn)` | `lib/markdown.ts` |
 | Claude can create or edit it (canvas tools) | `creatable(kind, { size, create, update })` | `canvas/core/tools.ts` |
 | Removed as part of a deleted selection, without its own confirm | `removable(kind, fn, note?)` (`fn` only if its × button asks first or it has none; `null` means its × is clicked; `note` words the selection's delete confirm) | `canvas/core/select.ts` |

@@ -10,6 +10,7 @@ import { removable } from '../../canvas/core/select';
 import { changed, viewCenter } from '../../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
 import { api, post } from '../../lib/api';
+import { onDisconnect } from '../../lib/connection';
 import { button, ICON, iconButton, make, perFrame, toast, uuid } from '../../lib/dom';
 import { command } from '../../lib/keys';
 import { onPrefs } from '../../lib/prefs';
@@ -90,6 +91,7 @@ function output(shell: Shell, message: TerminalOutput) {
 }
 
 function ended(shell: Shell, state: TerminalState, why: string) {
+  if (shell.item.contains(document.fullscreenElement)) leaveFullscreen(); // its Restart is on the page, not stuck behind a locked keyboard
   shell.item.dataset.state = state;
   shell.banner.firstChild!.textContent = why;
   shell.banner.hidden = false;
@@ -176,9 +178,9 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
 /** Browsers keep Ctrl+W, Ctrl+T and Ctrl+N from every page, except in fullscreen with the keyboard locked
  *  (Chromium's Keyboard Lock): there they reach the shell, and holding Esc leaves. */
 async function fullscreen(shell: Shell) {
-  const frame = shell.item.querySelector<HTMLElement>('.tframe')!;
+  const body = shell.item.querySelector<HTMLElement>('.win-b')!; // the body, so the Restart banner comes along
   try {
-    await frame.requestFullscreen();
+    await body.requestFullscreen();
     await (navigator as NavigatorWithKeyboard).keyboard?.lock();
   } catch {
     /* refused (no user gesture, or Firefox has no lock): plain fullscreen, or none */
@@ -191,6 +193,12 @@ interface NavigatorWithKeyboard {
     unlock: () => void;
   };
 }
+/** Out of fullscreen, keyboard unlocked. Leaving terminal mode (Ctrl+\\), a shell ending and the server going away all
+ *  do it, so a locked keyboard always has a way out besides holding Esc. */
+export function leaveFullscreen() {
+  if (document.fullscreenElement?.closest('.tnode')) document.exitFullscreen().catch(() => {});
+}
+onDisconnect(leaveFullscreen);
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) (navigator as NavigatorWithKeyboard).keyboard?.unlock();
 });

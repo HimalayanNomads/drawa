@@ -124,6 +124,7 @@ export async function emulator(box: HTMLElement, normal: HTMLElement, send: (dat
     if (event.type === 'keydown') {
       event.preventDefault();
       normal.focus();
+      if (document.fullscreenElement?.contains(normal)) document.exitFullscreen().catch(() => {}); // the way out of a locked keyboard
     }
     return false;
   });
