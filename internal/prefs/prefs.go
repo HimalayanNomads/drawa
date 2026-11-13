@@ -40,7 +40,8 @@ var checks = map[string]func(string) bool{
 	"vim":         oneOf("off", "on"),
 	"completion":  oneOf("browser", "toast", "none"), // browser is a legacy alias, migrated by withDefaults
 
-	"terminalFont":     fontRe.MatchString,
+	"terminalFont": fontRe.MatchString,
+	// the same sizes as SIZES in web/src/items/terminal/termprefs.ts
 	"terminalFontSize": oneOf("10", "11", "12", "13", "14", "15", "16", "18", "20", "24"),
 	"terminalCursor":   oneOf("block", "bar", "underline"),
 	"terminalShell":    func(s string) bool { return s == "" || slices.Contains(Shells(), s) },

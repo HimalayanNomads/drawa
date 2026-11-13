@@ -36,8 +36,11 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		id, err := term.Open(str(body["cwd"]), num("cols"), num("rows"))
 		if err != nil {
 			status := 500
-			if errors.Is(err, config.ErrOutside) {
+			switch {
+			case errors.Is(err, config.ErrOutside):
 				status = 403
+			case errors.Is(err, term.ErrNotFolder):
+				status = 400
 			}
 			sendJSON(w, map[string]any{"error": err.Error()}, status)
 			return

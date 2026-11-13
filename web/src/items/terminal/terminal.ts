@@ -1,9 +1,9 @@
 // Terminal windows: a real shell per window (vim, htop, tmux, a dev server), on a pseudo-terminal the server opens
 // (internal/term). Keys go out in one POST per frame; output comes back on the page's one /api/events stream as
-// `_t` lines, from the offset the item has drawn up to, so a reload replays what the server kept. Ctrl+` or Ctrl+K's
+// `_t` lines, from the offset the window has drawn up to, so a reload replays what the server kept. Ctrl+` or Ctrl+K's
 // "New terminal" opens one; the modes (terminal and normal, as in Neovim) are in xterm.ts.
 
-import { items, onGone, type Rect, savedRect } from '../../canvas/core/items';
+import { items, onGone, savedRect } from '../../canvas/core/items';
 import { centerOn, freeSpot } from '../../canvas/core/placement';
 import { referable } from '../../canvas/core/refs';
 import { removable } from '../../canvas/core/select';
@@ -57,7 +57,7 @@ function screenText(item: HTMLElement) {
   return lines.join('\n').trimEnd();
 }
 
-// every running item's output rides the page's one stream
+// every running terminal's output rides the page's one stream
 streamWith({
   key: () =>
     live()
@@ -99,7 +99,7 @@ function ended(shell: Shell, state: TerminalState, why: string) {
   restream();
 }
 
-/** Start a shell for the item (a new one, or after Restart), sized to it. */
+/** Start a shell for the window (a new one, or after Restart), sized to it. */
 async function start(shell: Shell) {
   const term = shell.emulator!.term;
   shell.fitNow?.();
@@ -115,7 +115,7 @@ async function start(shell: Shell) {
   }
 }
 
-/** A terminal item. A new one (no `shell`) starts a shell and takes the keyboard; a restored one reattaches. */
+/** A terminal window. A new one (no `shell`) starts a shell and takes the keyboard; a restored one reattaches. */
 export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
   const center = viewCenter();
   const { el: item, body } = makeWindow({
@@ -194,7 +194,7 @@ interface NavigatorWithKeyboard {
     unlock: () => void;
   };
 }
-/** Out of fullscreen, keyboard unlocked. Leaving terminal mode (Ctrl+\\), a shell ending and the server going away all
+/** Out of fullscreen, keyboard unlocked. Leaving terminal mode (Ctrl+\), a shell ending and the server going away all
  *  do it, so a locked keyboard always has a way out besides holding Esc. */
 export function leaveFullscreen() {
   if (document.fullscreenElement?.closest('.tnode')) document.exitFullscreen().catch(() => {});
@@ -269,7 +269,7 @@ persist(
         id: item.dataset.id!,
         shell: shells.get(item)?.id ?? '',
         title: winTitle(item),
-        rect: savedRect(item) as Rect,
+        rect: savedRect(item),
       }),
     ),
   (list: SavedTerminal[]) => each(list, saved => void terminalWindow(saved)),

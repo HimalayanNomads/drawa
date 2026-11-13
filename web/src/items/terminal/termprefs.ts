@@ -6,6 +6,7 @@ import { onPrefs, type Prefs, prefs, setPrefs } from '../../lib/prefs';
 import { enhance, segmented } from '../../lib/select';
 import { TerminalCursor } from '../../types/terminal';
 
+// the same as terminalFontSize's check in internal/prefs/prefs.go
 const SIZES = ['10', '11', '12', '13', '14', '15', '16', '18', '20', '24'];
 const fontInput = $<HTMLInputElement>('#term-font'),
   sizeSelect = $<HTMLSelectElement>('#term-size'),

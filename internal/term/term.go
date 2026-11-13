@@ -25,6 +25,9 @@ const Keep = 256 << 10
 // Supported is false where the server can't open a pseudo-terminal (Windows).
 func Supported() bool { return supported }
 
+// ErrNotFolder is a terminal asked to start somewhere that isn't a folder.
+var ErrNotFolder = errors.New("not a folder")
+
 // ErrGone is an op on a terminal that isn't running (closed, or the server restarted since).
 var ErrGone = errors.New("no such terminal")
 
@@ -56,7 +59,7 @@ func Open(dir string, cols, rows int) (string, error) {
 		return "", err
 	}
 	if fi, err := os.Stat(abs); err != nil || !fi.IsDir() {
-		return "", fmt.Errorf("not a folder: %s", dir)
+		return "", fmt.Errorf("%w: %s", ErrNotFolder, dir)
 	}
 	master, slave, err := openPTY()
 	if err != nil {
@@ -151,7 +154,12 @@ func Close(id string) error {
 	if t == nil {
 		return ErrGone
 	}
-	hangUp(t.cmd.Process.Pid)
+	t.mu.Lock()
+	exited := t.exited
+	t.mu.Unlock()
+	if !exited { // once reaped, its pid (and group id) may already be someone else's
+		hangUp(t.cmd.Process.Pid)
+	}
 	return t.master.Close()
 }
 

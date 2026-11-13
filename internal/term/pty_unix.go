@@ -10,9 +10,21 @@ import (
 
 const supported = true
 
+// ioctl runs on the file's descriptor through SyscallConn, not Fd(): Fd() would switch it to blocking mode, and then
+// closing the terminal couldn't wake the goroutine reading it.
 func ioctl(f *os.File, req, arg uintptr) error {
-	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), req, arg); e != 0 {
-		return e
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var errno syscall.Errno
+	if err := conn.Control(func(fd uintptr) {
+		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, fd, req, arg)
+	}); err != nil {
+		return err
+	}
+	if errno != 0 {
+		return errno
 	}
 	return nil
 }

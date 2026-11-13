@@ -202,7 +202,7 @@ function listenToCards() {
   if (conn && want === subscribed) return;
   conn?.abort();
   subscribed = want;
-  if (!cards.length && !extra.replace(/;/g, '')) {
+  if (!cards.length && !parts.some(part => part.key())) {
     conn = null;
     return;
   }
