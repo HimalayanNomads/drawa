@@ -25,8 +25,9 @@ import (
 // "vim": "on" gives the file editor and scratchpads Vim motions. "completion": "toast" shows a notice while
 // present and a system notification while away; "none" skips completion alerts. The terminal* settings are the
 // terminal windows' (internal/term, web/src/items/terminal): a font list ("" = an installed Nerd Font, else the code
-// font), a size in px, the cursor's shape, and the shell new ones start ("" = $SHELL; else one listed in /etc/shells), and whether what runs in one may set
-// the clipboard (OSC 52: any output can carry it, a file you cat included, so it's "off" until you turn it on).
+// font), a size in px, the cursor's shape, the shell new ones start ("" = $SHELL; else one listed in /etc/shells),
+// and whether what runs in one may set the clipboard (OSC 52: any output can carry it, a file you cat included, so
+// it's "off" until you turn it on).
 var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "toast",
 	"terminalFont": "", "terminalFontSize": "13", "terminalCursor": "block", "terminalShell": "", "terminalClipboard": "off"}
 

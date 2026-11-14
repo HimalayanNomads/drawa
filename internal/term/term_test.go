@@ -137,11 +137,12 @@ func shellIn(t *testing.T) (string, *Term) {
 // Closing a shell that's running something ends that program too.
 func TestCloseKillsBusyChildren(t *testing.T) {
 	id, term := shellIn(t)
-	term.Write(`sh -c "echo pi''d=\$\$; exec sleep 300"` + "\r") // '' keeps the echoed command line from matching
-	waitFor(t, term, "pid=")
+	term.Write(`sh -c "echo pi''d=\$\$ e''nd; exec sleep 300"` + "\r") // '' keeps the echoed command line from matching
+	waitFor(t, term, " end")
 	out, _, _, _ := term.Since(0)
 	_, after, _ := bytes.Cut(out, []byte("pid="))
-	pid, err := strconv.Atoi(strings.TrimSpace(strings.Fields(string(after))[0]))
+	number, _, _ := strings.Cut(string(after), " end")
+	pid, err := strconv.Atoi(number)
 	if err != nil {
 		t.Fatalf("no pid in %q", out)
 	}

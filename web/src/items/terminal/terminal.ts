@@ -137,6 +137,7 @@ async function start(shell: Shell) {
     shell.banner.hidden = true;
     changed();
     restream();
+    void sendKeys(shell); // what was typed while it opened
   } catch (error) {
     ended(shell, TerminalState.Gone, `Couldn't start a shell: ${(error as Error).message}`);
   }

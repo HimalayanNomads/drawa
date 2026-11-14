@@ -61,17 +61,18 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		err = term.Close(id)
 	case "keys", "resize":
 		t := term.Get(id)
-		// keys are bytes, base64: mouse reports can carry bytes that aren't text
-		keys, bad := base64.StdEncoding.DecodeString(str(body["bytes"]))
 		switch {
 		case t == nil:
 			err = term.ErrGone
 		case str(body["op"]) == "resize":
 			err = t.Resize(num("cols"), num("rows"))
-		case bad != nil || len(keys) > maxKeys:
-			http.Error(w, "", 400)
-			return
 		default:
+			// keys are bytes, base64: mouse reports can carry bytes that aren't text
+			keys, bad := base64.StdEncoding.DecodeString(str(body["bytes"]))
+			if bad != nil || len(keys) > maxKeys {
+				http.Error(w, "", 400)
+				return
+			}
 			err = t.Write(string(keys))
 		}
 	default:
