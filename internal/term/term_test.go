@@ -2,9 +2,12 @@ package term
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -108,5 +111,85 @@ func TestShellEnvDropsNetToken(t *testing.T) {
 		if strings.HasPrefix(v, config.NetTokenEnv+"=") {
 			t.Fatal("net token passed to the shell")
 		}
+	}
+}
+
+// shellIn starts /bin/sh with no rc file in a fresh project folder, closed when the test ends.
+func shellIn(t *testing.T) (string, *Term) {
+	t.Helper()
+	if !supported {
+		t.Skip("no pseudo-terminals here")
+	}
+	saved := config.Root
+	config.Root, _ = filepath.EvalSymlinks(t.TempDir())
+	t.Cleanup(func() { config.Root = saved })
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ENV", "")
+	id, err := Open("", 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { Close(id) })
+	return id, Get(id)
+}
+
+// Closing a shell that's running something ends that program too.
+func TestCloseKillsBusyChildren(t *testing.T) {
+	id, term := shellIn(t)
+	term.Write(`sh -c "echo pi''d=\$\$; exec sleep 300"` + "\r") // '' keeps the echoed command line from matching
+	waitFor(t, term, "pid=")
+	out, _, _, _ := term.Since(0)
+	_, after, _ := bytes.Cut(out, []byte("pid="))
+	pid, err := strconv.Atoi(strings.TrimSpace(strings.Fields(string(after))[0]))
+	if err != nil {
+		t.Fatalf("no pid in %q", out)
+	}
+	Close(id)
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+		if syscall.Kill(pid, 0) != nil || (err == nil && bytes.Contains(stat, []byte(") Z "))) {
+			return // gone, or a zombie waiting to be reaped
+		}
+	}
+	t.Fatal("the shell's program outlived the terminal")
+}
+
+// Keys for a program that isn't reading give up instead of hanging the request.
+func TestKeysToBusyProgramDontHang(t *testing.T) {
+	_, term := shellIn(t)
+	term.Write("stty raw -echo; echo rea''dy; sleep 30\r")
+	waitFor(t, term, "ready")
+	start, big := time.Now(), strings.Repeat("x", 32<<10)
+	for i := 0; i < 10; i++ {
+		if err := term.Write(big); err != nil {
+			if err != ErrBusy {
+				t.Fatalf("want ErrBusy, got %v", err)
+			}
+			if time.Since(start) > 6*time.Second {
+				t.Fatalf("took %v", time.Since(start))
+			}
+			return
+		}
+	}
+	t.Fatal("320 KB went into a terminal nobody reads")
+}
+
+// Past Max, no shell starts.
+func TestMaxTerminals(t *testing.T) {
+	mu.Lock()
+	for i := range Max {
+		terms[fmt.Sprint("held", i)] = nil
+	}
+	mu.Unlock()
+	t.Cleanup(func() {
+		mu.Lock()
+		for i := range Max {
+			delete(terms, fmt.Sprint("held", i))
+		}
+		mu.Unlock()
+	})
+	if _, err := Open("", 80, 24); err != ErrTooMany {
+		t.Fatalf("want ErrTooMany, got %v", err)
 	}
 }

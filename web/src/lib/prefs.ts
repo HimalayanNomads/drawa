@@ -20,6 +20,7 @@ export interface Prefs {
   terminalFontSize: string; // px, as a string like every setting
   terminalCursor: TerminalCursor;
   terminalShell: string; // the shell new terminals start: '' for $SHELL, else one from /etc/shells
+  terminalClipboard: 'off' | 'on'; // whether a terminal's programs may set the clipboard (OSC 52)
 }
 const DEFAULTS: Prefs = {
   ui: 'full',
@@ -33,6 +34,7 @@ const DEFAULTS: Prefs = {
   terminalFontSize: '13',
   terminalCursor: TerminalCursor.Block,
   terminalShell: '',
+  terminalClipboard: 'off',
 };
 const KEY = 'drawa:prefs';
 /** A JSON value from localStorage, or null when it's missing or doesn't parse. */

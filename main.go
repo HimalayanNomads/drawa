@@ -41,6 +41,7 @@ import (
 	"drawa/internal/qr"
 	"drawa/internal/remote"
 	"drawa/internal/server"
+	"drawa/internal/term"
 	"drawa/internal/update"
 	"drawa/internal/webassets"
 )
@@ -236,6 +237,7 @@ func restartOnChange() {
 		}
 		fmt.Println("server changed, restarting")
 		live.KillAll() // exec would orphan them; the page resumes each session on its next message
+		term.CloseAll()
 		exe, err := filepath.Abs(binPath)
 		if err != nil {
 			continue
@@ -350,6 +352,7 @@ func main() {
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		<-sig
 		live.KillAll()
+		term.CloseAll()
 		os.Exit(130)
 	}()
 	go live.Reap()

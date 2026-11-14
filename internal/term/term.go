@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"drawa/internal/config"
 	"drawa/internal/live"
@@ -31,16 +32,28 @@ var ErrNotFolder = errors.New("not a folder")
 // ErrGone is an op on a terminal that isn't running (closed, or the server restarted since).
 var ErrGone = errors.New("no such terminal")
 
+// ErrBusy is keys the program in a terminal didn't read in time (raw mode and busy): what's left of them is dropped
+// rather than holding the request, and with it one of the browser's few connections, open.
+var ErrBusy = errors.New("the terminal isn't reading input")
+
+// ErrTooMany is a terminal past Max.
+var ErrTooMany = errors.New("too many terminals open")
+
+// Max is how many shells may run at once: a page bug or cleared storage can't pile up shells nobody can see.
+const Max = 32
+
 // Term is one shell on a pseudo-terminal.
 type Term struct {
 	master *os.File
 	cmd    *exec.Cmd
 
-	mu     sync.Mutex
-	out    []byte // the newest output, at most Keep bytes
-	base   int64  // the offset (from the shell's first byte) of out[0]
-	exited bool
-	code   int
+	mu      sync.Mutex
+	out     []byte // the newest output, at most Keep bytes
+	base    int64  // the offset (from the shell's first byte) of out[0]
+	reaping bool   // set before Wait: from then on the pid may be reused, so Close mustn't signal it
+	exited  bool
+	code    int
+	done    chan struct{} // closed once the shell is reaped
 }
 
 var (
@@ -49,11 +62,27 @@ var (
 )
 
 // Open starts the user's shell in dir (relative to the project, "" for its root) at the given size.
-// ponytail: a terminal whose page never closes it lives until the server exits; reap unread ones if that piles up.
-func Open(dir string, cols, rows int) (string, error) {
+// ponytail: a terminal whose page never closes it lives until the server exits (at most Max of them); reap unread
+// ones if that piles up.
+func Open(dir string, cols, rows int) (id string, err error) {
 	if !supported {
 		return "", errors.New("terminals aren't supported on this system")
 	}
+	id = newID()
+	mu.Lock()
+	if len(terms) >= Max {
+		mu.Unlock()
+		return "", ErrTooMany
+	}
+	terms[id] = nil // the place is held while the shell starts (Get sees no terminal yet)
+	mu.Unlock()
+	defer func() {
+		if err != nil {
+			mu.Lock()
+			delete(terms, id)
+			mu.Unlock()
+		}
+	}()
 	abs, err := config.Inside(dir)
 	if err != nil {
 		return "", err
@@ -76,8 +105,7 @@ func Open(dir string, cols, rows int) (string, error) {
 		master.Close()
 		return "", err
 	}
-	t := &Term{master: master, cmd: cmd}
-	id := newID()
+	t := &Term{master: master, cmd: cmd, done: make(chan struct{})}
 	mu.Lock()
 	terms[id] = t
 	mu.Unlock()
@@ -105,6 +133,9 @@ func (t *Term) read() {
 			break
 		}
 	}
+	t.mu.Lock()
+	t.reaping = true
+	t.mu.Unlock()
 	err := t.cmd.Wait()
 	code := 0
 	if ee, ok := err.(*exec.ExitError); ok {
@@ -113,6 +144,7 @@ func (t *Term) read() {
 	t.mu.Lock()
 	t.exited, t.code = true, code
 	t.mu.Unlock()
+	close(t.done)
 	live.Changed.Notify()
 }
 
@@ -129,9 +161,16 @@ func (t *Term) Since(from int64) (data []byte, next int64, exited bool, code int
 	return data, end, t.exited, t.code
 }
 
-// Write types into the terminal.
+// Write types into the terminal, giving up after a while if the program isn't reading.
 func (t *Term) Write(s string) error {
+	t.master.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, err := t.master.WriteString(s)
+	switch {
+	case errors.Is(err, os.ErrClosed): // closed while this was on its way
+		return ErrGone
+	case os.IsTimeout(err):
+		return ErrBusy
+	}
 	return err
 }
 
@@ -154,13 +193,37 @@ func Close(id string) error {
 	if t == nil {
 		return ErrGone
 	}
-	t.mu.Lock()
-	exited := t.exited
-	t.mu.Unlock()
-	if !exited { // once reaped, its pid (and group id) may already be someone else's
+	t.mu.Lock()     // held while signalling, so read() can't start reaping in between
+	if !t.reaping { // once reaped, its pid (and group id) may already be someone else's
 		hangUp(t.cmd.Process.Pid)
 	}
+	t.mu.Unlock()
 	return t.master.Close()
+}
+
+// CloseAll hangs up every shell and waits (up to a few seconds) for them to end, before the server exits or execs
+// itself: after an exec nothing would reap them.
+func CloseAll() {
+	mu.Lock()
+	all := make([]*Term, 0, len(terms))
+	ids := make([]string, 0, len(terms))
+	for id, t := range terms {
+		if t != nil {
+			all, ids = append(all, t), append(ids, id)
+		}
+	}
+	mu.Unlock()
+	for _, id := range ids {
+		Close(id)
+	}
+	timeout := time.After(3 * time.Second)
+	for _, t := range all {
+		select {
+		case <-t.done:
+		case <-timeout:
+			return
+		}
+	}
 }
 
 // shellEnv is the server's environment minus the --net sign-in token: it guards Drawa's network address, and a

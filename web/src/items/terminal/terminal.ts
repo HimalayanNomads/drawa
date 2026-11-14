@@ -27,7 +27,8 @@ interface Shell {
   id: string; // the server's id for the shell ('' until it opened)
   drawn: number; // the output offset drawn so far
   emulator?: Emulator;
-  pending: string; // keys typed this frame
+  pending: Uint8Array; // keys typed and not sent yet
+  sending: boolean; // a keys request is on its way: the next waits for it, so keys arrive in order
   size: string; // the cols x rows last sent
   banner: HTMLElement;
   fitNow?: () => void; // fit the emulator to the window now (before a shell starts at its size)
@@ -35,6 +36,32 @@ interface Shell {
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
 const SCROLLBACK_SENT = 200; // lines of scrollback an agent receives with the screen
+const KEYS_CHUNK = 32 << 10; // bytes per keys request: the server takes at most 64 KB
+
+/** Send what's been typed: one request at a time (so keys can't overtake each other or pile up while a program isn't
+ *  reading), a big paste in chunks. Keys the program wouldn't take (503) are dropped, and the toast says so. */
+async function sendKeys(shell: Shell) {
+  if (shell.sending) return;
+  shell.sending = true;
+  try {
+    while (shell.pending.length && shell.id) {
+      const chunk = shell.pending.subarray(0, KEYS_CHUNK);
+      shell.pending = shell.pending.slice(KEYS_CHUNK);
+      try {
+        await post('term', { op: 'keys', id: shell.id, bytes: btoa(String.fromCharCode(...chunk)) });
+      } catch (e) {
+        const lost = chunk.length + shell.pending.length;
+        shell.pending = new Uint8Array();
+        if ((e as { status?: number }).status === 503)
+          toast(
+            `The program in this terminal isn't reading input: up to ${lost.toLocaleString()} bytes of typing were dropped.`,
+          );
+      }
+    }
+  } finally {
+    shell.sending = false;
+  }
+}
 
 referable('terminal', {
   icon: '❯',
@@ -144,15 +171,22 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     button('Restart', 'btn', () => void start(shell)),
   );
   banner.hidden = true;
-  const shell: Shell = { item, id: saved.shell ?? '', drawn: 0, pending: '', size: '', banner };
+  const shell: Shell = {
+    item,
+    id: saved.shell ?? '',
+    drawn: 0,
+    pending: new Uint8Array(),
+    sending: false,
+    size: '',
+    banner,
+  };
   shells.set(item, shell);
-  const flush = perFrame(() => {
-    const data = shell.pending;
-    shell.pending = '';
-    if (data && shell.id) post('term', { op: 'keys', id: shell.id, data }).catch(() => {});
-  });
-  void emulator(screen, frame, data => {
-    shell.pending += data;
+  const flush = perFrame(() => void sendKeys(shell));
+  void emulator(screen, frame, bytes => {
+    const all = new Uint8Array(shell.pending.length + bytes.length);
+    all.set(shell.pending);
+    all.set(bytes, shell.pending.length);
+    shell.pending = all;
     flush();
   }).then(made => {
     if (!shells.has(item)) return made.term.dispose(); // closed while it loaded

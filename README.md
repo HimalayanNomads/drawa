@@ -231,6 +231,7 @@ Settings that follow you to every project and browser live in `~/.drawa/config.j
 | `terminalFontSize` | `13` | Terminal text size in px: `10`–`24`. |
 | `terminalCursor` | `block` | `block`, `bar` or `underline`. |
 | `terminalShell` | `""` | The shell new terminals start; empty uses your login shell (`$SHELL`). Only shells listed in `/etc/shells` are accepted. |
+| `terminalClipboard` | `off` | `on` lets programs in a terminal copy to your clipboard (OSC 52, as vim and tmux do). Off by default: anything a terminal prints can carry it, a file you `cat` included. |
 
 Fonts and which key sends a message are kept per browser.
 

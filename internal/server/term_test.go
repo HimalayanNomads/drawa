@@ -34,7 +34,7 @@ func TestTerminalOverHTTP(t *testing.T) {
 	if code, _ := call(t, srv, "POST", "/api/term", `{"op":"open","cwd":"..","cols":80,"rows":24}`); code != 403 {
 		t.Fatalf("open outside the project: %d", code)
 	}
-	if code, _ := call(t, srv, "POST", "/api/term", `{"op":"keys","id":"../../x","data":"hi"}`); code != 400 {
+	if code, _ := call(t, srv, "POST", "/api/term", `{"op":"keys","id":"../../x","bytes":"aGk="}`); code != 400 {
 		t.Fatalf("bad id: %d", code)
 	}
 	code, body := call(t, srv, "POST", "/api/term", `{"op":"open","cols":80,"rows":24}`)
@@ -52,7 +52,7 @@ func TestTerminalOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	call(t, srv, "POST", "/api/term", `{"op":"keys","id":"`+opened.ID+`","data":"echo h''i\r"}`)
+	call(t, srv, "POST", "/api/term", `{"op":"keys","id":"`+opened.ID+`","bytes":"ZWNobyBoJydpDQ=="}`)
 
 	rd, seen := bufio.NewReader(resp.Body), ""
 	for !strings.Contains(seen, "hi\r\n") {
@@ -84,7 +84,7 @@ func TestTerminalOverHTTP(t *testing.T) {
 			break
 		}
 	}
-	if code, _ := call(t, srv, "POST", "/api/term", `{"op":"keys","id":"`+opened.ID+`","data":"x"}`); code != 404 {
+	if code, _ := call(t, srv, "POST", "/api/term", `{"op":"keys","id":"`+opened.ID+`","bytes":"eA=="}`); code != 404 {
 		t.Fatalf("keys after close: %d", code)
 	}
 }

@@ -200,10 +200,11 @@ func TestTerminalSettings(t *testing.T) {
 		}
 	}
 	for k, v := range map[string]string{
-		"terminalShell":    "/usr/bin/python3",
-		"terminalFont":     `x; } body { display: none`,
-		"terminalFontSize": "900",
-		"terminalCursor":   "blink",
+		"terminalShell":     "/usr/bin/python3",
+		"terminalFont":      `x; } body { display: none`,
+		"terminalFontSize":  "900",
+		"terminalCursor":    "blink",
+		"terminalClipboard": "yes",
 	} {
 		if _, err := Set(map[string]any{k: v}); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s=%q accepted", k, v)

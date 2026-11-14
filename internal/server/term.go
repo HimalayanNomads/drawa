@@ -14,7 +14,7 @@ import (
 	"drawa/internal/term"
 )
 
-// maxKeys caps one keys op: a paste bigger than this goes in several (the page batches per frame anyway).
+// maxKeys caps one keys op: the page sends a bigger paste in several, one at a time.
 const maxKeys = 64 << 10
 
 // termRoute says whether terminals work here (under --net, only from this machine: see termOp)
@@ -41,6 +41,8 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 				status = 403
 			case errors.Is(err, term.ErrNotFolder):
 				status = 400
+			case errors.Is(err, term.ErrTooMany):
+				status = 429
 			}
 			sendJSON(w, map[string]any{"error": err.Error()}, status)
 			return
@@ -59,16 +61,18 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		err = term.Close(id)
 	case "keys", "resize":
 		t := term.Get(id)
+		// keys are bytes, base64: mouse reports can carry bytes that aren't text
+		keys, bad := base64.StdEncoding.DecodeString(str(body["bytes"]))
 		switch {
 		case t == nil:
 			err = term.ErrGone
 		case str(body["op"]) == "resize":
 			err = t.Resize(num("cols"), num("rows"))
-		case len(str(body["data"])) > maxKeys:
+		case bad != nil || len(keys) > maxKeys:
 			http.Error(w, "", 400)
 			return
 		default:
-			err = t.Write(str(body["data"]))
+			err = t.Write(string(keys))
 		}
 	default:
 		http.Error(w, "", 400)
@@ -77,6 +81,8 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 	switch {
 	case errors.Is(err, term.ErrGone):
 		sendJSON(w, map[string]any{"error": err.Error()}, 404)
+	case errors.Is(err, term.ErrBusy):
+		sendJSON(w, map[string]any{"error": err.Error()}, 503)
 	case err != nil:
 		sendJSON(w, map[string]any{"error": err.Error()}, 500)
 	default:

@@ -25,9 +25,10 @@ import (
 // "vim": "on" gives the file editor and scratchpads Vim motions. "completion": "toast" shows a notice while
 // present and a system notification while away; "none" skips completion alerts. The terminal* settings are the
 // terminal windows' (internal/term, web/src/items/terminal): a font list ("" = an installed Nerd Font, else the code
-// font), a size in px, the cursor's shape, and the shell new ones start ("" = $SHELL; else one listed in /etc/shells).
+// font), a size in px, the cursor's shape, and the shell new ones start ("" = $SHELL; else one listed in /etc/shells), and whether what runs in one may set
+// the clipboard (OSC 52: any output can carry it, a file you cat included, so it's "off" until you turn it on).
 var Defaults = map[string]any{"ui": "full", "theme": "system", "lightScheme": "claude-light", "darkScheme": "claude-dark", "symbols": "auto", "vim": "off", "completion": "toast",
-	"terminalFont": "", "terminalFontSize": "13", "terminalCursor": "block", "terminalShell": ""}
+	"terminalFont": "", "terminalFontSize": "13", "terminalCursor": "block", "terminalShell": "", "terminalClipboard": "off"}
 
 // checks say which values each setting may take. A scheme is only checked for shape: the page falls back to the
 // first scheme when the file names one it doesn't have, so the list of schemes lives in one place.
@@ -42,9 +43,10 @@ var checks = map[string]func(string) bool{
 
 	"terminalFont": fontRe.MatchString,
 	// the same sizes as SIZES in web/src/items/terminal/termprefs.ts
-	"terminalFontSize": oneOf("10", "11", "12", "13", "14", "15", "16", "18", "20", "24"),
-	"terminalCursor":   oneOf("block", "bar", "underline"),
-	"terminalShell":    func(s string) bool { return s == "" || slices.Contains(Shells(), s) },
+	"terminalFontSize":  oneOf("10", "11", "12", "13", "14", "15", "16", "18", "20", "24"),
+	"terminalCursor":    oneOf("block", "bar", "underline"),
+	"terminalClipboard": oneOf("off", "on"),
+	"terminalShell":     func(s string) bool { return s == "" || slices.Contains(Shells(), s) },
 }
 
 // fontRe is a CSS font list as people write one: names, quotes and commas (nothing that could end the property).

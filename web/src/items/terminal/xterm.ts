@@ -78,8 +78,12 @@ export function palette() {
   };
 }
 
-/** A new emulator in `box`, which `normal` (the element normal mode focuses) wraps. `send` types into the shell. */
-export async function emulator(box: HTMLElement, normal: HTMLElement, send: (data: string) => void): Promise<Emulator> {
+/** A new emulator in `box`, which `normal` (the element normal mode focuses) wraps. `send` types bytes into the shell. */
+export async function emulator(
+  box: HTMLElement,
+  normal: HTMLElement,
+  send: (bytes: Uint8Array) => void,
+): Promise<Emulator> {
   const [{ Terminal }, { FitAddon }] = await Promise.all([
     import('@xterm/xterm'),
     import('@xterm/addon-fit'),
@@ -95,15 +99,24 @@ export async function emulator(box: HTMLElement, normal: HTMLElement, send: (dat
   term.loadAddon(fit);
   term.open(box);
   box.dataset.ownKeys = '';
-  term.onData(send);
-  // the shell copying (OSC 52, as vim and tmux do over ssh): onto the system clipboard
+  const utf8 = new TextEncoder();
+  term.onData(data => send(utf8.encode(data)));
+  term.onBinary(data => send(Uint8Array.from(data, char => char.charCodeAt(0) & 255))); // some mouse modes report clicks as raw bytes, not text
+  // the shell copying (OSC 52, as vim and tmux do over ssh): onto the system clipboard, if your settings allow it.
+  // Off by default: any output can carry this (a file you cat), and a swapped clipboard pasted into a shell runs.
+  let told = false;
   term.parser.registerOscHandler(52, data => {
     const encoded = data.slice(data.indexOf(';') + 1);
     if (encoded === '?') return true; // reading the clipboard back: refused
+    if (prefs().terminalClipboard !== 'on') {
+      if (!told) toast('A program in this terminal tried to copy to the clipboard. Settings → Terminal can allow it.');
+      told = true;
+      return true;
+    }
     try {
       const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
       const text = new TextDecoder().decode(bytes);
-      // said out loud: any output can carry this (a file you cat), and a swapped clipboard pasted into a shell runs
+      // said out loud even when allowed: you see what landed on the clipboard before you paste it
       navigator.clipboard
         ?.writeText(text)
         .then(() =>
