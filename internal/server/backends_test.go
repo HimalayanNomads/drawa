@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,7 +12,9 @@ import (
 	"testing"
 
 	"drawa/internal/config"
+	"drawa/internal/live"
 	"drawa/internal/sessions"
+	"drawa/internal/uploads"
 )
 
 func call(t *testing.T, srv *httptest.Server, method, path, body string) (int, string) {
@@ -111,5 +114,152 @@ func TestHistoryOfBackendSurvivesAPanic(t *testing.T) {
 		if found := historyOfBackend("broken", panickingHistory{}, query); found != nil {
 			t.Fatalf("a panicking backend should be left out (query %q): %v", query, found)
 		}
+	}
+}
+
+type fakeBackendForPDF struct {
+	lastSent any
+}
+
+func (f *fakeBackendForPDF) Send(content any, id string) error {
+	f.lastSent = content
+	return nil
+}
+func (f *fakeBackendForPDF) Respond(rid, ask string, a live.Answer) error { return nil }
+func (f *fakeBackendForPDF) SetMode(mode string) error                    { return nil }
+func (f *fakeBackendForPDF) SetModel(model string) error                  { return nil }
+func (f *fakeBackendForPDF) Interrupt() error                             { return nil }
+func (f *fakeBackendForPDF) Close()                                       {}
+func (f *fakeBackendForPDF) Kill()                                        {}
+
+func TestPDFContentValidationAndTextOnly(t *testing.T) {
+	tempUploads := t.TempDir()
+	t.Setenv("HOME", tempUploads)
+	t.Setenv("USERPROFILE", tempUploads)
+
+	fakeTextOnly := &fakeBackendForPDF{}
+	live.Register("fake-text-only", live.Kind{
+		Title:    "Fake Text Agent",
+		TextOnly: true,
+		Modes:    map[string]bool{"default": true},
+		Spawn: func(spec live.Spec, sink live.Sink) (live.Backend, error) {
+			return fakeTextOnly, nil
+		},
+	})
+
+	fakeRich := &fakeBackendForPDF{}
+	live.Register("fake-rich", live.Kind{
+		Title: "Fake Rich Agent",
+		Modes: map[string]bool{"default": true},
+		Spawn: func(spec live.Spec, sink live.Sink) (live.Backend, error) {
+			return fakeRich, nil
+		},
+	})
+
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+
+	validPDFb64 := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4\nvalid test content"))
+	invalidPDFb64 := base64.StdEncoding.EncodeToString([]byte("NOT A PDF header"))
+
+	// 1. TextOnly kind + PDF content -> 400 + JSON error naming the backend + uploads dir empty
+	cid1 := "11111111-1111-1111-1111-111111111111"
+	reqBody1, _ := json.Marshal(map[string]any{
+		"cid":     cid1,
+		"backend": "fake-text-only",
+		"mode":    "default",
+		"p": []any{
+			map[string]any{
+				"type":  "document",
+				"title": "doc.pdf",
+				"source": map[string]any{
+					"type":       "base64",
+					"media_type": "application/pdf",
+					"data":       validPDFb64,
+				},
+			},
+		},
+	})
+	status1, body1 := call(t, srv, "POST", "/api/send", string(reqBody1))
+	if status1 != 400 {
+		t.Fatalf("expected 400 for text-only with PDF, got %d: %s", status1, body1)
+	}
+	var errResp1 map[string]string
+	if err := json.Unmarshal([]byte(body1), &errResp1); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+	wantMsg := "Fake Text Agent takes text only; PDFs can't be attached"
+	if errResp1["error"] != wantMsg {
+		t.Errorf("error message mismatch: got %q, want %q", errResp1["error"], wantMsg)
+	}
+	entries, _ := os.ReadDir(uploads.BaseDir())
+	if len(entries) != 0 {
+		t.Errorf("expected uploads dir to be empty, found: %v", entries)
+	}
+
+	// 2. Invalid PDF (%PDF- missing) -> 400 on normal kind
+	cid2 := "22222222-2222-2222-2222-222222222222"
+	reqBody2, _ := json.Marshal(map[string]any{
+		"cid":     cid2,
+		"backend": "fake-rich",
+		"mode":    "default",
+		"p": []any{
+			map[string]any{
+				"type":  "document",
+				"title": "bad.pdf",
+				"source": map[string]any{
+					"type":       "base64",
+					"media_type": "application/pdf",
+					"data":       invalidPDFb64,
+				},
+			},
+		},
+	})
+	status2, body2 := call(t, srv, "POST", "/api/send", string(reqBody2))
+	if status2 != 400 {
+		t.Fatalf("expected 400 for bad PDF, got %d: %s", status2, body2)
+	}
+	var errResp2 map[string]string
+	_ = json.Unmarshal([]byte(body2), &errResp2)
+	if !strings.Contains(errResp2["error"], "\"bad.pdf\" is not a PDF file") {
+		t.Errorf("expected error message to state bad.pdf is not a PDF file, got: %q", errResp2["error"])
+	}
+
+	// 3. Valid PDF reaches Send unchanged and writes nothing to disk
+	cid3 := "33333333-3333-3333-3333-333333333333"
+	reqBody3, _ := json.Marshal(map[string]any{
+		"cid":     cid3,
+		"backend": "fake-rich",
+		"mode":    "default",
+		"p": []any{
+			map[string]any{
+				"type":  "document",
+				"title": "valid.pdf",
+				"source": map[string]any{
+					"type":       "base64",
+					"media_type": "application/pdf",
+					"data":       validPDFb64,
+				},
+			},
+		},
+	})
+	status3, body3 := call(t, srv, "POST", "/api/send", string(reqBody3))
+	if status3 != 200 {
+		t.Fatalf("expected 200 for valid send, got %d: %s", status3, body3)
+	}
+	if fakeRich.lastSent == nil {
+		t.Fatalf("expected fakeRich to receive content")
+	}
+	blocks, ok := fakeRich.lastSent.([]any)
+	if !ok || len(blocks) != 1 {
+		t.Fatalf("expected content to be slice with 1 block, got: %v", fakeRich.lastSent)
+	}
+	docBlock, ok := blocks[0].(map[string]any)
+	if !ok || docBlock["type"] != "document" || docBlock["title"] != "valid.pdf" {
+		t.Fatalf("expected document block unchanged, got: %v", docBlock)
+	}
+	sessEntries, _ := os.ReadDir(uploads.BaseDir())
+	if len(sessEntries) != 0 {
+		t.Errorf("expected no files on disk, found %v", sessEntries)
 	}
 }

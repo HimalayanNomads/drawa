@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -9,14 +10,15 @@ import (
 
 	"drawa/internal/config"
 	"drawa/internal/live"
+	"drawa/internal/uploads"
 )
 
 // The Backend calls a card makes on its app-server: messages, answers to asks, mode and model changes, stopping.
 
 // input is a message as Codex's input items: text, and images as data URLs.
-func input(content any) []map[string]any {
+func input(content any, save func(title string, data []byte) (string, error)) ([]map[string]any, error) {
 	if text, ok := content.(string); ok {
-		return []map[string]any{{"type": "text", "text": text}}
+		return []map[string]any{{"type": "text", "text": text}}, nil
 	}
 	var out []map[string]any
 	list, _ := content.([]any)
@@ -32,9 +34,29 @@ func input(content any) []map[string]any {
 			if src["type"] == "base64" {
 				out = append(out, map[string]any{"type": "image", "url": fmt.Sprintf("data:%s;base64,%s", src["media_type"], src["data"])})
 			}
+		case "document":
+			src, _ := m["source"].(map[string]any)
+			if src == nil || src["type"] != "base64" {
+				continue
+			}
+			b64Data, _ := src["data"].(string)
+			data, err := base64.StdEncoding.DecodeString(b64Data)
+			if err != nil {
+				continue
+			}
+			title, _ := m["title"].(string)
+			if strings.TrimSpace(title) == "" {
+				title = "document.pdf"
+			}
+			savedPath, err := save(title, data)
+			if err != nil {
+				return nil, &live.Refused{Err: fmt.Errorf("could not save %q for Codex: %w", title, err)}
+			}
+			textNote := fmt.Sprintf("Attached PDF %q saved at %s; open it with your file tools.", title, savedPath)
+			out = append(out, map[string]any{"type": "text", "text": textNote})
 		}
 	}
-	return out
+	return out, nil
 }
 
 // steered is a message added to a running turn that Codex hasn't read yet (it echoes it back when it does).
@@ -63,7 +85,17 @@ func (s *server) Send(content any, id string) error {
 	}
 	s.sending.Lock()
 	defer s.sending.Unlock()
-	in := input(content)
+	folder := s.cid
+	if folder == "" {
+		folder = thread
+	}
+	saver := func(title string, data []byte) (string, error) {
+		return uploads.Save(folder, title, data)
+	}
+	in, err := input(content, saver)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	turn, model, picked := s.turn, s.model, s.startModel != ""
 	if model == "" {

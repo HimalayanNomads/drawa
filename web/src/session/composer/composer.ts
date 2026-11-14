@@ -14,7 +14,9 @@ import type { Session } from '../../types/session';
 import { send } from '../card/live';
 import { decodeImages, thumbnail, type Pasted } from './images';
 import { textRefs } from './uploads';
-import { raster } from './filetypes';
+import { getPdf, pdfRefs } from './pdfs';
+import { MAX_MESSAGE_SIZE, pdfBytes } from './pdfLimits';
+import { pdf, raster } from './filetypes';
 import { runShell } from './shell';
 import { modePicker } from '../card/mode';
 import { modelPicker, effortPicker, effortNote, infoBadge } from '../card/gen';
@@ -110,6 +112,11 @@ export function composer(S: Session, body: HTMLElement) {
       return;
     } // handled here: see clearSession
     if (!p && !S.refs.length && !S.images.length) return;
+    const totalPdfBytes = pdfBytes(S.refs.map(ref => getPdf(ref.el)?.size ?? 0));
+    if (totalPdfBytes > MAX_MESSAGE_SIZE) {
+      toast('PDFs add up to over 3.5MB for one message: remove one');
+      return;
+    }
     ta.value = '';
     ta.style.height = '';
     const refs = S.refs.splice(0),
@@ -145,13 +152,23 @@ export function composer(S: Session, body: HTMLElement) {
     ta.focus();
     return failed;
   };
-  /** Attach dropped or pasted files: bitmap images as pictures, text and SVG files by their contents. */
-  // images that fail to decode join the non-bitmap files in textRefs, which toasts why they weren't attached
+  /** Attach dropped or pasted files: bitmap images as pictures, PDFs as documents, text and SVG files by their contents. */
+  // images that fail to decode join the non-bitmap non-PDF files in textRefs, which toasts why they weren't attached
   // (session/composer/uploads.ts)
   const attachAny = async (files: File[]) => {
     const bitmaps = files.filter(raster);
+    const pdfFiles = files.filter(pdf);
+    const rest = files.filter(file => !raster(file) && !pdf(file));
     const failed = bitmaps.length ? await attach(bitmaps) : [];
-    for (const ref of await textRefs([...failed, ...files.filter(file => !raster(file))])) addRef(S, ref);
+    if (pdfFiles.length) {
+      if (textOnly(S.backend)) {
+        noPdfs(S);
+      } else {
+        const existingBytes = pdfBytes(S.refs.map(ref => getPdf(ref.el)?.size ?? 0));
+        for (const ref of await pdfRefs(pdfFiles, existingBytes)) addRef(S, ref);
+      }
+    }
+    for (const ref of await textRefs([...failed, ...rest])) addRef(S, ref);
   };
   ta.addEventListener('paste', e => {
     const files = [...(e.clipboardData?.files ?? [])];
@@ -364,6 +381,7 @@ function commandMenu(S: Session, form: HTMLFormElement) {
 
 /* ---------- references to canvas items ---------- */
 const noImages = (S: Session) => toast(`Images aren't supported in ${who(S.backend)}: it takes text only.`);
+const noPdfs = (S: Session) => toast(`PDFs aren't supported in ${who(S.backend)}: it takes text only.`);
 
 /** Attach a canvas item to the card's next message, with a dashed arrow to it; refused when it's a picture for a
  *  text-only agent. */

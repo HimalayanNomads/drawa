@@ -93,7 +93,8 @@
 /* references to canvas items: chips above the composer, and inside sent bubbles */
 .card .refs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .chip{display:inline-flex;align-items:center;max-width:100%;height:26px;border:1px solid color-mix(in oklab,var(--kind,var(--line-2)) 50%,var(--line));border-radius:var(--r-ctl);background:var(--bg);font-size:12px;overflow:hidden}
-.chip>button:first-child{height:100%;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.chip>button:first-child,.chip>.label{height:100%;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.chip>.label{display:inline-block;line-height:24px;cursor:default}
 .chip>button:first-child:hover{background:var(--hover)}
 .chip .x{width:24px;height:100%;color:var(--muted);border-left:1px solid var(--line)}
 .chip .x:hover{color:var(--danger);background:var(--hover)}
