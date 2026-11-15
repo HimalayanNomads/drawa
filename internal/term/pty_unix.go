@@ -43,3 +43,15 @@ func ttyAttr() *syscall.SysProcAttr {
 
 // hangUp sends SIGHUP to the shell's whole process group, as closing a terminal window does.
 func hangUp(pid int) { syscall.Kill(-pid, syscall.SIGHUP) }
+
+// exited blocks until the process exits, without reaping it: until Wait, its pid (and group id) stay its own, so
+// Close can still signal them safely. It returns at once if there's nothing to wait for.
+func exited(pid int) {
+	var info [128]byte // siginfo_t
+	for {
+		_, _, errno := syscall.Syscall6(syscall.SYS_WAITID, pPID, uintptr(pid), uintptr(unsafe.Pointer(&info)), wExited|wNoWait, 0, 0)
+		if errno != syscall.EINTR {
+			return
+		}
+	}
+}

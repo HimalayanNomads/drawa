@@ -7,6 +7,9 @@ import (
 	"unsafe"
 )
 
+// waitid(2)'s idtype and options, for exited()
+const pPID, wExited, wNoWait = 1, 0x4, 0x1000000
+
 // openPTY opens a pseudo-terminal pair: /dev/ptmx, unlocked, and the /dev/pts/N it names.
 func openPTY() (master, slave *os.File, err error) {
 	master, err = os.OpenFile("/dev/ptmx", os.O_RDWR|syscall.O_NOCTTY, 0)

@@ -16,3 +16,4 @@ func openPTY() (*os.File, *os.File, error) { return nil, nil, errUnsupported }
 func setSize(*os.File, int, int) error     { return errUnsupported }
 func ttyAttr() *syscall.SysProcAttr        { return nil }
 func hangUp(int)                           {}
+func exited(int)                           {}

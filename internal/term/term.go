@@ -55,6 +55,7 @@ type Term struct {
 	exited  bool
 	code    int
 	done    chan struct{} // closed once the shell is reaped
+	drained chan struct{} // closed once nothing holds the terminal open any more (read() has ended)
 	linger  time.Duration // Linger when it opened
 }
 
@@ -107,17 +108,19 @@ func Open(dir string, cols, rows int) (id string, err error) {
 		master.Close()
 		return "", err
 	}
-	t := &Term{master: master, cmd: cmd, done: make(chan struct{}), linger: Linger}
+	t := &Term{master: master, cmd: cmd, done: make(chan struct{}), drained: make(chan struct{}), linger: Linger}
 	mu.Lock()
 	terms[id] = t
 	mu.Unlock()
-	go t.read(id)
+	go t.read()
+	go t.wait(id)
 	return id, nil
 }
 
-// read copies the shell's output into the buffer until the terminal closes (EIO once the shell and everything it
-// started let go of the slave), then records how the shell ended.
-func (t *Term) read(id string) {
+// read copies the shell's output into the buffer until the terminal closes: EIO once the shell and everything it
+// started let go of the slave, or Close.
+func (t *Term) read() {
+	defer close(t.drained)
 	chunk := make([]byte, 32<<10)
 	for {
 		n, err := t.master.Read(chunk)
@@ -134,8 +137,19 @@ func (t *Term) read(id string) {
 			wake()
 		}
 		if err != nil {
-			break
+			return
 		}
+	}
+}
+
+// wait records how the shell ended. It watches the shell itself, not the terminal: a job left running in the
+// background (`server &`, then `exit`) keeps the terminal open, and the shell's exit must still be reported and
+// reaped.
+func (t *Term) wait(id string) {
+	exited(t.cmd.Process.Pid)
+	select { // its last words (`exit`'s echo, an error) are usually still on their way
+	case <-t.drained:
+	case <-time.After(100 * time.Millisecond):
 	}
 	t.mu.Lock()
 	t.reaping = true
@@ -150,8 +164,9 @@ func (t *Term) read(id string) {
 	t.mu.Unlock()
 	close(t.done)
 	live.Changed.Notify()
-	// an ended shell is kept a while, for a page that's reloading to see how it ended, then its place (one of Max)
-	// and buffer are freed. ponytail: a page coming back later than that sees "Shell ended" rather than the exit code
+	// an ended shell is kept a while, for a page that's reloading to see how it ended, then its place (one of Max),
+	// its buffer and whatever it left running on the terminal are let go. ponytail: a page coming back later than
+	// that sees "Shell ended" rather than the exit code
 	time.AfterFunc(t.linger, func() { Close(id) })
 }
 
@@ -200,7 +215,13 @@ func (t *Term) Write(s string) error {
 }
 
 // Resize sets the terminal's size; full-screen programs redraw.
-func (t *Term) Resize(cols, rows int) error { return setSize(t.master, clamp(cols), clamp(rows)) }
+func (t *Term) Resize(cols, rows int) error {
+	err := setSize(t.master, clamp(cols), clamp(rows))
+	if errors.Is(err, os.ErrClosed) {
+		return ErrGone // closed while this was on its way
+	}
+	return err
+}
 
 // Get is a running terminal by id, or nil.
 func Get(id string) *Term {

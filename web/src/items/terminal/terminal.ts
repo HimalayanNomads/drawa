@@ -32,11 +32,13 @@ interface Shell {
   size: string; // the cols x rows last sent
   banner: HTMLElement;
   fitNow?: () => void; // fit the emulator to the window now (before a shell starts at its size)
+  watch?: ResizeObserver; // refits it when the window's size changes
 }
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
 const SCROLLBACK_SENT = 200; // lines of scrollback an agent receives with the screen
 const KEYS_CHUNK = 32 << 10; // bytes per keys request: the server takes at most 64 KB
+const KEYS_HELD = 1 << 20; // keys kept while no shell takes them (one is starting, or never did): the rest is dropped
 
 /** Send what's been typed: one request at a time (so keys can't overtake each other or pile up while a program isn't
  *  reading), a big paste in chunks. Keys the program wouldn't take (503) are dropped, and the toast says so. */
@@ -186,6 +188,7 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
   shells.set(item, shell);
   const flush = perFrame(() => void sendKeys(shell));
   void emulator(screen, frame, bytes => {
+    if (shell.pending.length + bytes.length > KEYS_HELD) return; // nothing's taking them: don't grow without end
     const all = new Uint8Array(shell.pending.length + bytes.length);
     all.set(shell.pending);
     all.set(bytes, shell.pending.length);
@@ -203,7 +206,8 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
       post('term', { op: 'resize', id: shell.id, cols: made.term.cols, rows: made.term.rows }).catch(() => {});
     };
     shell.fitNow = fit;
-    new ResizeObserver(perFrame(fit)).observe(frame);
+    shell.watch = new ResizeObserver(perFrame(fit));
+    shell.watch.observe(frame);
     if (shell.id) return restream(); // reattach: the stream replays what the server kept, then the resize makes full-screen programs redraw
     void start(shell);
     if (saved.rect) return; // restored before its shell ever started: no keyboard grab on reload
@@ -251,6 +255,7 @@ function closeShell(item: HTMLElement) {
   const shell = shells.get(item);
   shells.delete(item);
   if (shell?.id) post('term', { op: 'close', id: shell.id }).catch(() => {});
+  shell?.watch?.disconnect();
   shell?.emulator?.term.dispose();
   restream();
   if (nothingToWorkIn()) newSession(); // the last terminal of a canvas without sessions: start one, as closing the last card does

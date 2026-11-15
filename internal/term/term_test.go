@@ -208,3 +208,20 @@ func TestExitedShellIsForgotten(t *testing.T) {
 		}
 	}
 }
+
+// A shell that exits while a job it started still holds the terminal is reported as exited (and reaped) anyway.
+func TestExitWithBackgroundJob(t *testing.T) {
+	_, term := shellIn(t)
+	term.Write("sleep 30 &\r")
+	time.Sleep(200 * time.Millisecond)
+	term.Write("exit 4\r")
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, _, exited, code := term.Since(0); exited {
+			if code != 4 {
+				t.Fatalf("exit code %d, want 4", code)
+			}
+			return
+		}
+	}
+	t.Fatal("the shell's exit was never reported")
+}
