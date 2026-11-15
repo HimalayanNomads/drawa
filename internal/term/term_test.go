@@ -194,3 +194,17 @@ func TestMaxTerminals(t *testing.T) {
 		t.Fatalf("want ErrTooMany, got %v", err)
 	}
 }
+
+// An ended shell gives its place back after Linger, even if no page closes it.
+func TestExitedShellIsForgotten(t *testing.T) {
+	saved := Linger
+	Linger = 50 * time.Millisecond
+	t.Cleanup(func() { Linger = saved })
+	id, term := shellIn(t)
+	term.Write("exit\r")
+	for deadline := time.Now().Add(5 * time.Second); Get(id) != nil; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("an exited shell kept its place")
+		}
+	}
+}

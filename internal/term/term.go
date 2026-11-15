@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"drawa/internal/config"
@@ -48,12 +49,13 @@ type Term struct {
 	cmd    *exec.Cmd
 
 	mu      sync.Mutex
-	out     []byte // the newest output, at most Keep bytes
+	out     []byte // the newest output: at least Keep bytes once there's that much, at most twice that
 	base    int64  // the offset (from the shell's first byte) of out[0]
 	reaping bool   // set before Wait: from then on the pid may be reused, so Close mustn't signal it
 	exited  bool
 	code    int
 	done    chan struct{} // closed once the shell is reaped
+	linger  time.Duration // Linger when it opened
 }
 
 var (
@@ -105,29 +107,31 @@ func Open(dir string, cols, rows int) (id string, err error) {
 		master.Close()
 		return "", err
 	}
-	t := &Term{master: master, cmd: cmd, done: make(chan struct{})}
+	t := &Term{master: master, cmd: cmd, done: make(chan struct{}), linger: Linger}
 	mu.Lock()
 	terms[id] = t
 	mu.Unlock()
-	go t.read()
+	go t.read(id)
 	return id, nil
 }
 
 // read copies the shell's output into the buffer until the terminal closes (EIO once the shell and everything it
 // started let go of the slave), then records how the shell ended.
-func (t *Term) read() {
+func (t *Term) read(id string) {
 	chunk := make([]byte, 32<<10)
 	for {
 		n, err := t.master.Read(chunk)
 		if n > 0 {
 			t.mu.Lock()
 			t.out = append(t.out, chunk[:n]...)
-			if over := len(t.out) - Keep; over > 0 {
+			// trimmed only past twice Keep: a PTY reads ~4 KB at a time, and copying the whole buffer down on every
+			// read was most of the server's CPU while a program printed nonstop
+			if over := len(t.out) - Keep; len(t.out) > 2*Keep {
 				t.out = append(t.out[:0:0], t.out[over:]...)
 				t.base += int64(over)
 			}
 			t.mu.Unlock()
-			live.Changed.Notify()
+			wake()
 		}
 		if err != nil {
 			break
@@ -146,6 +150,27 @@ func (t *Term) read() {
 	t.mu.Unlock()
 	close(t.done)
 	live.Changed.Notify()
+	// an ended shell is kept a while, for a page that's reloading to see how it ended, then its place (one of Max)
+	// and buffer are freed. ponytail: a page coming back later than that sees "Shell ended" rather than the exit code
+	time.AfterFunc(t.linger, func() { Close(id) })
+}
+
+// Linger is how long an ended shell's output and exit code stay after it exits.
+var Linger = time.Minute
+
+// waking is set while a wakeup for terminal output is due: every chunk read would otherwise wake every events
+// stream and live.Meta() (`yes` reads thousands a second). The first chunk wakes them at once (an echoed key isn't
+// held back); what follows within the next few milliseconds shares one more wakeup.
+var waking atomic.Bool
+
+func wake() {
+	if waking.CompareAndSwap(false, true) {
+		live.Changed.Notify()
+		time.AfterFunc(4*time.Millisecond, func() {
+			waking.Store(false)
+			live.Changed.Notify()
+		})
+	}
 }
 
 // Since is the output from offset `from` on (from the oldest kept byte if `from` is older), the offset after it,

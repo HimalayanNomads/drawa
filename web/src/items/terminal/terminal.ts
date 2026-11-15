@@ -105,10 +105,11 @@ streamWith({
   },
   dropped: () => leaveFullscreen(), // the server died: at once, not after the reachability check's two misses
 });
-/** The windows whose shell is running and on the canvas (one parked by a delete still has Undo: not read meanwhile). */
+/** The windows whose shell is running and on the canvas (one parked by a delete still has Undo: not read meanwhile),
+ *  once their emulator has loaded: output read before then would count as drawn without ever being shown. */
 const live = () =>
   [...shells.values()].filter(
-    shell => shell.id && shell.item.isConnected && shell.item.dataset.state === TerminalState.Running,
+    shell => shell.id && shell.emulator && shell.item.isConnected && shell.item.dataset.state === TerminalState.Running,
   );
 
 function output(shell: Shell, message: TerminalOutput) {
@@ -130,6 +131,7 @@ function ended(shell: Shell, state: TerminalState, why: string) {
 async function start(shell: Shell) {
   const term = shell.emulator!.term;
   shell.fitNow?.();
+  if (shell.id) post('term', { op: 'close', id: shell.id }).catch(() => {}); // Restart: free the ended shell's place
   try {
     const { id } = await post('term', { op: 'open', cols: term.cols, rows: term.rows });
     Object.assign(shell, { id, drawn: 0, size: `${term.cols}x${term.rows}` });
@@ -283,7 +285,7 @@ export async function newTerminal() {
 command({
   label: 'New terminal',
   group: 'Items',
-  keys: ['$mod+Backquote'],
+  keys: ['Control+Backquote'], // Ctrl on a Mac too: macOS keeps Cmd+` for switching windows
   run: () => void newTerminal(),
   anywhere: true, // a Ctrl combo types nothing: works from a message box too, as Ctrl+K does
 });
