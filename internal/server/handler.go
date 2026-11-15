@@ -144,6 +144,7 @@ var getRoutes = map[string]routeFunc{
 	},
 	"/api/files":     func(q url.Values) (any, int, error) { return filesx.Find(q.Get("q"), 40), 200, nil },
 	"/api/symbols":   symbolsRoute,
+	"/api/term":      termRoute,
 	"/api/refs":      refsRoute,
 	"/api/meta":      func(q url.Values) (any, int, error) { return live.Meta(q.Get("backend")), 200, nil },
 	"/api/sessions":  func(q url.Values) (any, int, error) { return allSessions(q.Get("q")), 200, nil },
@@ -501,6 +502,9 @@ func doPOST(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/shell":
 		runShell(w, r, str(body["cmd"]))
+		return
+	case "/api/term":
+		termOp(w, r, body)
 		return
 	case "/api/images":
 		sendJSON(w, images.Save(str(body["data"])), 200)

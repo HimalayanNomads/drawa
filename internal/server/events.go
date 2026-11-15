@@ -71,6 +71,10 @@ func streamEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	terms, ended := map[string]int64{}, map[string]bool{}
+	if !config.Net || loopback(r) { // a terminal's output, like its keys, stays on this machine (see termOp)
+		terms = termSubs(q.Get("t"))
+	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(200)
 	rc := http.NewResponseController(w)
@@ -158,6 +162,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		out = append(out, termLines(terms, ended)...)
 		if len(out) == 0 {
 			select {
 			case <-seenCh: // something changed since we captured this snapshot: loop again to pick it up

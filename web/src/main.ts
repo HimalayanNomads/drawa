@@ -36,6 +36,7 @@ import './items/image/image';
 import './items/agent';
 import './items/group/group'; // Ctrl+G groups the selected windows into a frame
 import './items/preview/preview'; // Ctrl+K opens project files in windows
+import { newTerminal } from './items/terminal/terminal'; // Ctrl+` opens a shell in a window
 import { openFinder } from './canvas/core/find';
 import { menuSection } from './canvas/core/menu'; // the right-click menu: a window's tab, the empty canvas
 import './canvas/core/winkeys'; // W steps through windows, M collapses, Shift+F full view...
@@ -44,7 +45,7 @@ import { openGit } from './items/git/git';
 import { openGitHub } from './items/github/github';
 import { loadTree, closeInspector, showTab } from './panels/files';
 import { reloadFiles, wordFileFind } from './panels/filefind';
-import { cards, cur, newSession, meta, cycleCards } from './session/card/session';
+import { cards, cur, newSession, meta, cycleCards, nothingToWorkIn } from './session/card/session';
 import { attach } from './session/card/live';
 import { refreshModels, seedInfo } from './session/card/gen';
 import { loadSessions } from './session/card/history';
@@ -90,8 +91,8 @@ const showMore = (open: boolean) => {
 };
 showMore(false);
 tail.append(
-  ...['#btn-scratch', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(selector =>
-    $(selector),
+  ...['#btn-scratch', '#btn-term', '#btn-git', '#btn-history', '#btn-files', '#btn-theme', '#btn-settings'].map(
+    selector => $(selector),
   ),
 );
 $('#bar').append(more, tail);
@@ -128,6 +129,7 @@ function newSessionMenu() {
   label();
 }
 $('#btn-scratch').onclick = () => docWindow({ edit: true });
+$('#btn-term').onclick = () => void newTerminal();
 $('#btn-git').onclick = () => openGit();
 $('#iclose').onclick = closeInspector;
 for (const tab of document.querySelectorAll('.seg [data-r]')) pressed(tab, tab.classList.contains('on'));
@@ -265,6 +267,7 @@ menuSection('New', () => [
   { label: 'Session', icon: ICON.plus, keys: 'N', run: () => newSession() },
   { label: 'Sticky note', icon: NOTE, keys: 'T', run: noteHere },
   { label: 'Scratchpad', icon: iconOf('#btn-scratch'), keys: 'S', run: () => docWindow({ edit: true }) },
+  { label: 'Terminal', icon: iconOf('#btn-term'), keys: 'Ctrl+`', run: () => void newTerminal() },
 ]);
 menuSection('Open', () => [
   { label: 'Git', icon: iconOf('#btn-git'), keys: 'G', run: () => openGit() },
@@ -363,7 +366,7 @@ await agentsReady; // which agents there are: cards restore with theirs, and the
 newSessionMenu();
 await restore();
 apply();
-if (!cards.length) newSession({ here: items().length > 0 }); // a canvas with windows on it: stay where you were looking
+if (nothingToWorkIn()) newSession({ here: items().length > 0 }); // a canvas with windows on it: stay where you were looking
 document.fonts.ready.then(redraw); // card text reflow can shift edge anchors
 onChange(saveSoon);
 // server back after an outage (or a restart): pick the live streams and lists up again

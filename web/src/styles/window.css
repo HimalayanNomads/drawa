@@ -3,6 +3,8 @@
    --edge is the outline color for tab, shoulder and body together; states only change --edge and the tab's top line: no blurred shadows on canvas windows (paint on every pan and zoom frame). */
 .win{display:flex;flex-direction:column;--edge:var(--line);cursor:auto}
 .win.focus{--edge:var(--line-2)}
+/* the window you're typing in lights up in its kind's color, as a desktop's focused window does (a state, e.g. asking, still wins) */
+.win:focus-within{--edge:var(--kind)}
 .win-h:has(.win-x .copybtn){max-width:calc(100% - var(--r-tab) - 122px)} /* one more button in the strip */
 
 .win-h{position:relative;z-index:var(--z-sticky);display:flex;align-items:center;gap:4px;align-self:flex-start;flex:none;

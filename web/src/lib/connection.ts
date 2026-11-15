@@ -12,6 +12,9 @@ let misses = 0,
 const listeners: (() => void)[] = [];
 /** Run `f` each time the server answers again after being unreachable. */
 export const onReconnect = (f: () => void) => listeners.push(f);
+const lostListeners: (() => void)[] = [];
+/** Run `f` each time the server stops answering (a fullscreen terminal lets go of the screen). */
+export const onDisconnect = (f: () => void) => lostListeners.push(f);
 
 let version = '',
   told = false;
@@ -63,6 +66,7 @@ async function ping() {
     box.hidden = false;
     box.dataset.state = 'down';
     text.textContent = 'Server not reachable. Reconnecting…';
+    lostListeners.forEach(f => f());
   }
   timer = setTimeout(ping, down ? RETRY : EVERY);
 }

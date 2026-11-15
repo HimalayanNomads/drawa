@@ -25,6 +25,7 @@ import (
 
 	"drawa/internal/config"
 	"drawa/internal/live"
+	"drawa/internal/term"
 )
 
 const repo = "HimalayanNomads/drawa" // matches install.sh's $repo
@@ -335,6 +336,7 @@ func copyFile(src, dst string) error {
 // Sessions are killed first (exec would orphan them); the page resumes each one on its next message.
 func Restart() {
 	live.KillAll()
+	term.CloseAll()
 	err := syscall.Exec(exe, append([]string{exe}, os.Args[1:]...), os.Environ())
 	fmt.Println("restart after update failed:", err)
 }

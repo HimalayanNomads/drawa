@@ -80,13 +80,14 @@ func hasFlag(name string) bool {
 // already-open browsers stay signed in. Empty, and unused, when --net wasn't passed.
 var NetToken = netToken()
 
-const netTokenEnv = "DRAWA_NET_TOKEN"
+// NetTokenEnv holds it across the self-restart; programs Drawa starts for you (terminals) don't get it.
+const NetTokenEnv = "DRAWA_NET_TOKEN"
 
 func netToken() string {
 	if !Net {
 		return ""
 	}
-	if t := os.Getenv(netTokenEnv); len(t) >= 22 { // a short hand-set value would undo the point of the length
+	if t := os.Getenv(NetTokenEnv); len(t) >= 22 { // a short hand-set value would undo the point of the length
 		return t
 	}
 	b := make([]byte, 16)
@@ -94,7 +95,7 @@ func netToken() string {
 		panic(err) // the OS RNG failing is not something we can recover from
 	}
 	t := base64.RawURLEncoding.EncodeToString(b)
-	os.Setenv(netTokenEnv, t)
+	os.Setenv(NetTokenEnv, t)
 	return t
 }
 
