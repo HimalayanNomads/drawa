@@ -10,7 +10,7 @@ import './lib/tooltip'; // the app's own tooltips for every title="…"
 import './lib/update'; // checks GitHub for a newer release and offers to install it
 import { api } from './lib/api';
 import { $, make, ICON, project, typing, pressed } from './lib/dom';
-import { command, MOD } from './lib/keys';
+import { command } from './lib/keys';
 import { showTip } from './lib/help';
 import { persist, restore, saveSoon } from './lib/store';
 import { onReconnect } from './lib/connection';
@@ -130,7 +130,6 @@ function newSessionMenu() {
 }
 $('#btn-scratch').onclick = () => docWindow({ edit: true });
 $('#btn-term').onclick = () => void newTerminal();
-$('#btn-term').dataset.key = `${MOD}\``; // ⌘ on a Mac
 $('#btn-git').onclick = () => openGit();
 $('#iclose').onclick = closeInspector;
 for (const tab of document.querySelectorAll('.seg [data-r]')) pressed(tab, tab.classList.contains('on'));

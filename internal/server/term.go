@@ -70,8 +70,12 @@ func termOp(w http.ResponseWriter, r *http.Request, body map[string]any) {
 			// keys are bytes, base64: mouse reports can carry bytes that aren't text. Sized up before decoding, so an
 			// oversized body is refused without a copy of it
 			encoded := str(body["bytes"])
+			if base64.StdEncoding.DecodedLen(len(encoded)) > maxKeys+2 {
+				http.Error(w, "", 400)
+				return
+			}
 			keys, bad := base64.StdEncoding.DecodeString(encoded)
-			if base64.StdEncoding.DecodedLen(len(encoded)) > maxKeys+2 || bad != nil || len(keys) > maxKeys {
+			if bad != nil || len(keys) > maxKeys {
 				http.Error(w, "", 400)
 				return
 			}

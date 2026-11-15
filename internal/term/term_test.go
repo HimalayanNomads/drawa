@@ -140,7 +140,8 @@ func TestCloseKillsBusyChildren(t *testing.T) {
 	term.Write(`sh -c "echo pi''d=\$\$ e''nd; exec sleep 300"` + "\r") // '' keeps the echoed command line from matching
 	waitFor(t, term, " end")
 	out, _, _, _ := term.Since(0)
-	_, after, _ := bytes.Cut(out, []byte("pid="))
+	// the last pid=: a login profile may print its own before it (systemd's OSC 3008 context carries one)
+	after := out[bytes.LastIndex(out, []byte("pid="))+len("pid="):]
 	number, _, _ := strings.Cut(string(after), " end")
 	pid, err := strconv.Atoi(number)
 	if err != nil {
