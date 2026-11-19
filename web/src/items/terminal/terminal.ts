@@ -8,7 +8,7 @@ import { centerOn, freeSpot } from '../../canvas/core/placement';
 import { referable } from '../../canvas/core/refs';
 import { removable } from '../../canvas/core/select';
 import { changed, viewCenter } from '../../canvas/core/view';
-import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
+import { makeWindow, removeButton, setTitle, winTitle } from '../../canvas/core/window';
 import { api, post } from '../../lib/api';
 import { onDisconnect } from '../../lib/connection';
 import { button, ICON, iconButton, make, perFrame, toast, uuid } from '../../lib/dom';
@@ -33,6 +33,8 @@ interface Shell {
   banner: HTMLElement;
   fitNow?: () => void; // fit the emulator to the window now (before a shell starts at its size)
   watch?: ResizeObserver; // refits it when the window's size changes
+  named: boolean; // the user renamed the tab: the shell's title no longer replaces it
+  shellTitle: string; // the tab title the shell last set
 }
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
@@ -114,6 +116,14 @@ const live = () =>
     shell => shell.id && shell.emulator && shell.item.isConnected && shell.item.dataset.state === TerminalState.Running,
   );
 
+/** A shell's title as a tab: without the user@host part, and a deep folder as its last two names (the tab cuts off
+ *  the end, where the folder you're in is). */
+function tabTitle(title: string) {
+  const text = title.replace(/^[^@\s]+@[^:\s]+:\s*/, '').trim(),
+    names = text.split('/');
+  return /^[~/]/.test(text) && names.length > 3 ? `…/${names.slice(-2).join('/')}` : text;
+}
+
 function output(shell: Shell, message: TerminalOutput) {
   if (message.to <= shell.drawn) return; // a re-opened stream sending what's drawn already
   const bytes = Uint8Array.from(atob(message.data), char => char.charCodeAt(0));
@@ -184,7 +194,12 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     sending: false,
     size: '',
     banner,
+    named: saved.named ?? false,
+    shellTitle: '',
   };
+  item.addEventListener('rename', event => {
+    if ((event as CustomEvent<string>).detail !== shell.shellTitle) shell.named = true;
+  });
   shells.set(item, shell);
   const flush = perFrame(() => void sendKeys(shell));
   void emulator(screen, frame, bytes => {
@@ -197,6 +212,13 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
   }).then(made => {
     if (!shells.has(item)) return made.term.dispose(); // closed while it loaded
     shell.emulator = made;
+    // the tab follows the shell's title (bash's default prompt sets "user@host: cwd", vim the file, ssh the host)
+    // until you rename it. ponytail: no running command, branch or exit code; those need shell integration (OSC 133/7
+    // hooks added to the shell's startup), add if the title isn't enough
+    made.term.onTitleChange(title => {
+      shell.shellTitle = tabTitle(title);
+      if (!shell.named && shell.shellTitle) setTitle(item, shell.shellTitle);
+    });
     const fit = () => {
       if (!frame.clientWidth || !frame.clientHeight) return; // collapsed
       made.fit.fit();
@@ -311,6 +333,7 @@ persist(
         id: item.dataset.id!,
         shell: shells.get(item)?.id ?? '',
         title: winTitle(item),
+        named: shells.get(item)?.named || undefined,
         rect: savedRect(item),
       }),
     ),

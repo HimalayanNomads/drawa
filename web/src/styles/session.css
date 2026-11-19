@@ -153,6 +153,8 @@ summary .jump:hover{background:var(--sel)}
 .io pre{margin:0;padding:10px 12px;max-height:280px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.55;color:var(--ink-2)}
 .io pre+pre{border-top:1px solid var(--line)}
 .io pre::before{content:attr(data-l);display:block;margin-bottom:4px;font:500 11px var(--sans);color:var(--muted)}
+.io pre.term::before{content:none} /* a shell command: prompt and output in one block, no Input/Output labels */
+.tcmd-note{color:var(--muted)}
 
 /* shell mode: your own commands, with output */
 .shell{margin:10px 0;border:1px solid var(--line);border-radius:var(--r-box);background:var(--code);overflow:hidden}

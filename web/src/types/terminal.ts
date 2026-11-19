@@ -13,6 +13,7 @@ export interface SavedTerminal {
   id: string; // the window's own id (data-id), the same across Restarts
   shell: string; // the server's id for its shell, which a Restart replaces
   title: string;
+  named?: boolean; // the user renamed it: the shell's title doesn't replace this one
   rect: Rect;
 }
 
