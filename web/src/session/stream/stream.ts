@@ -97,7 +97,7 @@ const xmlTags = (xml: string, name: string) =>
 /** A tool call's effect on the graph (file nodes, terminal). Returns the diff block for edits. */
 function wire(S: Session, id: string, name: string, inp: Record<string, any>): Change | undefined {
   const act = ACTS[name];
-  if (act === 'run' && inp.command) ranCommand(S, id, inp.command);
+  if (act === 'run' && inp.command) ranCommand(S, id, inp.command, inp.description);
   else if (act && inp.file_path) {
     const file = relPath(inp.file_path);
     const c = act !== 'read' ? change(S, name, file, inp) : undefined;
