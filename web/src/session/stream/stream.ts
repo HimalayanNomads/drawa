@@ -238,10 +238,20 @@ function endBlock(S: Session, i: number) {
     } else {
       if (k.name === 'SendMessage' && inp.to) agentMessaged(k.id!, String(inp.to)); // the agent's reply goes to its window
       // edits skip this: their diff is the input
-      const pre = d.appendChild(make('div', 'io')).appendChild(make('pre', '', JSON.stringify(inp, null, 2)));
-      pre.dataset.l = 'Input';
+      const io = d.appendChild(make('div', 'io'));
+      if (ACTS[k.name ?? ''] === 'run' && inp.command) io.append(terminal(inp));
+      else io.appendChild(make('pre', '', JSON.stringify(inp, null, 2))).dataset.l = 'Input';
     }
   }
+}
+
+/** A shell command's input as a terminal shows it: what it's for as a comment, then a prompt line (the output joins
+ *  it when it comes). */
+function terminal(input: Record<string, any>) {
+  const pre = make('pre', 'term');
+  if (input.description) pre.append(make('span', 'tcmd-note', `# ${input.description}\n`));
+  pre.append(make('span', 'tcmd-p', '$ '), make('span', 'tcmd-cmd', String(input.command)));
+  return pre;
 }
 
 /** A tool call's result: its row gets the output and its state, and the graph hears about it. */
@@ -271,8 +281,16 @@ function toolResult(S: Session, r: ContentBlock) {
   const out = d.classList.contains('agent') ? report(t) : t;
   if (d.classList.contains('agent')) agentDone(r.tool_use_id!, out, !!r.is_error); // its window shows it too, then leaves
   const io = d.querySelector('.io') ?? d.appendChild(make('div', 'io'));
-  const pre = io.appendChild(make('pre', '', truncate(out, 20_000) || '(no output)'));
-  pre.dataset.l = r.is_error ? 'Error' : d.classList.contains('agent') ? 'Result' : 'Output';
+  const text = truncate(out, 20_000) || '(no output)',
+    shell = io.querySelector('pre.term');
+  if (shell)
+    shell.append(`\n\n${text}`); // under its prompt, as a terminal shows it
+  else
+    io.appendChild(make('pre', '', text)).dataset.l = r.is_error
+      ? 'Error'
+      : d.classList.contains('agent')
+        ? 'Result'
+        : 'Output';
   const made =
     !r.is_error && /^Canvas · (create|update)$/.test(d.querySelector('summary b')?.textContent ?? '') && idIn(t);
   if (made) {
