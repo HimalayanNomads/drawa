@@ -35,6 +35,7 @@ interface Shell {
   watch?: ResizeObserver; // refits it when the window's size changes
   named: boolean; // the user renamed the tab: the shell's title no longer replaces it
   shellTitle: string; // the tab title the shell last set
+  shown: string; // the shell's title the tab last showed: renaming back to it (Undo) follows the shell again
 }
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
@@ -120,7 +121,7 @@ const live = () =>
  *  cuts off the end, where the folder you're in is). What follows the folder ("~/proj: vim a.ts") is kept. */
 function tabTitle(title: string) {
   const text = title.replace(/^[^@\s]+@[^:\s]+:\s*/, '').trim(),
-    [, path = '', rest = ''] = /^([~/][^\s:]*)(.*)$/s.exec(text) ?? [],
+    [, path = '', rest = ''] = /^([~/].*?)(:\s.*)?$/s.exec(text) ?? [], // a folder may hold spaces; ": " ends it
     names = path.split('/');
   return names.length > 3 ? `…/${names.slice(-2).join('/')}${rest}` : text;
 }
@@ -197,9 +198,16 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     banner,
     named: saved.named ?? (saved.title != null && saved.title !== 'Terminal'), // layouts from before `named`
     shellTitle: '',
+    shown: '',
   };
+  if (!shell.named) shell.shown = saved.title ?? ''; // restored following: Undo to it follows again
   item.addEventListener('rename', event => {
-    shell.named = (event as CustomEvent<string>).detail !== shell.shellTitle; // undoing a rename follows the shell again
+    const name = (event as CustomEvent<string>).detail;
+    shell.named = name !== shell.shown && name !== shell.shellTitle;
+    // undoing a rename gives back the title from then: show where the shell is now
+    if (shell.named || !shell.shellTitle || name === shell.shellTitle) return;
+    shell.shown = shell.shellTitle;
+    setTitle(item, shell.shellTitle, false);
   });
   shells.set(item, shell);
   const flush = perFrame(() => void sendKeys(shell));
@@ -218,7 +226,9 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     // hooks added to the shell's startup), add if the title isn't enough
     made.term.onTitleChange(title => {
       shell.shellTitle = tabTitle(title);
-      if (!shell.named && shell.shellTitle) setTitle(item, shell.shellTitle, false); // saved with the next real change
+      if (shell.named || !shell.shellTitle) return;
+      shell.shown = shell.shellTitle;
+      setTitle(item, shell.shellTitle, false); // saved with the next real change
     });
     const fit = () => {
       if (!frame.clientWidth || !frame.clientHeight) return; // collapsed
@@ -334,7 +344,7 @@ persist(
         id: item.dataset.id!,
         shell: shells.get(item)?.id ?? '',
         title: winTitle(item),
-        named: shells.get(item)?.named || undefined,
+        named: !!shells.get(item)?.named, // always written: a missing one means a layout from before it
         rect: savedRect(item),
       }),
     ),

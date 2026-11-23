@@ -204,7 +204,7 @@ function recount(node: { list: HTMLElement; count: HTMLElement; n: number }) {
 
 /** How long a command took, as a terminal prompt would say it. */
 function took(ms: number) {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 999.5) return `${Math.round(ms)}ms`; // not 1000ms
   if (ms < 59_950) return `${(ms / 1000).toFixed(1)}s`; // below what toFixed rounds up to 60.0
   const s = Math.round(ms / 1000); // whole seconds first, so 119.7s is 2m 0s, not 1m 60s
   return `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -253,7 +253,10 @@ export function settle(toolId: string, ok: boolean, output?: string) {
   paintEdge(p.edge);
   if (p.cmd) {
     status(p.cmd, ok ? 'ok' : 'bad');
-    if (output) p.cmd.querySelector('pre')!.append(`\n\n${truncate(output, 20_000)}`);
+    if (output) {
+      const text = truncate(output, 20_000);
+      p.cmd.querySelector('pre')!.append('\n\n', ok ? text : make('span', 'tcmd-err', text));
+    }
     const start = Number(p.cmd.dataset.start);
     if (start) p.cmd.querySelector('summary')!.append(make('span', 'tcmd-t', took(performance.now() - start)));
     recount(termNode(p.edge.S));
