@@ -295,6 +295,7 @@ function line(S: Session, m: Msg | undefined, raw: string) {
   if (m?.type === 'attach') {
     S.gone = false;
     S.n = m.from;
+    S.backlog = m.end;
     S.gen = m.gen; // the process these line numbers belong to
     if (S.stale && m.gen !== S.stale) S.stale = undefined;
     S.reader = m.reader;

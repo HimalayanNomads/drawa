@@ -203,12 +203,12 @@ function recount(node: { list: HTMLElement; count: HTMLElement; n: number }) {
 }
 
 /** How long a command took, as a terminal prompt would say it. */
-const took = (ms: number) =>
-  ms < 1000
-    ? `${Math.round(ms)}ms`
-    : ms < 60_000
-      ? `${(ms / 1000).toFixed(1)}s`
-      : `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+function took(ms: number) {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 59_950) return `${(ms / 1000).toFixed(1)}s`; // below what toFixed rounds up to 60.0
+  const s = Math.round(ms / 1000); // whole seconds first, so 119.7s is 2m 0s, not 1m 60s
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
 
 /** Claude ran a shell command (`description`: what it says the command does, when it says). */
 export function ranCommand(S: Session, toolId: string, cmd: string, description?: string) {
@@ -224,8 +224,9 @@ export function ranCommand(S: Session, toolId: string, cmd: string, description?
   out.append(make('span', 'tcmd-p', '$ '), make('span', 'tcmd-cmd', cmd)); // its text stays "$ cmd" for copies and snippets
   row.append(sum, out);
   row.title = cmd;
-  // ponytail: a replayed transcript shows no durations (its rows all arrive at once); its messages' timestamps could
-  if (!S.replaying) row.dataset.start = String(performance.now());
+  // no duration for a replayed transcript or the backlog read on (re)attach: those lines arrive at once.
+  // ponytail: such rows show none at all; the transcript's message timestamps could time them
+  if (!S.replaying && S.n > (S.backlog ?? -1)) row.dataset.start = String(performance.now());
   t.list.prepend(row);
   while (t.list.children.length > 200) t.list.lastElementChild!.remove(); // ponytail: newest 200 kept
   t.n++;

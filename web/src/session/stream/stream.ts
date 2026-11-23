@@ -284,7 +284,7 @@ function toolResult(S: Session, r: ContentBlock) {
   const text = truncate(out, 20_000) || '(no output)',
     shell = io.querySelector('pre.term');
   if (shell)
-    shell.append(`\n\n${text}`); // under its prompt, as a terminal shows it
+    shell.append('\n\n', r.is_error ? make('span', 'tcmd-err', text) : text); // under its prompt, as a terminal shows it
   else
     io.appendChild(make('pre', '', text)).dataset.l = r.is_error
       ? 'Error'

@@ -116,12 +116,13 @@ const live = () =>
     shell => shell.id && shell.emulator && shell.item.isConnected && shell.item.dataset.state === TerminalState.Running,
   );
 
-/** A shell's title as a tab: without the user@host part, and a deep folder as its last two names (the tab cuts off
- *  the end, where the folder you're in is). */
+/** A shell's title as a tab: without the user@host part, and a deep leading folder as its last two names (the tab
+ *  cuts off the end, where the folder you're in is). What follows the folder ("~/proj: vim a.ts") is kept. */
 function tabTitle(title: string) {
   const text = title.replace(/^[^@\s]+@[^:\s]+:\s*/, '').trim(),
-    names = text.split('/');
-  return /^[~/]/.test(text) && names.length > 3 ? `…/${names.slice(-2).join('/')}` : text;
+    [, path = '', rest = ''] = /^([~/][^\s:]*)(.*)$/s.exec(text) ?? [],
+    names = path.split('/');
+  return names.length > 3 ? `…/${names.slice(-2).join('/')}${rest}` : text;
 }
 
 function output(shell: Shell, message: TerminalOutput) {
@@ -194,11 +195,11 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     sending: false,
     size: '',
     banner,
-    named: saved.named ?? false,
+    named: saved.named ?? (saved.title != null && saved.title !== 'Terminal'), // layouts from before `named`
     shellTitle: '',
   };
   item.addEventListener('rename', event => {
-    if ((event as CustomEvent<string>).detail !== shell.shellTitle) shell.named = true;
+    shell.named = (event as CustomEvent<string>).detail !== shell.shellTitle; // undoing a rename follows the shell again
   });
   shells.set(item, shell);
   const flush = perFrame(() => void sendKeys(shell));
@@ -217,7 +218,7 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     // hooks added to the shell's startup), add if the title isn't enough
     made.term.onTitleChange(title => {
       shell.shellTitle = tabTitle(title);
-      if (!shell.named && shell.shellTitle) setTitle(item, shell.shellTitle);
+      if (!shell.named && shell.shellTitle) setTitle(item, shell.shellTitle, false); // saved with the next real change
     });
     const fit = () => {
       if (!frame.clientWidth || !frame.clientHeight) return; // collapsed

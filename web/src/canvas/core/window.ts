@@ -56,12 +56,12 @@ export const focusInput = (el: HTMLElement) =>
   el.querySelector<HTMLTextAreaElement>('.compose textarea')?.focus({ preventScroll: true });
 /** Rename a window: its tab, plus a `rename` event for kinds that keep their title elsewhere (a session's title, a
  *  plan's name, an image's alt text). Use this, not the tab's textContent, so they stay in step. */
-export function setTitle(el: HTMLElement, name: string) {
+export function setTitle(el: HTMLElement, name: string, save = true) {
   const t = el.querySelector(':scope > .win-h .t');
   if (!t || t.textContent === name) return;
   t.textContent = name;
   el.dispatchEvent(new CustomEvent('rename', { detail: name }));
-  changed();
+  if (save) changed();
 }
 
 defineAction<ItemRename>(ItemActionType.Rename, {
