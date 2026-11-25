@@ -1,6 +1,7 @@
 // Claude asking you: tool permission prompts and AskUserQuestion forms, answered right in the card.
 // (Plan approval goes through the same request, but plan.ts shows it as a document on the canvas.)
 
+import { allowed } from '../../canvas/graph/graph';
 import { plansExpired, planWithdrawn, reviewPlan } from '../../items/plan/plan';
 import { who } from '../../lib/agents';
 import { post } from '../../lib/api';
@@ -67,6 +68,7 @@ export function approval(S: Session, m: Msg) {
           make('code', '', what),
         );
         box.classList.add('done', allow ? 'yes' : 'no');
+        if (allow) allowed(r.tool_use_id);
         S.asks.delete(id);
         renderCard(S);
       },

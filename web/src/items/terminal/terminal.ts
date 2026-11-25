@@ -35,7 +35,9 @@ interface Shell {
   watch?: ResizeObserver; // refits it when the window's size changes
   named: boolean; // the user renamed the tab: the shell's title no longer replaces it
   shellTitle: string; // the tab title the shell last set
-  shown: string; // the shell's title the tab last showed: renaming back to it (Undo) follows the shell again
+  // titles the tab showed while following: renaming back to one (Undo, however many steps) follows the shell again.
+  // ponytail: grows by one per distinct title, and renaming to an old folder name by hand also follows
+  seen: Set<string>;
 }
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
@@ -198,15 +200,14 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     banner,
     named: saved.named ?? (saved.title != null && saved.title !== 'Terminal'), // layouts from before `named`
     shellTitle: '',
-    shown: '',
+    seen: new Set(),
   };
-  if (!shell.named) shell.shown = saved.title ?? ''; // restored following: Undo to it follows again
+  if (!shell.named) shell.seen.add(saved.title ?? 'Terminal');
   item.addEventListener('rename', event => {
     const name = (event as CustomEvent<string>).detail;
-    shell.named = name !== shell.shown && name !== shell.shellTitle;
+    shell.named = !shell.seen.has(name) && name !== shell.shellTitle;
     // undoing a rename gives back the title from then: show where the shell is now
     if (shell.named || !shell.shellTitle || name === shell.shellTitle) return;
-    shell.shown = shell.shellTitle;
     setTitle(item, shell.shellTitle, false);
   });
   shells.set(item, shell);
@@ -226,8 +227,9 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     // hooks added to the shell's startup), add if the title isn't enough
     made.term.onTitleChange(title => {
       shell.shellTitle = tabTitle(title);
-      if (shell.named || !shell.shellTitle) return;
-      shell.shown = shell.shellTitle;
+      if (!shell.shellTitle) return;
+      shell.seen.add(shell.shellTitle);
+      if (shell.named) return;
       setTitle(item, shell.shellTitle, false); // saved with the next real change
     });
     const fit = () => {

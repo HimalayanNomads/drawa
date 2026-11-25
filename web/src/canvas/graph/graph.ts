@@ -2,7 +2,7 @@
 // Files a session touches are rows in one Files window per session (grouped by folder), not one node each:
 // a session that reads 100 files is still one window and one edge. A file becomes its own canvas node only when
 // you open it from the file tree. The windows themselves are canvas/graph/sessionwins.ts's; this module draws the arrows.
-import { make, ping, truncate } from '../../lib/dom';
+import { make, perFrame, ping, truncate } from '../../lib/dom';
 import { each, persist } from '../../lib/store';
 import type { Change } from '../../panels/diff';
 import type { Session } from '../../types/session';
@@ -189,8 +189,19 @@ export function touchedFile(S: Session, toolId: string, act: Act, path: string, 
   refreshInspector(path);
 }
 
+type RunCount = { list: HTMLElement; count: HTMLElement; n: number };
+const dirty = new Set<RunCount>();
+const countSoon = perFrame(() => {
+  dirty.forEach(countRuns);
+  dirty.clear();
+});
+/** Recount once a frame: a replayed transcript runs and settles thousands of commands in one go. */
+function recount(node: RunCount) {
+  dirty.add(node);
+  countSoon();
+}
 /** The commands window's tab count: how many ran, and how many are running or failed (in words, not just color). */
-function recount(node: { list: HTMLElement; count: HTMLElement; n: number }) {
+function countRuns(node: RunCount) {
   const running = node.list.querySelectorAll('.tcmd.live').length,
     failed = node.list.querySelectorAll('.tcmd.bad').length;
   node.count.textContent = [
@@ -237,6 +248,13 @@ export function ranCommand(S: Session, toolId: string, cmd: string, description?
   ping(t.el);
   pending.set(toolId, { edge: e, cmd: row, act: 'run' });
   redraw();
+}
+
+/** A command waited for your OK: its time starts now, not when Claude asked. ponytail: one still queued behind
+ *  another tool call in the same message also counts that wait */
+export function allowed(toolId: string) {
+  const row = pending.get(toolId)?.cmd;
+  if (row?.dataset.start) row.dataset.start = String(performance.now());
 }
 
 /** A tool finished: stop the edge flowing, mark failures. */

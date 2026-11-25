@@ -75,9 +75,11 @@ referable('run', {
     const rows = [...el.querySelectorAll<HTMLElement>('.tcmd')]
       .reverse()
       .map(r => {
-        const out = (r.querySelector('pre')?.textContent ?? '').slice(-Math.max(0, Math.min(3000, budget)));
+        const text = r.querySelector('pre')?.textContent ?? '', // starts with its "$ cmd" line
+          keep = Math.max(0, Math.min(3000, budget)),
+          out = keep ? text.slice(-keep) : ''; // slice(-0) would keep it all
         budget -= out.length;
-        return `$ ${tipText(r) || r.querySelector('summary')?.textContent}\n${out}`;
+        return out.length < text.length ? `$ ${tipText(r) || r.querySelector('summary')?.textContent}\n…${out}` : out;
       })
       .reverse();
     return { text: `Commands a session on my canvas ran, with their output:\n\n\`\`\`\n${rows.join('\n\n')}\n\`\`\`` };

@@ -19,6 +19,7 @@
 .tcmd.bad>summary>span:first-child{color:var(--danger)}
 .tcmd-p{color:var(--accent-text)}
 .tcmd-err{color:var(--danger)} /* a failed command's output, here and in a card */
+.tcmd-err::before{content:"Error\A";font-weight:600} /* in words, not only red */
 .tcmd-cmd{color:var(--ink);font-weight:600}
 .tcmd>summary::before{display:inline-block;flex:none;width:12px;margin-right:0;border:0;transform:none;opacity:1;text-align:center}
 .tcmd.ok>summary::before{content:"\2713";color:var(--add)}
