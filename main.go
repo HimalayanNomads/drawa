@@ -395,7 +395,7 @@ func main() {
 		openBrowser(url)
 	}
 	go versionWarnings()
-	if err := http.Serve(ln, server.Handler()); err != nil {
+	if err := http.Serve(server.SameUser(ln), server.Handler()); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

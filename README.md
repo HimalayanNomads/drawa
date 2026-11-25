@@ -259,6 +259,8 @@ Drawa is built to run locally for one user:
 - The server listens on `127.0.0.1` only, unless you pass `--net` (see [Quick start](#quick-start)), and checks the `Host` header on every request either way.
 - With `--net`, the network address additionally needs its one-time `?token=`; wrong guesses lock that address out after 5 tries. Still only pass `--net` on a network you trust, and treat the printed link like a password — don't post it anywhere public.
 - Changing requests must come from Drawa's own page (a matching `Origin`).
+- On Linux, a connection from this machine is served only if it comes from your own user: the server looks up who owns the connecting socket and closes connections from other accounts (a database or web server running on the same machine, say), since a program, unlike a web page, can fake the `Origin`. Not yet on macOS, nor on WSL, where the Windows browser connects through a relay.
+- Don't put Drawa behind a tunnel or proxy (ngrok, cloudflared, an SSH forward for someone else): whoever reaches it gets what you'd get, commands included.
 - File access is confined to the project folder you opened.
 - Claude's canvas tools use a per-process token, so only that session's own `claude` process can call them.
 - Terminals run as you, in the project folder, with no extra rights. With `--net` they open only on the machine running Drawa, and a shell never sees the `--net` token.

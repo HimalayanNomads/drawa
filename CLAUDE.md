@@ -36,6 +36,7 @@ These are measured, not guessed. Reopening a 27MB transcript went from 7.6s to 0
 - Stdlib only (`net/http`). No third-party Go modules — `go.mod` should stay dependency-free the same way the old `server.py` was.
 - **Security checks are not optional:**
   - Every request checks `Host` (`config.Hosts`).
+  - On Linux, a loopback connection is accepted only from the user drawa runs as (`server.SameUser` wraps the listener and reads the socket's owner from `/proc/net/tcp`): headers stop browsers, not other programs on the machine.
   - POSTs require a matching `Origin` (`config.Origins`).
   - Every file path goes through `config.Inside()` so it can't escape the project root.
   - POST bodies must be `application/json` (anything else gets 415), so a plain cross-site form can't post.
