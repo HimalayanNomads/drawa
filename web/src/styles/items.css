@@ -8,13 +8,26 @@
 /* terminal: the commands a session ran, newest first */
 .cmds-list{flex:1;min-height:0;overflow:auto;padding:4px 0;font:12px/1.5 var(--mono)}
 .tcmd{margin:0;font-size:12px}
-.tcmd>summary{display:block;height:auto;min-height:24px;padding:2px 10px;border-radius:0;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:12px/1.5 var(--mono)}
-.tcmd>summary::before{display:inline-block;width:12px;margin-right:8px;border:0;transform:none;opacity:1;text-align:center}
+.tcmd>summary{display:flex;align-items:baseline;gap:8px;height:auto;min-height:24px;padding:2px 10px;border-radius:0;color:var(--ink-2);white-space:nowrap;font:12px/1.5 var(--mono)}
+/* what the command is for, then the command itself (muted when there's a description), then how long it took */
+.tcmd-d,.tcmd-c{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tcmd-d{flex:0 1 auto;color:var(--ink)}
+.tcmd-c{flex:1 1 0}
+.tcmd-d+.tcmd-c{color:var(--muted)}
+.tcmd-t{flex:none;margin-left:auto;color:var(--muted)}
+.tcmd.live>summary>span:first-child{color:var(--run)}
+.tcmd.bad>summary>span:first-child{color:var(--danger)}
+.tcmd-p{color:var(--accent-text)}
+.tcmd-err{color:var(--danger)} /* a failed command's output, here and in a card */
+.tcmd-err::before{content:"Error\A";font-weight:600} /* in words, not only red */
+.tcmd-cmd{color:var(--ink);font-weight:600}
+.tcmd>summary::before{display:inline-block;flex:none;width:12px;margin-right:0;border:0;transform:none;opacity:1;text-align:center}
 .tcmd.ok>summary::before{content:"\2713";color:var(--add)}
 .tcmd.bad>summary::before{content:"\2717";color:var(--danger)}
 .tcmd.live>summary::before{content:"\25CF";color:var(--run);animation:pulse .8s ease-in-out infinite alternate}
 .tcmd.stopped>summary::before{content:"\25CB";color:var(--muted)}
 .tcmd[open]>summary{background:var(--hover)}
+.tcmd[open]>summary::before{transform:none} /* a details' open chevron turns; the status mark mustn't */
 .tcmd pre{margin:0;padding:8px 12px 10px 30px;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11.5px/1.5 var(--mono);color:var(--ink-2);background:var(--code);border-block:1px solid var(--line)}
 
 /* snippet: terminal output pulled out onto the canvas */

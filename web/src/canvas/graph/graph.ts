@@ -2,7 +2,7 @@
 // Files a session touches are rows in one Files window per session (grouped by folder), not one node each:
 // a session that reads 100 files is still one window and one edge. A file becomes its own canvas node only when
 // you open it from the file tree. The windows themselves are canvas/graph/sessionwins.ts's; this module draws the arrows.
-import { make, ping, truncate } from '../../lib/dom';
+import { make, perFrame, ping, truncate } from '../../lib/dom';
 import { each, persist } from '../../lib/store';
 import type { Change } from '../../panels/diff';
 import type { Session } from '../../types/session';
@@ -189,27 +189,72 @@ export function touchedFile(S: Session, toolId: string, act: Act, path: string, 
   refreshInspector(path);
 }
 
-/** Claude ran a shell command. */
-export function ranCommand(S: Session, toolId: string, cmd: string) {
+type RunCount = { list: HTMLElement; count: HTMLElement; n: number };
+const dirty = new Set<RunCount>();
+const countSoon = perFrame(() => {
+  dirty.forEach(countRuns);
+  dirty.clear();
+});
+/** Recount once a frame: a replayed transcript runs and settles thousands of commands in one go. */
+function recount(node: RunCount) {
+  dirty.add(node);
+  countSoon();
+}
+/** The commands window's tab count: how many ran, and how many are running or failed (in words, not just color). */
+function countRuns(node: RunCount) {
+  const running = node.list.querySelectorAll('.tcmd.live').length,
+    failed = node.list.querySelectorAll('.tcmd.bad').length;
+  node.count.textContent = [
+    `${node.n} run${node.n === 1 ? '' : 's'}`,
+    running && `${running} live`, // short: the tab also holds the title
+    failed && `${failed} failed`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** How long a command took, as a terminal prompt would say it. */
+function took(ms: number) {
+  if (ms < 999.5) return `${Math.round(ms)}ms`; // not 1000ms
+  if (ms < 59_950) return `${(ms / 1000).toFixed(1)}s`; // below what toFixed rounds up to 60.0
+  const s = Math.round(ms / 1000); // whole seconds first, so 119.7s is 2m 0s, not 1m 60s
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/** Claude ran a shell command (`description`: what it says the command does, when it says). */
+export function ranCommand(S: Session, toolId: string, cmd: string, description?: string) {
   const t = termNode(S),
     e = edge(S, t.el);
-  // one expandable row per command: summary = first line, body = full command + output (filled in by settle)
+  // one expandable row per command: summary = what it's for and its first line, body = a prompt line with the full
+  // command, then its output (filled in by settle)
   const row = make('details', 'tcmd live'),
-    sum = make('summary', '', cmd.split('\n')[0]),
+    sum = make('summary'),
     out = make('pre');
-  out.textContent = `$ ${cmd}`;
+  if (description) sum.append(make('span', 'tcmd-d', description));
+  sum.append(make('span', 'tcmd-c', cmd.split('\n')[0]));
+  out.append(make('span', 'tcmd-p', '$ '), make('span', 'tcmd-cmd', cmd)); // its text stays "$ cmd" for copies and snippets
   row.append(sum, out);
   row.title = cmd;
+  // no duration for a replayed transcript or the backlog read on (re)attach: those lines arrive at once.
+  // ponytail: such rows show none at all; the transcript's message timestamps could time them
+  if (!S.replaying && S.n > (S.backlog ?? -1)) row.dataset.start = String(performance.now());
   t.list.prepend(row);
   while (t.list.children.length > 200) t.list.lastElementChild!.remove(); // ponytail: newest 200 kept
   t.n++;
-  t.count.textContent = `${t.n} run${t.n === 1 ? '' : 's'}`;
+  recount(t);
   e.counts.run = (e.counts.run ?? 0) + 1;
   e.live++;
   paintEdge(e);
   ping(t.el);
   pending.set(toolId, { edge: e, cmd: row, act: 'run' });
   redraw();
+}
+
+/** A command waited for your OK: its time starts now, not when Claude asked. ponytail: one still queued behind
+ *  another tool call in the same message also counts that wait */
+export function allowed(toolId: string) {
+  const row = pending.get(toolId)?.cmd;
+  if (row?.dataset.start) row.dataset.start = String(performance.now());
 }
 
 /** A tool finished: stop the edge flowing, mark failures. */
@@ -226,7 +271,13 @@ export function settle(toolId: string, ok: boolean, output?: string) {
   paintEdge(p.edge);
   if (p.cmd) {
     status(p.cmd, ok ? 'ok' : 'bad');
-    if (output) p.cmd.querySelector('pre')!.append(`\n\n${truncate(output, 20_000)}`);
+    if (output) {
+      const text = truncate(output, 20_000);
+      p.cmd.querySelector('pre')!.append('\n\n', ok ? text : make('span', 'tcmd-err', text));
+    }
+    const start = Number(p.cmd.dataset.start);
+    if (start) p.cmd.querySelector('summary')!.append(make('span', 'tcmd-t', took(performance.now() - start)));
+    recount(termNode(p.edge.S));
   }
   p.row?.classList.remove('live');
   if (p.file && !ok && p.act !== 'read') {
@@ -242,7 +293,10 @@ export function requestEnded(S: Session) {
     pending.delete(id);
     p.edge.live = 0;
     paintEdge(p.edge);
-    if (p.cmd) status(p.cmd, 'stopped');
+    if (p.cmd) {
+      status(p.cmd, 'stopped');
+      recount(termNode(S));
+    }
     p.row?.classList.remove('live');
   }
 }

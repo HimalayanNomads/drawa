@@ -68,6 +68,7 @@ export interface Session {
   sentRefs: Set<HTMLElement>; // items referenced in messages already sent (their arrows stay)
   chips: HTMLElement;
   n: number; // next output line to read (for re-attaching)
+  backlog?: number; // lines before this were buffered before the last attach: they arrive at once, so untimed
   gen?: string; // which of the card's processes `n` counts lines of
   gone?: boolean; // the server has no process for it (so nothing of it runs, agents included)
   stale?: string; // /clear: the old process's gen, whose lines still in flight are dropped (see live.ts)

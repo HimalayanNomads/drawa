@@ -8,7 +8,7 @@ import { centerOn, freeSpot } from '../../canvas/core/placement';
 import { referable } from '../../canvas/core/refs';
 import { removable } from '../../canvas/core/select';
 import { changed, viewCenter } from '../../canvas/core/view';
-import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
+import { makeWindow, removeButton, setTitle, winTitle } from '../../canvas/core/window';
 import { api, post } from '../../lib/api';
 import { onDisconnect } from '../../lib/connection';
 import { button, ICON, iconButton, make, perFrame, toast, uuid } from '../../lib/dom';
@@ -33,6 +33,11 @@ interface Shell {
   banner: HTMLElement;
   fitNow?: () => void; // fit the emulator to the window now (before a shell starts at its size)
   watch?: ResizeObserver; // refits it when the window's size changes
+  named: boolean; // the user renamed the tab: the shell's title no longer replaces it
+  shellTitle: string; // the tab title the shell last set
+  // titles the tab showed while following: renaming back to one (Undo, however many steps) follows the shell again.
+  // ponytail: grows by one per distinct title, and renaming to an old folder name by hand also follows
+  seen: Set<string>;
 }
 const shells = new Map<HTMLElement, Shell>();
 let supported: boolean | undefined;
@@ -114,6 +119,15 @@ const live = () =>
     shell => shell.id && shell.emulator && shell.item.isConnected && shell.item.dataset.state === TerminalState.Running,
   );
 
+/** A shell's title as a tab: without the user@host part, and a deep leading folder as its last two names (the tab
+ *  cuts off the end, where the folder you're in is). What follows the folder ("~/proj: vim a.ts") is kept. */
+function tabTitle(title: string) {
+  const text = title.replace(/^[^@\s]+@[^:\s]+:\s*/, '').trim(),
+    [, path = '', rest = ''] = /^([~/].*?)(:\s.*)?$/s.exec(text) ?? [], // a folder may hold spaces; ": " ends it
+    names = path.split('/');
+  return names.length > 3 ? `…/${names.slice(-2).join('/')}${rest}` : text;
+}
+
 function output(shell: Shell, message: TerminalOutput) {
   if (message.to <= shell.drawn) return; // a re-opened stream sending what's drawn already
   const bytes = Uint8Array.from(atob(message.data), char => char.charCodeAt(0));
@@ -184,7 +198,18 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
     sending: false,
     size: '',
     banner,
+    named: saved.named ?? (saved.title != null && saved.title !== 'Terminal'), // layouts from before `named`
+    shellTitle: '',
+    seen: new Set(),
   };
+  if (!shell.named) shell.seen.add(saved.title ?? 'Terminal');
+  item.addEventListener('rename', event => {
+    const name = (event as CustomEvent<string>).detail;
+    shell.named = !shell.seen.has(name) && name !== shell.shellTitle;
+    // undoing a rename gives back the title from then: show where the shell is now
+    if (shell.named || !shell.shellTitle || name === shell.shellTitle) return;
+    setTitle(item, shell.shellTitle, false);
+  });
   shells.set(item, shell);
   const flush = perFrame(() => void sendKeys(shell));
   void emulator(screen, frame, bytes => {
@@ -197,6 +222,16 @@ export function terminalWindow(saved: Partial<SavedTerminal> = {}) {
   }).then(made => {
     if (!shells.has(item)) return made.term.dispose(); // closed while it loaded
     shell.emulator = made;
+    // the tab follows the shell's title (bash's default prompt sets "user@host: cwd", vim the file, ssh the host)
+    // until you rename it. ponytail: no running command, branch or exit code; those need shell integration (OSC 133/7
+    // hooks added to the shell's startup), add if the title isn't enough
+    made.term.onTitleChange(title => {
+      shell.shellTitle = tabTitle(title);
+      if (!shell.shellTitle) return;
+      shell.seen.add(shell.shellTitle);
+      if (shell.named) return;
+      setTitle(item, shell.shellTitle, false); // saved with the next real change
+    });
     const fit = () => {
       if (!frame.clientWidth || !frame.clientHeight) return; // collapsed
       made.fit.fit();
@@ -311,6 +346,7 @@ persist(
         id: item.dataset.id!,
         shell: shells.get(item)?.id ?? '',
         title: winTitle(item),
+        named: !!shells.get(item)?.named, // always written: a missing one means a layout from before it
         rect: savedRect(item),
       }),
     ),
