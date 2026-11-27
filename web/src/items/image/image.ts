@@ -203,10 +203,13 @@ export async function addImage(blob: Blob, title: string, at?: { x: number; y: n
   const [img] = await readImages([new File([blob], title, { type: blob.type })]); // scaled to what Claude can use
   if (!img) throw new Error("That file couldn't be read as an image.");
   URL.revokeObjectURL(img.url); // shown from the server (or IndexedDB) instead
+  // a GIF keeps its own bytes, or scaling would flatten it to one still frame; Claude gets a scaled copy (content)
+  const gif = blob.type === 'image/gif' && blob.size <= 15_000_000, // the server's limit
+    kept = gif ? blob : img.blob!;
   const size = fit(img.w!, img.h!),
     id = uuid();
-  const src = (await upload(img.data)) ?? undefined;
-  if (!src) await putBlob(id, img.blob!); // the server is unreachable: keep it in this browser for now
+  const src = (await upload(gif ? await base64(blob) : img.data)) ?? undefined;
+  if (!src) await putBlob(id, kept); // the server is unreachable: keep it in this browser for now
   const c = viewCenter(),
     r = spotAt({ ...(at ?? { x: c.x - size.w / 2, y: c.y - size.h / 2 }), ...size });
   const el = imageWindow({ id, title, rect: r, src });
@@ -272,6 +275,9 @@ referable('image', {
       ? fetch(`/api/images/${el.dataset.src}`).then(r => (r.ok ? r.blob() : undefined))
       : getBlob(el.dataset.id!)
     ).catch(() => undefined);
-    return b ? { text, image: await base64(b), imageType: b.type } : { text: `${text} (no longer stored)` };
+    if (!b) return { text: `${text} (no longer stored)` };
+    const [s] = await readImages([new File([b], label, { type: b.type })]); // a kept GIF may be too big to send as is
+    if (s) URL.revokeObjectURL(s.url);
+    return s ? { text, image: s.data, imageType: s.type } : { text, image: await base64(b), imageType: b.type };
   },
 });
