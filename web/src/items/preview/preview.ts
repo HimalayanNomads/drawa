@@ -12,6 +12,7 @@ import { changed, viewCenter } from '../../canvas/core/view';
 import { makeWindow, removeButton, winTitle } from '../../canvas/core/window';
 import { inkBox } from '../../canvas/ink/stroke';
 import { api, q } from '../../lib/api';
+import { base64 } from '../../lib/blobs';
 import { ICON, iconButton, make, revealIn, spinWhile } from '../../lib/dom';
 import { enhanceMarked } from '../../lib/markdown';
 import { each, persist } from '../../lib/store';
@@ -19,6 +20,7 @@ import { isMarkdown, mdView, sourceView } from '../../panels/files';
 import { editAt, editFocus, editing, editorText, toggleEdit } from './fileedit';
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i; // what /api/raw serves
+const HTML = /\.html?$/i;
 interface Saved {
   path: string;
   title: string;
@@ -51,10 +53,63 @@ async function textView(path: string, lines?: number, at?: number) {
         .slice(first - 1)
         .join('\n');
     }
+    if (text != null && !at && !lines && HTML.test(path)) return await htmlView(path, text); // Ctrl+K's peek: source
     return text != null && isMarkdown(path) && !at ? mdView(path, text) : await sourceView(path, text, { first, at });
   } catch (e) {
     return make('p', 'none', (e as Error).message);
   }
+}
+
+/** An HTML file as a browser shows it, in a frame sandboxed to an opaque origin: its scripts run but can't reach this
+ *  page, its storage or the API (which refuses their cross-site requests). So the frame can't fetch the file's
+ *  neighbours either: relative stylesheets, scripts and pictures are read here and inlined. Only those kinds, and only
+ *  from the page's own folder and below, since the frame can still reach the network: a page from a clone or
+ *  node_modules can't pull in `.env` or the project's other files and send them out.
+ *  ponytail: url() inside CSS, fetch() and ES module imports from the page stay unresolved; serving the folder from
+ *  a per-process token path (like /mcp/) is the upgrade if pages need them. */
+async function htmlView(path: string, text: string) {
+  const doc = new DOMParser().parseFromString(text, 'text/html'),
+    folder = path.slice(0, path.lastIndexOf('/') + 1),
+    dir = `http://p/${folder}`;
+  /** A relative reference as a project path in the page's folder or below, when it has the extension wanted. */
+  const local = (s: string | null, ext: RegExp) => {
+    try {
+      const u = s ? new URL(s, dir) : null,
+        p = u?.origin === 'http://p' ? decodeURIComponent(u.pathname.slice(1)) : '';
+      return p.startsWith(folder) && ext.test(p) ? p : ''; // the URL parser already folded away any ../
+    } catch {
+      return ''; // a stray % in the path: left as written
+    }
+  };
+  const read = (p: string) =>
+    api<{ text: string | null }>(`file?path=${q(p)}`).then(
+      r => r.text,
+      () => null,
+    );
+  const inline = (sel: string, attr: string, ext: RegExp, put: (el: Element, p: string) => Promise<void>) =>
+    [...doc.querySelectorAll(sel)].map(el => {
+      const p = local(el.getAttribute(attr), ext);
+      return p ? put(el, p).catch(() => {}) : undefined;
+    });
+  await Promise.all([
+    ...inline('link[rel~=stylesheet][href]', 'href', /\.css$/i, async (el, p) => {
+      const css = await read(p);
+      if (css != null) el.replaceWith(Object.assign(doc.createElement('style'), { textContent: css }));
+    }),
+    ...inline('script[src]', 'src', /\.m?js$/i, async (el, p) => {
+      const js = await read(p); // still a src, as a data: URL: defer, async and type=module keep working
+      if (js != null) el.setAttribute('src', `data:text/javascript;base64,${await base64(new Blob([js]))}`);
+    }),
+    ...inline('img[src]', 'src', IMAGE, async (el, p) => {
+      const r = await fetch(`/api/raw?path=${q(p)}`);
+      if (r.ok) el.setAttribute('src', `data:${r.headers.get('content-type')};base64,${await base64(await r.blob())}`);
+    }),
+  ]);
+  const frame = make('iframe', 'pvnode-html');
+  frame.sandbox.add('allow-scripts'); // no allow-same-origin: that would hand it this page
+  frame.title = path;
+  frame.srcdoc = `<!doctype html>${doc.documentElement.outerHTML}`;
+  return frame;
 }
 
 /** Show `node` in the ink host, keeping the ink layer drawn on it. Markdown built off-page is finished here. */
