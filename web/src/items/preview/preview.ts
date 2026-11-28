@@ -62,19 +62,21 @@ async function textView(path: string, lines?: number, at?: number) {
 
 /** An HTML file as a browser shows it, in a frame sandboxed to an opaque origin: its scripts run but can't reach this
  *  page, its storage or the API (which refuses their cross-site requests). So the frame can't fetch the file's
- *  neighbours either: relative stylesheets, scripts and pictures are read here and inlined. Only those kinds, so a
- *  page can't pull in a `.env` that way.
+ *  neighbours either: relative stylesheets, scripts and pictures are read here and inlined. Only those kinds, and only
+ *  from the page's own folder and below, since the frame can still reach the network: a page from a clone or
+ *  node_modules can't pull in `.env` or the project's other files and send them out.
  *  ponytail: url() inside CSS, fetch() and ES module imports from the page stay unresolved; serving the folder from
  *  a per-process token path (like /mcp/) is the upgrade if pages need them. */
 async function htmlView(path: string, text: string) {
   const doc = new DOMParser().parseFromString(text, 'text/html'),
-    dir = `http://p/${path.slice(0, path.lastIndexOf('/') + 1)}`;
-  /** A relative reference as a project path, when it is one with the extension wanted. */
+    folder = path.slice(0, path.lastIndexOf('/') + 1),
+    dir = `http://p/${folder}`;
+  /** A relative reference as a project path in the page's folder or below, when it has the extension wanted. */
   const local = (s: string | null, ext: RegExp) => {
     try {
       const u = s ? new URL(s, dir) : null,
         p = u?.origin === 'http://p' ? decodeURIComponent(u.pathname.slice(1)) : '';
-      return ext.test(p) ? p : '';
+      return p.startsWith(folder) && ext.test(p) ? p : ''; // the URL parser already folded away any ../
     } catch {
       return ''; // a stray % in the path: left as written
     }
@@ -95,10 +97,8 @@ async function htmlView(path: string, text: string) {
       if (css != null) el.replaceWith(Object.assign(doc.createElement('style'), { textContent: css }));
     }),
     ...inline('script[src]', 'src', /\.m?js$/i, async (el, p) => {
-      const js = await read(p);
-      if (js == null) return;
-      el.removeAttribute('src');
-      el.textContent = js.replace(/<\/script/gi, '<\\/script'); // would end the inlined script early
+      const js = await read(p); // still a src, as a data: URL: defer, async and type=module keep working
+      if (js != null) el.setAttribute('src', `data:text/javascript;base64,${await base64(new Blob([js]))}`);
     }),
     ...inline('img[src]', 'src', IMAGE, async (el, p) => {
       const r = await fetch(`/api/raw?path=${q(p)}`);
